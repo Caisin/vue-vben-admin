@@ -17,6 +17,7 @@ import { useErrorLogStoreWithOut } from '/@/store/modules/errorLog';
 import { useI18n } from '/@/hooks/web/useI18n';
 import { joinTimestamp, formatRequestDate } from './helper';
 import { useUserStoreWithOut } from '/@/store/modules/user';
+import { AxiosRetry } from '/@/utils/http/axios/axiosRetry';
 
 const globSetting = useGlobSetting();
 const urlPrefix = globSetting.urlPrefix;
@@ -27,9 +28,9 @@ const { createMessage, createErrorModal } = useMessage();
  */
 const transform: AxiosTransform = {
   /**
-   * @description: 处理请求数据。如果数据不是预期格式，可直接抛出错误
+   * @description: 处理响应数据。如果数据不是预期格式，可直接抛出错误
    */
-  transformRequestHook: (res: AxiosResponse<Result>, options: RequestOptions) => {
+  transformResponseHook: (res: AxiosResponse<Result>, options: RequestOptions) => {
     const { t } = useI18n();
     const { isTransformResponse, isReturnNativeResponse } = options;
     // 是否返回原生响应头 比如：需要获取响应头时使用该属性
@@ -110,7 +111,7 @@ const transform: AxiosTransform = {
     } else {
       if (!isString(params)) {
         formatDate && formatRequestDate(params);
-        if (Reflect.has(config, 'data') && config.data && Object.keys(config.data).length > 0) {
+        if (Reflect.has(config, 'data') && config.data && (Object.keys(config.data).length > 0 || config.data instanceof FormData)) {
           config.data = data;
           config.params = params;
         } else {
@@ -158,7 +159,7 @@ const transform: AxiosTransform = {
   /**
    * @description: 响应错误处理
    */
-  responseInterceptorsCatch: (error: any) => {
+  responseInterceptorsCatch: (axiosInstance: AxiosResponse, error: any) => {
     const { t } = useI18n();
     const errorLogStore = useErrorLogStoreWithOut();
     errorLogStore.addAjaxErrorInfo(error);
@@ -189,12 +190,21 @@ const transform: AxiosTransform = {
     }
 
     checkStatus(error?.response?.status, msg, errorMessageMode);
+
+    // 添加自动重试机制 保险起见 只针对GET请求
+    const retryRequest = new AxiosRetry();
+    const { isOpenRetry } = config.requestOptions.retryRequest;
+    config.method?.toUpperCase() === RequestEnum.GET &&
+      isOpenRetry &&
+      // @ts-ignore
+      retryRequest.retry(axiosInstance, error);
     return Promise.reject(error);
   },
 };
 
 function createAxios(opt?: Partial<CreateAxiosOptions>) {
   return new VAxios(
+    // 深度合并
     deepMerge(
       {
         // See https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication#authentication_schemes
@@ -234,6 +244,11 @@ function createAxios(opt?: Partial<CreateAxiosOptions>) {
           ignoreCancelToken: true,
           // 是否携带token
           withToken: true,
+          retryRequest: {
+            isOpenRetry: true,
+            count: 5,
+            waitTime: 100,
+          },
         },
       },
       opt || {},
