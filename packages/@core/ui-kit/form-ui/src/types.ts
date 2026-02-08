@@ -265,6 +265,8 @@ export interface FormSchema<
   rules?: FormSchemaRuleType;
   /** 后缀 */
   suffix?: CustomRenderType;
+  /** 值格式化 */
+  valueFormat?: (value: any, set: (key: string, value: any) => void) => void;
 }
 
 export interface FormFieldProps extends FormSchema {

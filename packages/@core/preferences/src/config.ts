@@ -3,6 +3,7 @@ import type { Preferences } from './types';
 const defaultPreferences: Preferences = {
   app: {
     accessMode: 'frontend',
+    apiSecurity: false,
     authPageLayout: 'panel-right',
     checkUpdatesInterval: 1,
     colorGrayMode: false,
@@ -20,6 +21,7 @@ const defaultPreferences: Preferences = {
     defaultHomePath: '/analytics',
     dynamicTitle: true,
     enableCheckUpdates: true,
+    enableConsole: false,
     enablePreferences: true,
     enableRefreshToken: false,
     enableStickyPreferencesNavigationBar: true,

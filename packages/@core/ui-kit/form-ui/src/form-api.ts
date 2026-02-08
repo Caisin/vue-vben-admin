@@ -18,11 +18,13 @@ import {
   bindMethods,
   createMerge,
   formatDate,
+  get,
   isDate,
   isDayjsObject,
   isFunction,
   isObject,
   mergeWithArrayOverride,
+  set,
   StateHandler,
 } from '@vben-core/shared/utils';
 
@@ -161,7 +163,10 @@ export class FormApi {
 
   async getValues<T = Recordable<any>>() {
     const form = await this.getForm();
-    return (form.values ? this.handleRangeTimeValue(form.values) : {}) as T;
+    const values = form.values
+      ? this.handleRangeTimeValue({ ...toRaw(form.values) })
+      : {};
+    return this.handleValueFormat({ ...values }) as T;
   }
 
   async isFieldValid(fieldName: string) {
@@ -214,7 +219,7 @@ export class FormApi {
       Object.assign(this.form, formActions);
       this.stateHandler.setConditionTrue();
       this.setLatestSubmissionValues({
-        ...toRaw(this.handleRangeTimeValue(this.form.values)),
+        ...this.getValues(),
       });
       this.componentRefMap = componentRefMap;
       this.isMounted = true;
@@ -383,7 +388,7 @@ export class FormApi {
       );
       return;
     }
-    const currentSchema = [...(this.state?.schema ?? [])];
+    const currentSchema = this.currentSchema();
 
     const updatedMap: Record<string, any> = {};
 
@@ -445,6 +450,8 @@ export class FormApi {
     }
     return validateResult;
   }
+
+  private currentSchema = () => [...(this.state?.schema ?? [])];
 
   private async getForm() {
     if (!this.isMounted) {
@@ -560,6 +567,20 @@ export class FormApi {
         Reflect.deleteProperty(values, field);
       },
     );
+    return values;
+  };
+
+  private handleValueFormat = (values: Record<string, any>) => {
+    const currentSchema = this.currentSchema();
+    currentSchema.forEach((schema) => {
+      if (schema.valueFormat) {
+        const fieldName = schema.fieldName;
+        const value = get(values, fieldName);
+        schema.valueFormat(value, (key, v) => {
+          set(values, key, v);
+        });
+      }
+    });
     return values;
   };
 
