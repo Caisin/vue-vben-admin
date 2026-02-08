@@ -15,6 +15,8 @@ const appDynamicTitle = defineModel<boolean>('appDynamicTitle');
 const appWatermark = defineModel<boolean>('appWatermark');
 const appWatermarkContent = defineModel<string>('appWatermarkContent');
 const appEnableCheckUpdates = defineModel<boolean>('appEnableCheckUpdates');
+const appEnableConsole = defineModel<boolean>('appEnableConsole');
+const appApiSecurity = defineModel<boolean>('appApiSecurity');
 </script>
 
 <template>
@@ -43,5 +45,11 @@ const appEnableCheckUpdates = defineModel<boolean>('appEnableCheckUpdates');
   </InputItem>
   <SwitchItem v-model="appEnableCheckUpdates">
     {{ $t('preferences.checkUpdates') }}
+  </SwitchItem>
+  <SwitchItem v-model="appEnableConsole">
+    {{ $t('preferences.appEnableConsole') }}
+  </SwitchItem>
+  <SwitchItem v-model="appApiSecurity">
+    {{ $t('preferences.appApiSecurity') }}
   </SwitchItem>
 </template>

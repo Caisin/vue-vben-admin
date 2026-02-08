@@ -40,6 +40,7 @@ const props = withDefaults(defineProps<Props>(), {
   submitButtonText: '',
   subTitle: '',
   title: '',
+  thirdPartyLogins: undefined,
 });
 
 const emit = defineEmits<{
@@ -168,7 +169,10 @@ defineExpose({
 
     <!-- 第三方登录 -->
     <slot name="third-party-login">
-      <ThirdPartyLogin v-if="showThirdPartyLogin" />
+      <ThirdPartyLogin
+        :third-party-logins="thirdPartyLogins"
+        v-if="thirdPartyLogins?.length > 0"
+      />
     </slot>
 
     <slot name="to-register">

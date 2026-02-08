@@ -24,6 +24,8 @@ interface Props {
   component: Component;
   /** 是否将value从数字转为string */
   numberToString?: boolean;
+  /** label函数 */
+  labelFn?: (item: OptionsItem) => string;
   /** 获取options数据的函数 */
   api?: (arg?: any) => Promise<OptionsItem[] | Record<string, any>>;
   /** 传递给api的参数 */
@@ -83,6 +85,7 @@ const props = withDefaults(defineProps<Props>(), {
   resultField: '',
   visibleEvent: '',
   numberToString: false,
+  labelFn: undefined,
   params: () => ({}),
   immediate: true,
   alwaysLoad: false,
@@ -113,6 +116,7 @@ const hasPendingRequest = ref(false);
 const getOptions = computed(() => {
   const {
     labelField,
+    labelFn,
     valueField,
     disabledField,
     childrenField,
@@ -125,11 +129,13 @@ const getOptions = computed(() => {
     return data.map((item) => {
       const value = get(item, valueField);
       const disabled = get(item, disabledField);
+      const label =
+        labelFn && isFunction(labelFn) ? labelFn(item) : get(item, labelField);
       return {
         ...objectOmit(item, [labelField, valueField, disabled, childrenField]),
-        label: get(item, labelField),
+        label,
         value: numberToString ? `${value}` : value,
-        disabled: get(item, disabledField),
+        disabled,
         ...(childrenField && item[childrenField]
           ? { children: transformData(item[childrenField]) }
           : {}),
