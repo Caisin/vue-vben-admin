@@ -579,6 +579,7 @@ export class FormApi {
         schema.valueFormat(value, (key, v) => {
           set(values, key, v);
         });
+        Reflect.deleteProperty(values, fieldName);
       }
     });
     return values;
