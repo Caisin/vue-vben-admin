@@ -59,23 +59,13 @@ async function loadCredentials() {
     const kinds =
       allowedKinds.value.length > 0 ? allowedKinds.value : [undefined];
     const pages = await Promise.all(
-      kinds.map(async (kind) => {
-        const query = {
+      kinds.map((kind) =>
+        CredentialApi.all({
           kind,
-          page: 1,
           profile: props.profile,
-          size: 100,
           state: props.state,
-        };
-        const first = await CredentialApi.list(query);
-        const remaining = await Promise.all(
-          Array.from(
-            { length: Math.max(0, first.total_pages - 1) },
-            (_, index) => CredentialApi.list({ ...query, page: index + 2 }),
-          ),
-        );
-        return [first, ...remaining].flatMap((page) => page.items);
-      }),
+        }),
+      ),
     );
     credentials.value = [
       ...new Map(pages.flat().map((item) => [item.code, item])).values(),

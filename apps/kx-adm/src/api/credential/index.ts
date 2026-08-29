@@ -242,6 +242,8 @@ export const CredentialApi = {
     ),
   list: (params?: CredentialQuery) =>
     requestClient.get<Page<CredentialView>>('/credential/items', { params }),
+  all: (params?: CredentialQuery) =>
+    requestClient.get<CredentialView[]>('/credential/items/all', { params }),
   retire: (code: string, data: CredentialRetireWrite, stepUpToken: string) =>
     requestClient.post<CredentialView>(
       `/credential/items/${code}/actions/retire`,

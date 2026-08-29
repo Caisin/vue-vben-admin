@@ -432,38 +432,17 @@ async function fetchAllActiveCredentials(specs: StorageCredentialSpec[]) {
   const uniqueSpecs = [
     ...new Map(specs.map((item) => [specKey(item), item])).values(),
   ];
-  const firstPages = await Promise.all(
+  const pages = await Promise.all(
     uniqueSpecs.map((spec) =>
-      CredentialApi.list({
+      CredentialApi.all({
         kind: spec.kind as CredentialKind,
-        page: 1,
         profile: spec.profile,
-        size: 100,
         state: 'active',
       }),
     ),
   );
-  const remainingPages = await Promise.all(
-    firstPages.flatMap((page, index) => {
-      const spec = uniqueSpecs[index];
-      if (!spec) return [];
-      return Array.from(
-        { length: Math.max(0, Number(page.total_pages) - 1) },
-        (_, offset) =>
-          CredentialApi.list({
-            kind: spec.kind as CredentialKind,
-            page: offset + 2,
-            profile: spec.profile,
-            size: 100,
-            state: 'active',
-          }),
-      );
-    }),
-  );
   const dedup = new Map<string, CredentialView>();
-  for (const item of [...firstPages, ...remainingPages].flatMap(
-    (page) => page.items,
-  )) {
+  for (const item of pages.flat()) {
     dedup.set(item.code, item);
   }
   return [...dedup.values()];

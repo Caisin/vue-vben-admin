@@ -194,13 +194,7 @@ const [Grid, gridApi] = useVbenVxeGrid<NotifyMessage>({
 
 onMounted(async () => {
   if (props.embedded) return;
-  const first = await NotifyChannelApi.list({ page: 1, size: 100 });
-  const rows = [...first.items];
-  for (let page = 2; page <= first.total_pages; page += 1) {
-    const result = await NotifyChannelApi.list({ page, size: 100 });
-    rows.push(...result.items);
-  }
-  channelRows.value = rows;
+  channelRows.value = await NotifyChannelApi.all();
 });
 
 watch(

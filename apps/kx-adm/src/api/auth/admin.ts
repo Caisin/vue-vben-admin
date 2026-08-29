@@ -1,4 +1,5 @@
 import type { JsonValue, Page, PageQuery } from '#/api/request';
+import type { ApiPermission } from '#/api/system/api-permission';
 
 import { requestClient } from '#/api/request';
 
@@ -64,7 +65,19 @@ export interface AdminRole {
 
 export interface AdminRoleDetail extends AdminRole {
   api_ids: Array<number | string>;
+  api_details: Array<ApiPermission & { permission_titles: string[] }>;
   permission_ids: Array<number | string>;
+  permission_details: Array<{
+    api_count: number;
+    auth_code: string;
+    enabled?: boolean;
+    id: number | string;
+    missing: boolean;
+    order_no: number;
+    path: string;
+    perm_type?: PermissionType;
+    title: string;
+  }>;
 }
 
 export interface AdminRoleWrite {
@@ -157,7 +170,7 @@ export const AdminRoleApi = {
     requestClient.get<Page<AdminRole>>('/auth/role', { params }),
   all: () => requestClient.get<AdminRole[]>('/auth/role/all'),
   detail: (role_id: string) =>
-    requestClient.get<AdminRoleDetail>(`/auth/role/${role_id}`),
+    requestClient.get<AdminRoleDetail>(`/adm/role/${role_id}/detail`),
   create: (data: AdminRoleWrite) =>
     requestClient.post<AdminRole>('/auth/role', data),
   update: (role_id: string, data: AdminRoleWrite) =>

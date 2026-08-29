@@ -63,6 +63,8 @@ export interface NotifyProviderOptionsView {
 }
 
 export const NotifyChannelApi = {
+  all: (params?: NotifyChannelQuery) =>
+    requestClient.get<NotifyChannel[]>('/notify/channels/all', { params }),
   list: (params?: NotifyChannelQuery) =>
     requestClient.get<Page<NotifyChannel>>('/notify/channels', { params }),
   detail: (id: number | string) =>

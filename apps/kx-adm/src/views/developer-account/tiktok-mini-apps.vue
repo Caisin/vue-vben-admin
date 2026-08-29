@@ -180,25 +180,11 @@ async function onWhitelistImportCompleted() {
 }
 
 async function loadTtWebCredentials() {
-  const firstPage = await CredentialApi.list({
+  return CredentialApi.all({
     kind: 'tt_web',
-    page: 1,
     profile: 'tt_web',
-    size: 100,
     state: 'active',
   });
-  const remainingPages = await Promise.all(
-    Array.from({ length: Math.max(0, firstPage.total_pages - 1) }, (_, index) =>
-      CredentialApi.list({
-        kind: 'tt_web',
-        page: index + 2,
-        profile: 'tt_web',
-        size: 100,
-        state: 'active',
-      }),
-    ),
-  );
-  return [firstPage, ...remainingPages].flatMap((page) => page.items);
 }
 
 async function openSync() {
