@@ -1,12 +1,11 @@
 <script lang="ts" setup>
-import type { CredentialView } from '#/api/credential';
 import type { Page as ApiPage } from '#/api/request';
 import type { MfaKeyStatusView, SystemSettings } from '#/api/system/settings';
 
 import { onMounted, reactive, ref, watch } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { RotateCw, Settings } from '@vben/icons';
+import { Plus, RotateCw, Settings } from '@vben/icons';
 
 import {
   Alert,
@@ -25,9 +24,9 @@ import {
   TextArea,
 } from 'antdv-next';
 
-import { CredentialApi } from '#/api/credential';
 import { requestClient } from '#/api/request';
 import { SystemSettingsApi } from '#/api/system/settings';
+import { CredentialSelect } from '#/components/credential';
 import { FileRefPreview, FileUrlInput } from '#/components/file-picker';
 import { applyPublicSystemSettings } from '#/system-settings-init';
 import { Times } from '#/times';
@@ -36,7 +35,7 @@ const loading = ref(false);
 const mfaKeyLoading = ref(false);
 const saving = ref(false);
 const searchOptionsLoading = ref(false);
-const searchCredentials = ref<CredentialView[]>([]);
+const initializeSearchKeyLoading = ref(false);
 const meilisearchInstallations = ref<ManagedMeilisearchInstallation[]>([]);
 
 interface ManagedMeilisearchInstallation {
@@ -86,16 +85,6 @@ async function loadSettings() {
   } finally {
     loading.value = false;
   }
-}
-
-async function loadSearchCredentials() {
-  const response = await CredentialApi.list({
-    kind: 'password',
-    page: 1,
-    size: 200,
-    state: 'active',
-  });
-  searchCredentials.value = response.items;
 }
 
 async function loadManagedMeilisearch() {
@@ -152,13 +141,20 @@ async function ensureMfaKey() {
 }
 
 async function loadPage() {
-  await Promise.all([
-    loadSettings(),
-    loadMfaKeyStatus(),
-    loadSearchCredentials(),
-  ]);
+  await Promise.all([loadSettings(), loadMfaKeyStatus()]);
   if (form.meilisearch_source === 'installation') {
     await loadManagedMeilisearch();
+  }
+}
+
+async function initializeMeilisearchMasterKey() {
+  initializeSearchKeyLoading.value = true;
+  try {
+    const credential = await SystemSettingsApi.initializeMeilisearchMasterKey();
+    form.meilisearch_credential_code = credential.code;
+    message.success('Meilisearch Master Key 已初始化，请保存系统设置');
+  } finally {
+    initializeSearchKeyLoading.value = false;
   }
 }
 
@@ -322,18 +318,23 @@ onMounted(loadPage);
               />
             </FormItem>
             <FormItem label="凭证" required>
-              <Select
-                v-model:value="form.meilisearch_credential_code"
-                :options="
-                  searchCredentials.map((item) => ({
-                    label: `${item.name} (${item.code})`,
-                    value: item.code,
-                  }))
-                "
-                option-filter-prop="label"
-                placeholder="选择 password 类型凭证"
-                show-search
-              />
+              <Space class="w-full" wrap>
+                <CredentialSelect
+                  v-model="form.meilisearch_credential_code"
+                  class="min-w-60 flex-1"
+                  create-kind="password"
+                  kind="password"
+                  profile="generic"
+                  placeholder="选择 password 类型凭证"
+                />
+                <Button
+                  :loading="initializeSearchKeyLoading"
+                  @click="initializeMeilisearchMasterKey"
+                >
+                  <template #icon><Plus /></template>
+                  初始化密钥
+                </Button>
+              </Space>
             </FormItem>
           </div>
         </section>

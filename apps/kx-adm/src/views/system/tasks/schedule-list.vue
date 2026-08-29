@@ -27,7 +27,7 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { TaskExecutorApi, TaskRunApi, TaskScheduleApi } from '#/api/task';
-import CronExpressionSelect from '#/components/cron-expression-select';
+import { CronExpressionSelect } from '#/components/management';
 import { displayValue } from '#/management';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';

@@ -56,10 +56,10 @@ import {
   PhoneGroupApi,
   SimCardApi,
 } from '#/api/msg';
-import BusinessImport from '#/components/business-import';
+import { BusinessImport } from '#/components/import-export';
+import { StatusTag } from '#/components/management';
 import SimCardAccounts from '#/components/management/sim-card-accounts.vue';
 import SimCardSelect from '#/components/management/sim-card-select.vue';
-import StatusTag from '#/components/status-tag';
 import {
   createIdempotencyKey,
   displayValue,

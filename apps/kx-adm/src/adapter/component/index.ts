@@ -24,12 +24,12 @@ import type {
 } from '@vben/common-ui';
 import type { Recordable } from '@vben/types';
 
+import type { JsonEditorProps } from '#/components/codemirror';
 import type {
   DicRadioGroupProps,
   DicSelectProps,
 } from '#/components/dictionary';
 import type { FileUrlInput, FileUrlsInput } from '#/components/file-picker';
-import type { JsonEditorProps } from '#/components/json-editor';
 
 import { defineAsyncComponent, defineComponent, h, ref } from 'vue';
 
@@ -72,7 +72,7 @@ const InputPassword = defineAsyncComponent(() =>
   import('antdv-next/dist/input/index').then((res) => res.InputPassword),
 );
 const JsonEditor = defineAsyncComponent(
-  () => import('#/components/json-editor'),
+  () => import('#/components/codemirror/json-editor.vue'),
 );
 const RadioGroup = defineAsyncComponent(() =>
   import('antdv-next/dist/radio/index').then((res) => res.RadioGroup),

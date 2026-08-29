@@ -27,7 +27,7 @@ import {
 import dayjs from 'dayjs';
 
 import { DeveloperAccountApi } from '#/api/developer-account';
-import BusinessImport from '#/components/business-import';
+import { BusinessImport } from '#/components/import-export';
 import { Times } from '#/times';
 
 const rows = ref<DeveloperSubject[]>([]);

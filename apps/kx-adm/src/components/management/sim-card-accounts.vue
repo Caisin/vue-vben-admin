@@ -33,7 +33,7 @@ import {
 
 import { PhoneAccountApi } from '#/api/msg';
 import { DicLabel, DicSelect } from '#/components/dictionary';
-import StatusTag from '#/components/status-tag';
+import { StatusTag } from '#/components/management';
 import { displayValue } from '#/management';
 
 const props = defineProps<{ phoneNumber: string }>();

@@ -32,8 +32,8 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { SimCardApi, SmsJobApi, SmsMessageApi } from '#/api/msg';
+import { StatusTag } from '#/components/management';
 import SimCardSelect from '#/components/management/sim-card-select.vue';
-import StatusTag from '#/components/status-tag';
 import { displayValue } from '#/management';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';

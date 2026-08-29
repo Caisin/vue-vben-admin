@@ -30,6 +30,10 @@ export const SystemSettingsApi = {
     requestClient.post<MfaKeyStatusView>(
       '/param/system-settings/security/mfa-key/generate',
     ),
+  initializeMeilisearchMasterKey: () =>
+    requestClient.post<import('#/api/credential').CredentialView>(
+      '/adm/meilisearch/master-key/initialize',
+    ),
   get: () => requestClient.get<SystemSettings>('/param/system-settings'),
   mfaKeyStatus: () =>
     requestClient.get<MfaKeyStatusView>(

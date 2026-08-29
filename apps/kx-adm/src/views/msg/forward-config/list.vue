@@ -36,8 +36,8 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { ForwardConfigApi } from '#/api/msg';
-import JsonEditor from '#/components/json-editor';
-import StatusTag from '#/components/status-tag';
+import { JsonEditor } from '#/components/codemirror';
+import { StatusTag } from '#/components/management';
 import { displayValue } from '#/management';
 import { Times } from '#/times';
 import { vxeSortArray } from '#/vxe-sort';

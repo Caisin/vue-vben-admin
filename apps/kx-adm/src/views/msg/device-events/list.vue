@@ -12,7 +12,7 @@ import { Button, Tag } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { DeviceEventApi } from '#/api/msg';
-import StatusTag from '#/components/status-tag';
+import { StatusTag } from '#/components/management';
 import { displayValue } from '#/management';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';

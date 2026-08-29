@@ -34,7 +34,7 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { NotifyChannelApi, NotifyMessageApi } from '#/api/notify';
-import FieldHelp from '#/components/field-help';
+import { FieldHelp } from '#/components/management';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
 

@@ -61,9 +61,9 @@ import {
   MsgConfigApi,
   SimCardApi,
 } from '#/api/msg';
-import JsonEditor from '#/components/json-editor';
+import { JsonEditor } from '#/components/codemirror';
+import { StatusTag } from '#/components/management';
 import SimCardAccounts from '#/components/management/sim-card-accounts.vue';
-import StatusTag from '#/components/status-tag';
 import {
   createIdempotencyKey,
   displayValue,

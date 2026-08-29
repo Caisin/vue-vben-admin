@@ -23,7 +23,7 @@ import JsonBigint from 'json-bigint';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { ParamApi } from '#/api';
-import JsonEditor from '#/components/json-editor';
+import { JsonEditor } from '#/components/codemirror';
 import { vxeSortParams } from '#/vxe-sort';
 
 import { useColumns, useFormSchema } from './data';

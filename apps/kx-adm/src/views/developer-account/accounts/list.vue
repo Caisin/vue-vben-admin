@@ -42,9 +42,9 @@ import dayjs from 'dayjs';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { DeveloperAccountApi } from '#/api/developer-account';
 import { SystemUserApi } from '#/api/system/user';
-import BusinessImport from '#/components/business-import';
-import CredentialSelect from '#/components/credential-select';
+import { CredentialSelect } from '#/components/credential';
 import { DicSelect } from '#/components/dictionary';
+import { BusinessImport } from '#/components/import-export';
 import { Times } from '#/times';
 
 import { platformOptions, useColumns, useGridFormSchema } from './data';

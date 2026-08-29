@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
-import type { CredentialView } from '#/api/credential';
 import type {
   TikTokMiniApp,
   TikTokMiniAppWhitelist,
@@ -20,15 +19,13 @@ import {
   Input,
   message,
   Modal,
-  Select,
   Space,
 } from 'antdv-next';
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
-import { CredentialApi } from '#/api/credential';
 import { DeveloperAccountApi } from '#/api/developer-account';
-import BusinessExport from '#/components/business-export';
-import BusinessImport from '#/components/business-import';
+import { CredentialSelect } from '#/components/credential';
+import { BusinessExport, BusinessImport } from '#/components/import-export';
 
 import {
   miniAppColumns,
@@ -42,10 +39,8 @@ const formOpen = ref(false);
 const saving = ref(false);
 const syncOpen = ref(false);
 const syncing = ref(false);
-const loadingCredentials = ref(false);
 const syncCredentialCode = ref<string>();
 const activeSyncTaskId = ref<number | string>();
-const ttWebCredentials = ref<CredentialView[]>([]);
 const whitelistOpen = ref(false);
 const whitelistMiniApp = ref<TikTokMiniApp>();
 const form = reactive<TikTokMiniAppWrite>({
@@ -179,26 +174,9 @@ async function onWhitelistImportCompleted() {
   if (whitelistOpen.value) await whitelistGridApi.query();
 }
 
-async function loadTtWebCredentials() {
-  return CredentialApi.all({
-    kind: 'tt_web',
-    profile: 'tt_web',
-    state: 'active',
-  });
-}
-
 async function openSync() {
   syncOpen.value = true;
   syncCredentialCode.value = undefined;
-  loadingCredentials.value = true;
-  try {
-    ttWebCredentials.value = await loadTtWebCredentials();
-    if (ttWebCredentials.value.length === 1) {
-      syncCredentialCode.value = ttWebCredentials.value[0]?.code;
-    }
-  } finally {
-    loadingCredentials.value = false;
-  }
 }
 
 async function syncMiniApps() {
@@ -367,20 +345,12 @@ onBeforeUnmount(clearSyncTaskPoll);
     >
       <Form layout="vertical">
         <FormItem label="TT Web 凭证" required>
-          <Select
-            v-model:value="syncCredentialCode"
-            :loading="loadingCredentials"
-            :not-found-content="
-              loadingCredentials ? '正在加载' : '暂无可用的 TT Web 凭证'
-            "
-            :options="
-              ttWebCredentials.map((item) => ({
-                label: `${item.name} (${item.code})`,
-                value: item.code,
-              }))
-            "
-            placeholder="选择凭证"
-            show-search
+          <CredentialSelect
+            v-model="syncCredentialCode"
+            create-kind="tt_web"
+            kind="tt_web"
+            profile="tt_web"
+            placeholder="选择或新增 TT Web 凭证"
           />
         </FormItem>
       </Form>

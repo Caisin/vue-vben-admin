@@ -33,8 +33,7 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { DingtalkNotifyApi } from '#/api/param/dingtalk-notify';
-import ConfigGuide from '#/components/config-guide';
-import FieldHelp from '#/components/field-help';
+import { ConfigGuide, FieldHelp } from '#/components/management';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
 
