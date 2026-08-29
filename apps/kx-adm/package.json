@@ -1,0 +1,77 @@
+{
+  "name": "@kx/adm",
+  "version": "0.1.0",
+  "private": true,
+  "homepage": "https://github.com/Caisin/vue-vben-admin",
+  "bugs": "https://github.com/Caisin/vue-vben-admin/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Caisin/vue-vben-admin.git",
+    "directory": "apps/kx-adm"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "vben",
+    "email": "ann.vben@gmail.com",
+    "url": "https://github.com/anncwb"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm vite build --mode production",
+    "build:analyze": "pnpm vite build --mode analyze",
+    "dev": "pnpm vite --mode development",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit --skipLibCheck",
+    "test:e2e": "playwright test",
+    "test:e2e-ui": "playwright test --ui",
+    "test:e2e-codegen": "playwright codegen",
+    "build:adm": "pnpm build",
+    "test:unit": "vitest run --dom __tests__/unit"
+  },
+  "imports": {
+    "#/*": "./src/*"
+  },
+  "dependencies": {
+    "@codemirror/lang-json": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/theme-one-dark": "catalog:",
+    "@editorjs/checklist": "catalog:",
+    "@editorjs/code": "catalog:",
+    "@editorjs/delimiter": "catalog:",
+    "@editorjs/editorjs": "catalog:",
+    "@editorjs/header": "catalog:",
+    "@editorjs/list": "catalog:",
+    "@editorjs/quote": "catalog:",
+    "@editorjs/table": "catalog:",
+    "@kx/admin-core": "workspace:*",
+    "@tanstack/vue-query": "catalog:",
+    "@vben-core/design": "workspace:*",
+    "@vben-core/menu-ui": "workspace:*",
+    "@vben/access": "workspace:*",
+    "@vben/common-ui": "workspace:*",
+    "@vben/constants": "workspace:*",
+    "@vben/hooks": "workspace:*",
+    "@vben/icons": "workspace:*",
+    "@vben/layouts": "workspace:*",
+    "@vben/locales": "workspace:*",
+    "@vben/plugins": "workspace:*",
+    "@vben/preferences": "workspace:*",
+    "@vben/request": "workspace:*",
+    "@vben/stores": "workspace:*",
+    "@vben/styles": "workspace:*",
+    "@vben/types": "workspace:*",
+    "@vben/utils": "workspace:*",
+    "@vueuse/core": "catalog:",
+    "antdv-next": "catalog:",
+    "codemirror": "catalog:",
+    "dayjs": "catalog:",
+    "json-bigint": "catalog:",
+    "pinia": "catalog:",
+    "vue": "catalog:",
+    "vue-router": "catalog:"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/json-bigint": "catalog:"
+  }
+}

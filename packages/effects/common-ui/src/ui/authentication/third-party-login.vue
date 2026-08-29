@@ -1,24 +1,40 @@
 <script setup lang="ts">
-import { useAppConfig } from '@vben/hooks';
-import {
-  SvgGithubIcon,
-  SvgGoogleIcon,
-  SvgQQChatIcon,
-  SvgWeChatIcon,
-} from '@vben/icons';
+import type { ThirdPartyLogin } from './types';
+
+// import { useAppConfig } from '@vben/hooks';
+// import { MdiGithub, MdiGoogle, MdiQqchat, MdiWechat } from '@vben/icons';
+// import { useAppConfig } from '@vben/hooks';
+// import {
+//   SvgGithubIcon,
+//   SvgGoogleIcon,
+//   SvgQQChatIcon,
+//   SvgWeChatIcon,
+// } from '@vben/icons';
 import { $t } from '@vben/locales';
 
 import { VbenIconButton } from '@vben-core/shadcn-ui';
 
-import DingdingLogin from './dingding-login.vue';
+// import DingdingLogin from './dingding-login.vue';
 
 defineOptions({
   name: 'ThirdPartyLogin',
 });
 
-const {
-  auth: { dingding: dingdingAuthConfig },
-} = useAppConfig(import.meta.env, import.meta.env.PROD);
+defineProps<Props>();
+
+// withDefaults(defineProps<Props>(), {
+//   thirdPartyLogins: [
+//     { name: 'github', icon: MdiGithub, tooltip: 'authentication.githubLogin' },
+//   ] as ThirdPartyLogin[],
+// });
+
+interface Props {
+  thirdPartyLogins?: ThirdPartyLogin[];
+}
+
+// const {
+//   auth: { dingding: dingdingAuthConfig },
+// } = useAppConfig(import.meta.env, import.meta.env.PROD);
 </script>
 
 <template>
@@ -33,6 +49,16 @@ const {
 
     <div class="mt-4 flex flex-wrap justify-center">
       <VbenIconButton
+        v-for="third in thirdPartyLogins"
+        :key="third.name"
+        :tooltip="third?.tooltip"
+        tooltip-side="top"
+        class="mb-3"
+        @click="third.onClick"
+      >
+        <component :is="third.icon" />
+      </VbenIconButton>
+      <!-- <VbenIconButton
         :tooltip="$t('authentication.wechatLogin')"
         tooltip-side="top"
         class="mb-3"
@@ -65,7 +91,7 @@ const {
         :corp-id="dingdingAuthConfig.corpId"
         :client-id="dingdingAuthConfig.clientId"
         class="mb-3"
-      />
+      /> -->
     </div>
   </div>
 </template>

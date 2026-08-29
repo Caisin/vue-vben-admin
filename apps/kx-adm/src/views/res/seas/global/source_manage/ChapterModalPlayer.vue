@@ -1,0 +1,11 @@
+<script lang="ts" setup>
+import ResRecordModal from '../../../_components/res-record-modal.vue';
+</script>
+
+<template>
+  <ResRecordModal
+    mode="player"
+    module-key="global/source_manage"
+    title="global / source_manage / ChapterModalPlayer"
+  />
+</template>

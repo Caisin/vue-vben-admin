@@ -1,0 +1,9 @@
+export * as i18n from './i18n';
+export * as link from './link';
+export * as order from './order';
+export * as page_manage from './page_manage';
+export * as page_module_manage from './page_module_manage';
+export * as return_config from './return_config';
+export * as source_manage from './source_manage';
+export * as tmplate_lib from './tmplate_lib';
+export * as user from './user';

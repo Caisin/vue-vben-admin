@@ -168,7 +168,10 @@ defineExpose({
 
     <!-- 第三方登录 -->
     <slot name="third-party-login">
-      <ThirdPartyLogin v-if="showThirdPartyLogin" />
+      <ThirdPartyLogin
+        v-if="(thirdPartyLogins?.length ?? 0) > 0"
+        :third-party-logins="thirdPartyLogins"
+      />
     </slot>
 
     <slot name="to-register">

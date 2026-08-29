@@ -22,5 +22,10 @@ export default defineConfig({
     '.npmrc',
     '*-lock.yaml',
     'skills-lock.json',
+    'apps/kx-adm/src/views/res/seas/global/order/index.vue',
+    'apps/kx-adm/src/views/res/seas/global/return_config/index.vue',
+    'apps/kx-adm/src/views/res/seas/global/tmplate_lib/TmpReviewModal.vue',
+    'apps/kx-adm/src/views/res/seas/set/def_tmplate_lib/index.vue',
+    'apps/kx-adm/src/views/software/applications/list.vue',
   ],
 });

@@ -6,6 +6,13 @@ import type { VxeGridApi } from './api';
 
 import { formatDate, formatDateTime, isFunction } from '@vben/utils';
 
+export function enableProxySortForRemoteSort(options: VxeGridProps) {
+  const { proxyConfig, sortConfig } = options;
+  if (proxyConfig && proxyConfig.sort === undefined && sortConfig?.remote) {
+    proxyConfig.sort = true;
+  }
+}
+
 export function extendProxyOptions(
   api: VxeGridApi,
   options: VxeGridProps,

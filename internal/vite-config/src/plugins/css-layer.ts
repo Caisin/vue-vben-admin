@@ -49,7 +49,10 @@ export function viteCssLayerPlugin(
   const list = Array.isArray(rules) ? rules : [rules];
   const matchers = list.map(({ layerName, packageName }) => ({
     layerName,
-    regex: new RegExp(`${escapeRegExp(packageName)}[\\\\/].+\\.css$`, 'i'),
+    regex: new RegExp(
+      String.raw`${escapeRegExp(packageName)}[\\/].+\.css$`,
+      'i',
+    ),
   }));
   return {
     name: 'vite-plugin-css-layer',

@@ -99,6 +99,8 @@ interface PreferencesExtension<
 interface AppPreferences {
   /** 权限模式 */
   accessMode: AccessModeType;
+  /** api是否加密 */
+  apiSecurity: boolean;
   /** 登录注册页面布局 */
   authPageLayout: AuthPageLayoutType;
   /** 检查更新轮询时间 */
@@ -131,6 +133,8 @@ interface AppPreferences {
   dynamicTitle: boolean;
   /** 是否开启检查更新 */
   enableCheckUpdates: boolean;
+  /** 是否开启控制台 */
+  enableConsole: boolean;
   /** 是否显示复制偏好设置按钮 */
   enableCopyPreferences: boolean;
   /** 是否显示偏好设置 */

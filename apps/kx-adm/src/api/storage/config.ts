@@ -1,0 +1,92 @@
+import type { Page, PageQuery } from '#/api/request';
+
+import { requestClient } from '#/api/request';
+
+export interface StorageCredentialSpec {
+  kind: string;
+  profile: string;
+}
+
+export interface StorageTypeSpec {
+  access_key_label: string;
+  code: string;
+  credential_specs: StorageCredentialSpec[];
+  description: string;
+  endpoint_hint: string;
+  label: string;
+  requires_credentials: boolean;
+  requires_endpoint: boolean;
+  requires_region: boolean;
+  requires_root: boolean;
+  requires_s3: boolean;
+  secret_key_label: string;
+  supports_virtual_host: boolean;
+}
+
+export interface StorageConfigView {
+  bucket: string;
+  cdn_domain: string;
+  code: string;
+  create_time: number | string;
+  credential_code?: null | string;
+  enable_virtual_host: boolean;
+  endpoint: string;
+  is_public: boolean;
+  order_no: number | string;
+  region: string;
+  root: string;
+  storage_name: string;
+  storage_type: string;
+  upload_dir: string;
+}
+
+export interface StorageConfigWrite {
+  bucket?: string;
+  cdn_domain?: string;
+  credential_code?: null | string;
+  enable_virtual_host?: boolean;
+  endpoint?: string;
+  is_public?: boolean;
+  order_no?: number | string;
+  region?: string;
+  root?: string;
+  storage_name: string;
+  storage_type: string;
+  upload_dir?: string;
+}
+
+export interface StorageConfigCopyWrite {
+  bucket?: string;
+  cdn_domain?: string;
+  code: string;
+  credential_code?: null | string;
+  enable_virtual_host?: boolean;
+  endpoint?: string;
+  is_public?: boolean;
+  order_no?: number | string;
+  region?: string;
+  root?: string;
+  storage_name: string;
+  upload_dir?: string;
+}
+
+export interface StorageConfigPageQuery extends PageQuery {
+  code_prefix?: string;
+  is_public?: boolean;
+  name_prefix?: string;
+  storage_type?: string;
+}
+
+export const StorageConfigApi = {
+  list: (params?: StorageConfigPageQuery) =>
+    requestClient.get<Page<StorageConfigView>>('/storage/cfg', { params }),
+  types: () => requestClient.get<StorageTypeSpec[]>('/storage/cfg/types'),
+  detail: (code: string) =>
+    requestClient.get<StorageConfigView>(`/storage/cfg/${code}`),
+  save: (code: string, data: StorageConfigWrite) =>
+    requestClient.post<StorageConfigView>(`/storage/cfg/${code}`, data),
+  copy: (code: string, data: StorageConfigCopyWrite) =>
+    requestClient.post<StorageConfigView>(`/storage/cfg/${code}/copies`, data),
+  remove: (code: string) =>
+    requestClient.delete<boolean>(`/storage/cfg/${code}`),
+};

@@ -5,6 +5,7 @@ import { Bell, CircleCheckBig, CircleX, MailCheck } from '@vben/icons';
 import { $t } from '@vben/locales';
 
 import {
+  VbenAvatar,
   VbenButton,
   VbenIconButton,
   VbenPopover,
@@ -96,14 +97,11 @@ defineExpose({ toggle });
                   class="absolute top-2 right-2 size-2 rounded-sm bg-primary"
                 ></span>
 
-                <span
-                  class="relative flex size-10 shrink-0 overflow-hidden rounded-full"
-                >
-                  <img
-                    :src="item.avatar"
-                    class="aspect-square size-full object-cover"
-                  />
-                </span>
+                <VbenAvatar
+                  :alt="item.title"
+                  :src="item.avatar"
+                  class="size-10"
+                />
                 <div class="flex flex-col gap-1 leading-none">
                   <p class="font-semibold">{{ item.title }}</p>
                   <p class="my-1 line-clamp-2 text-xs text-muted-foreground">

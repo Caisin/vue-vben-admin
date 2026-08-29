@@ -1,0 +1,22 @@
+{
+  "name": "@kx/admin-core",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@vben/request": "workspace:*",
+    "@vben/utils": "workspace:*",
+    "json-bigint": "catalog:"
+  },
+  "devDependencies": {
+    "@types/json-bigint": "catalog:"
+  }
+}

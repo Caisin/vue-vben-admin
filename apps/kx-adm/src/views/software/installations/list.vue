@@ -1,0 +1,506 @@
+<script lang="ts" setup>
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
+import type { CredentialView } from '#/api/credential';
+import type {
+  SoftwareApplication,
+  SoftwareInstallation,
+  SoftwareServer,
+  SoftwareVersion,
+} from '#/api/software';
+
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+
+import { Page } from '@vben/common-ui';
+import { Plus } from '@vben/icons';
+
+import {
+  Alert,
+  Button,
+  Form,
+  FormItem,
+  Input,
+  InputNumber,
+  message,
+  Modal,
+  Select,
+  Tag,
+} from 'antdv-next';
+
+import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
+import { CredentialApi } from '#/api/credential';
+import { SoftwareApi } from '#/api/software';
+import { createIdempotencyKey } from '#/management';
+
+import { useColumns, useGridFormSchema } from './data';
+
+const servers = ref<SoftwareServer[]>([]);
+const applications = ref<SoftwareApplication[]>([]);
+const targetVersions = ref<SoftwareVersion[]>([]);
+const databaseCredentials = ref<CredentialView[]>([]);
+const passwordCredentials = ref<CredentialView[]>([]);
+const creating = ref(false);
+const submitting = ref(false);
+const versionLoading = ref(false);
+const createOpen = ref(false);
+const actionOpen = ref(false);
+const stateColors: Record<string, string> = {
+  failed: 'error',
+  installing: 'processing',
+  running: 'success',
+};
+const actionLabels: Record<string, string> = {
+  check: '检查状态',
+  install: '安装',
+  reinstall: '重新安装',
+  rollback: '回滚',
+  switch: '切换版本',
+  uninstall: '卸载',
+};
+const action = ref('switch');
+const current = ref<SoftwareInstallation>();
+const targetVersion = ref('');
+const createForm = reactive({
+  admin_credential_code: '',
+  application_id: '',
+  config_json: {},
+  instance_key: 'default',
+  server_id: '',
+});
+const serviceConfig = reactive({ listen: '127.0.0.1', port: 0 });
+const selectedApplication = computed(() =>
+  applications.value.find((item) => item.id === createForm.application_id),
+);
+watch(
+  selectedApplication,
+  (application, previousApplication) => {
+    if (application?.id !== previousApplication?.id) {
+      createForm.admin_credential_code = '';
+    }
+    if (application?.service_spec?.default_port) {
+      serviceConfig.port = application.service_spec.default_port;
+    }
+  },
+  { immediate: true },
+);
+const needsDatabaseCredential = computed(() =>
+  ['mysql', 'postgres'].includes(selectedApplication.value?.provider ?? ''),
+);
+const needsSearchCredential = computed(
+  () => selectedApplication.value?.provider === 'meilisearch',
+);
+const needsAdminCredential = computed(
+  () => needsDatabaseCredential.value || needsSearchCredential.value,
+);
+const adminCredentials = computed(() =>
+  needsSearchCredential.value
+    ? passwordCredentials.value
+    : databaseCredentials.value,
+);
+const serverOptions = () =>
+  servers.value.map((item) => ({ label: item.name, value: item.id }));
+const applicationOptions = () =>
+  applications.value.map((item) => ({ label: item.name, value: item.id }));
+
+function hasConfiguredPassword(item: CredentialView) {
+  return item.summary.fields.some(
+    (field) => field.field === 'password' && field.configured,
+  );
+}
+
+const [Grid, gridApi] = useVbenVxeGrid<SoftwareInstallation>({
+  formOptions: {
+    schema: useGridFormSchema(serverOptions, applicationOptions),
+    submitOnChange: true,
+  },
+  gridOptions: {
+    columns: useColumns(),
+    height: 'auto',
+    pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
+    proxyConfig: {
+      ajax: {
+        query: async ({ page }, formValues) =>
+          SoftwareApi.installations({
+            ...formValues,
+            page: page.currentPage,
+            size: page.pageSize,
+          }),
+      },
+    },
+    rowConfig: { keyField: 'id' },
+    toolbarConfig: {
+      custom: true,
+      export: false,
+      refresh: true,
+      search: true,
+      zoom: true,
+    },
+  } as VxeTableGridOptions<SoftwareInstallation>,
+});
+
+async function loadReferenceData() {
+  const [serverPage, appPage, databaseCredentialPage, passwordCredentialPage] =
+    await Promise.all([
+      SoftwareApi.servers({ page: 1, size: 200 }),
+      SoftwareApi.applications({ page: 1, size: 200 }),
+      CredentialApi.list({
+        kind: 'username_password',
+        page: 1,
+        size: 200,
+        state: 'active',
+      }),
+      CredentialApi.list({
+        kind: 'password',
+        page: 1,
+        size: 200,
+        state: 'active',
+      }),
+    ]);
+  servers.value = serverPage.items;
+  applications.value = appPage.items;
+  databaseCredentials.value = databaseCredentialPage.items;
+  passwordCredentials.value = passwordCredentialPage.items.filter(
+    hasConfiguredPassword,
+  );
+}
+
+async function create() {
+  if (
+    needsAdminCredential.value &&
+    !adminCredentials.value.some(
+      (item) => item.code === createForm.admin_credential_code,
+    )
+  ) {
+    message.warning(
+      needsSearchCredential.value
+        ? '请选择已配置的 Meilisearch Master Key 凭证'
+        : '请选择数据库管理员凭证',
+    );
+    return;
+  }
+  creating.value = true;
+  try {
+    await SoftwareApi.createInstallation({
+      ...createForm,
+      admin_credential_code: needsAdminCredential.value
+        ? createForm.admin_credential_code
+        : undefined,
+      config_json: {
+        listen: serviceConfig.listen,
+        port: serviceConfig.port || undefined,
+      },
+    });
+    createOpen.value = false;
+    message.success('安装实例已创建');
+    await gridApi.query();
+  } finally {
+    creating.value = false;
+  }
+}
+
+async function openAction(row: SoftwareInstallation, value: string) {
+  current.value = row;
+  action.value = value;
+  if (value === 'switch') {
+    targetVersion.value = row.available_version ?? '';
+  } else if (value === 'rollback') {
+    targetVersion.value = row.previous_version;
+  } else {
+    targetVersion.value = '';
+  }
+  targetVersions.value = [];
+  actionOpen.value = true;
+  if (['install', 'rollback', 'switch'].includes(value)) {
+    versionLoading.value = true;
+    try {
+      const response = await SoftwareApi.versions(row.application_id, {
+        page: 1,
+        size: 200,
+      });
+      targetVersions.value = response.items;
+    } finally {
+      versionLoading.value = false;
+    }
+  }
+}
+
+async function submitAction() {
+  if (!current.value) return;
+  if (
+    ['install', 'rollback', 'switch'].includes(action.value) &&
+    !targetVersion.value
+  ) {
+    message.warning('请选择目标版本');
+    return;
+  }
+  submitting.value = true;
+  try {
+    await SoftwareApi.installationAction(current.value.id, action.value, {
+      confirmed: action.value === 'uninstall',
+      expected_row_version: current.value.version,
+      idempotency_key: createIdempotencyKey(),
+      target_version: ['install', 'rollback', 'switch'].includes(action.value)
+        ? targetVersion.value
+        : undefined,
+    });
+    actionOpen.value = false;
+    message.success('操作已提交');
+    await gridApi.query();
+  } finally {
+    submitting.value = false;
+  }
+}
+
+function deleteInstallation(row: SoftwareInstallation) {
+  Modal.confirm({
+    content: `删除后保留操作审计记录，但不能再从安装实例列表恢复 ${row.application_name} / ${row.instance_key}。`,
+    okText: '确认删除',
+    okType: 'danger',
+    title: '删除安装实例',
+    async onOk() {
+      await SoftwareApi.deleteInstallation(row.id);
+      message.success('安装实例已删除');
+      await gridApi.query();
+    },
+  });
+}
+
+function stateColor(value: string) {
+  return stateColors[value] ?? 'default';
+}
+
+onMounted(loadReferenceData);
+</script>
+
+<template>
+  <Page
+    auto-content-height
+    class="management-page"
+    content-class="management-content"
+    title="安装实例"
+  >
+    <Grid class="management-grid" table-title="安装实例">
+      <template #toolbar-tools>
+        <Button
+          v-access:code="'software:installation:create'"
+          type="primary"
+          @click="createOpen = true"
+        >
+          <Plus class="size-5" />
+          新建实例
+        </Button>
+      </template>
+      <template #instance="{ row }">
+        <div class="font-medium">
+          {{ row.application_name }} / {{ row.instance_key }}
+        </div>
+        <div class="text-xs text-muted-foreground">
+          {{ row.server_name }} ({{ row.server_code }})
+        </div>
+      </template>
+      <template #versions="{ row }">
+        <div>当前：{{ row.observed_version || '未安装' }}</div>
+        <div class="text-xs text-muted-foreground">
+          期望：{{ row.desired_version || '-' }}
+        </div>
+        <div v-if="row.available_version" class="text-xs text-green-600">
+          可更新：{{ row.available_version }}
+        </div>
+      </template>
+      <template #state="{ row }">
+        <Tag :color="stateColor(row.state)">{{ row.state }}</Tag>
+      </template>
+      <template #health="{ row }">
+        <Tag
+          :color="
+            row.health === 'healthy'
+              ? 'success'
+              : row.health === 'unhealthy'
+                ? 'error'
+                : 'default'
+          "
+        >
+          {{ row.health }}
+        </Tag>
+      </template>
+      <template #operation="{ row }">
+        <VbenTableAction
+          :actions="[
+            {
+              auth: [
+                row.observed_version
+                  ? 'software:installation:switch'
+                  : 'software:installation:install',
+              ],
+              icon: row.observed_version
+                ? 'lucide:arrow-left-right'
+                : 'lucide:download',
+              onClick: () =>
+                openAction(row, row.observed_version ? 'switch' : 'install'),
+              tooltip: row.observed_version ? '切换版本' : '安装',
+              disabled: Boolean(row.active_operation_id),
+            },
+          ]"
+          :dropdown-actions="[
+            {
+              auth: ['software:installation:reinstall'],
+              icon: 'lucide:refresh-ccw',
+              onClick: () => openAction(row, 'reinstall'),
+              text: '重装',
+              disabled:
+                Boolean(row.active_operation_id) || !row.initial_version,
+              ifShow: Boolean(row.observed_version),
+            },
+            {
+              auth: ['software:installation:rollback'],
+              icon: 'lucide:undo-2',
+              onClick: () => openAction(row, 'rollback'),
+              text: '回滚',
+              disabled: Boolean(row.active_operation_id),
+              ifShow: Boolean(row.observed_version),
+            },
+            {
+              auth: ['software:installation:check'],
+              icon: 'lucide:scan-search',
+              onClick: () => openAction(row, 'check'),
+              text: '检查',
+              disabled: Boolean(row.active_operation_id),
+              ifShow: Boolean(row.observed_version),
+            },
+            {
+              auth: ['software:installation:uninstall'],
+              danger: true,
+              icon: 'lucide:trash-2',
+              onClick: () => openAction(row, 'uninstall'),
+              text: '卸载',
+              disabled: Boolean(row.active_operation_id),
+              ifShow: Boolean(row.observed_version),
+            },
+            {
+              auth: ['software:installation:delete'],
+              danger: true,
+              icon: 'lucide:trash-2',
+              onClick: () => deleteInstallation(row),
+              text: '删除实例',
+              ifShow: ['removed', 'unknown'].includes(row.state),
+            },
+          ]"
+          align="center"
+        />
+      </template>
+    </Grid>
+
+    <Modal
+      v-model:open="createOpen"
+      :confirm-loading="creating"
+      title="新建安装实例"
+      @ok="create"
+    >
+      <Form layout="vertical">
+        <FormItem label="服务器" required>
+          <Select
+            v-model:value="createForm.server_id"
+            :options="
+              servers.map((item) => ({
+                label: `${item.name} (${item.code})`,
+                value: item.id,
+              }))
+            "
+          />
+        </FormItem>
+        <FormItem label="应用" required>
+          <Select
+            v-model:value="createForm.application_id"
+            :options="
+              applications.map((item) => ({
+                label: `${item.name} (${item.code})`,
+                value: item.id,
+              }))
+            "
+          />
+        </FormItem>
+        <template v-if="selectedApplication?.application_kind === 'service'">
+          <div class="grid grid-cols-[1fr_140px] gap-3">
+            <FormItem label="监听地址" required>
+              <Input v-model:value="serviceConfig.listen" />
+            </FormItem>
+            <FormItem label="端口">
+              <InputNumber
+                v-model:value="serviceConfig.port"
+                class="w-full"
+                :max="65535"
+                :min="0"
+              />
+            </FormItem>
+          </div>
+        </template>
+        <FormItem
+          v-if="needsAdminCredential"
+          :label="
+            needsSearchCredential
+              ? 'Meilisearch Master Key'
+              : '数据库管理员凭证'
+          "
+          required
+        >
+          <Select
+            v-model:value="createForm.admin_credential_code"
+            :options="
+              adminCredentials.map((item) => ({
+                label: `${item.name} (${item.code})`,
+                value: item.code,
+              }))
+            "
+          />
+        </FormItem>
+        <FormItem label="实例编码" required>
+          <Input v-model:value="createForm.instance_key" />
+        </FormItem>
+      </Form>
+    </Modal>
+
+    <Modal
+      v-model:open="actionOpen"
+      :confirm-loading="submitting"
+      :ok-button-props="{
+        danger: ['reinstall', 'rollback', 'uninstall'].includes(action),
+      }"
+      :ok-text="`确认${actionLabels[action] ?? action}`"
+      :title="actionLabels[action] ?? action"
+      @ok="submitAction"
+    >
+      <Form layout="vertical">
+        <FormItem
+          v-if="['install', 'rollback', 'switch'].includes(action)"
+          label="目标版本"
+          required
+        >
+          <Select
+            v-model:value="targetVersion"
+            :loading="versionLoading"
+            :options="
+              targetVersions.map((item) => ({
+                label: item.display_version,
+                value: item.display_version,
+              }))
+            "
+          />
+        </FormItem>
+        <Alert
+          v-else-if="action === 'reinstall'"
+          show-icon
+          type="warning"
+          :message="`将重新安装首次选择的版本 ${current?.initial_version ?? '-'}`"
+        />
+        <Alert
+          v-else-if="action === 'uninstall'"
+          show-icon
+          type="warning"
+          :message="`即将${actionLabels[action]} ${current?.application_name ?? ''} / ${current?.instance_key ?? ''}`"
+        />
+        <div v-else class="py-3">
+          {{ current?.application_name }} / {{ current?.instance_key }}
+        </div>
+      </Form>
+    </Modal>
+  </Page>
+</template>

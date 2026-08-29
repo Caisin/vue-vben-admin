@@ -122,7 +122,7 @@ test('keeps the layout background continuous while content scrolls', async ({
     const scroll = document.querySelector('#__vben_layout_scroll');
     const main = document.querySelector('#__vben_main_content');
     if (!(scroll instanceof HTMLElement) || !(main instanceof HTMLElement)) {
-      throw new Error('Layout scroll regions are missing');
+      throw new TypeError('Layout scroll regions are missing');
     }
 
     const spacer = document.createElement('div');

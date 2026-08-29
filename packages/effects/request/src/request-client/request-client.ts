@@ -118,6 +118,14 @@ class RequestClient {
   }
 
   /**
+   * 获取完整URL
+   */
+  public getFullUrl(url: string): string {
+    // return new URL(url, this.getBaseUrl()).toString();
+    return `${this.getBaseUrl()}${url}`;
+  }
+
+  /**
    * POST请求方法
    */
   public post<T = any>(

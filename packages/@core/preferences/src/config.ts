@@ -3,6 +3,7 @@ import type { Preferences } from './types';
 const defaultPreferences: Preferences = {
   app: {
     accessMode: 'frontend',
+    apiSecurity: false,
     authPageLayout: 'panel-right',
     checkUpdatesInterval: 1,
     colorGrayMode: false,
@@ -20,6 +21,7 @@ const defaultPreferences: Preferences = {
     defaultHomePath: '/dashboard',
     dynamicTitle: true,
     enableCheckUpdates: true,
+    enableConsole: false,
     enableCopyPreferences: true,
     enablePreferences: true,
     enableRefreshToken: false,

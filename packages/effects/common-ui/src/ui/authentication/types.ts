@@ -1,3 +1,5 @@
+import type { Component } from 'vue';
+
 interface AuthenticationProps {
   /**
    * @zh_CN 验证码登录路径
@@ -48,11 +50,6 @@ interface AuthenticationProps {
   showRememberMe?: boolean;
 
   /**
-   * @zh_CN 是否显示第三方登录
-   */
-  showThirdPartyLogin?: boolean;
-
-  /**
    * @zh_CN 登录框子标题
    */
   subTitle?: string;
@@ -65,6 +62,15 @@ interface AuthenticationProps {
    * @zh_CN 提交按钮文本
    */
   submitButtonText?: string;
+  /**
+   * 第三方登录配置
+   */
+  thirdPartyLogins?: ThirdPartyLogin[];
 }
-
-export type { AuthenticationProps };
+interface ThirdPartyLogin {
+  name: string;
+  icon: Component;
+  tooltip?: string;
+  onClick?: () => void;
+}
+export type { AuthenticationProps, ThirdPartyLogin };

@@ -83,6 +83,8 @@ const appEnableStickyPreferencesNavigationBar = defineModel<boolean>(
 const appPreferencesButtonPosition = defineModel<PreferencesButtonPositionType>(
   'appPreferencesButtonPosition',
 );
+const appEnableConsole = defineModel<boolean>('appEnableConsole');
+const appApiSecurity = defineModel<boolean>('appApiSecurity');
 
 const transitionProgress = defineModel<boolean>('transitionProgress');
 const transitionName = defineModel<string>('transitionName');
@@ -384,6 +386,8 @@ function handleCustomPreferencesUpdate(updates: CustomPreferencesRecord) {
                 v-model:app-locale="appLocale"
                 v-model:app-timezone="appTimezone"
                 v-model:app-watermark="appWatermark"
+                v-model:app-enable-console="appEnableConsole"
+                v-model:app-api-security="appApiSecurity"
                 v-model:app-watermark-content="appWatermarkContent"
               />
             </Block>

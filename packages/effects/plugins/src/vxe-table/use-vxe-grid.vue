@@ -42,7 +42,7 @@ import { VbenHelpTooltip, VbenLoading } from '@vben-core/shadcn-ui';
 import { VxeButton } from 'vxe-pc-ui';
 import { VxeGrid, VxeUI } from 'vxe-table';
 
-import { extendProxyOptions } from './extends';
+import { enableProxySortForRemoteSort, extendProxyOptions } from './extends';
 import { useTableForm } from './init';
 import { applyViewedRowOptions, useViewedRow } from './viewed-row';
 
@@ -215,6 +215,7 @@ const options = computed(() => {
   );
 
   if (mergedOptions.proxyConfig) {
+    enableProxySortForRemoteSort(mergedOptions);
     const { ajax } = mergedOptions.proxyConfig;
     mergedOptions.proxyConfig.enabled = !!ajax;
     // 不自动加载数据, 由组件控制
