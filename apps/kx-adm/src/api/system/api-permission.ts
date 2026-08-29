@@ -107,57 +107,8 @@ export const ApiPermissionApi = {
     >('/auth/menu/all');
     return Array.isArray(response) ? response : (response.items ?? []);
   },
-  async allGrantOptions() {
-    const query = {
-      auth_exempt: false,
-      enabled: true,
-      size: 200,
-    };
-    const firstPage = await requestClient.post<Page<ApiPermission>>(
-      '/auth/api',
-      {
-        ...query,
-        page: 1,
-      },
-    );
-    const items = [...firstPage.items];
-    for (let page = 2; page <= firstPage.total_pages; page += 1) {
-      const result = await requestClient.post<Page<ApiPermission>>(
-        '/auth/api',
-        {
-          ...query,
-          page,
-        },
-      );
-      items.push(...result.items);
-    }
-    return items;
-  },
-  async unboundOptions() {
-    const query = {
-      auth_exempt: false,
-      enabled: true,
-      menu_perm_id: 0,
-      size: 100,
-    };
-    const firstPage = await requestClient.post<Page<ApiPermission>>(
-      '/auth/api',
-      {
-        ...query,
-        page: 1,
-      },
-    );
-    const items = [...firstPage.items];
-    for (let page = 2; page <= firstPage.total_pages; page += 1) {
-      const result = await requestClient.post<Page<ApiPermission>>(
-        '/auth/api',
-        {
-          ...query,
-          page,
-        },
-      );
-      items.push(...result.items);
-    }
-    return items;
-  },
+  allGrantOptions: () =>
+    requestClient.get<ApiPermission[]>('/auth/api/grant-options'),
+  unboundOptions: () =>
+    requestClient.get<ApiPermission[]>('/auth/api/unbound-options'),
 };
