@@ -7,15 +7,18 @@ import type {
   CredentialView,
 } from '#/api/credential';
 
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { Page, useVbenDrawer, useVbenModal } from '@vben/common-ui';
 import { Eye, Plus, RotateCw } from '@vben/icons';
+import { useUserStore } from '@vben/stores';
 
-import { Button, Space, Tag } from 'antdv-next';
+import { useDebounceFn } from '@vueuse/core';
+import { Button, Select, Space, Tag } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
+import { AdminUserApi } from '#/api/auth/admin';
 import { CredentialApi } from '#/api/credential';
 import { vxeSortParams } from '#/vxe-sort';
 
@@ -36,6 +39,39 @@ import StatusModal from './modules/status.vue';
 
 const profiles = ref<CredentialProfileSpec[]>([]);
 const route = useRoute();
+const userStore = useUserStore();
+const isAdmin = computed(() => userStore.userInfo?.roles?.includes('admin'));
+const selectedOwnerUid = ref<number | string>();
+const ownerLoading = ref(false);
+const ownerOptions = ref<{ label: string; value: number | string }[]>([]);
+
+async function loadOwnerOptions(keyword = '') {
+  if (!isAdmin.value) return;
+  ownerLoading.value = true;
+  try {
+    const page = await AdminUserApi.list({
+      name_prefix: keyword.trim() || undefined,
+      page: 1,
+      size: 50,
+    });
+    const next = page.items.map((user) => ({
+      label: `${user.name}（#${user.id}）`,
+      value: user.id,
+    }));
+    const selected = ownerOptions.value.find(
+      (option) => option.value === selectedOwnerUid.value,
+    );
+    ownerOptions.value = selected
+      ? [selected, ...next.filter((option) => option.value !== selected.value)]
+      : next;
+  } finally {
+    ownerLoading.value = false;
+  }
+}
+
+const searchOwners = useDebounceFn((keyword: string) => {
+  void loadOwnerOptions(keyword);
+}, 300);
 
 const [CredentialModal, credentialModalApi] = useVbenModal({
   connectedComponent: CredentialForm,
@@ -83,6 +119,7 @@ const [Grid, gridApi] = useVbenVxeGrid<CredentialView>({
               | undefined,
             name_prefix:
               String(formValues.name_prefix ?? '').trim() || undefined,
+            created_by: selectedOwnerUid.value,
             page: page.currentPage,
             profile: profile || undefined,
             size: page.pageSize,
@@ -227,7 +264,22 @@ function retire(row: CredentialView) {
       </template>
       <template #toolbar-tools>
         <Space>
+          <Select
+            v-if="isAdmin"
+            v-model:value="selectedOwnerUid"
+            allow-clear
+            class="w-56"
+            :filter-option="false"
+            :loading="ownerLoading"
+            :options="ownerOptions"
+            placeholder="我的凭证"
+            show-search
+            @change="() => gridApi.query()"
+            @dropdown-visible-change="(open) => open && loadOwnerOptions()"
+            @search="searchOwners"
+          />
           <Button
+            v-if="!selectedOwnerUid"
             v-access:code="'credential:create'"
             type="primary"
             @click="openCreate"

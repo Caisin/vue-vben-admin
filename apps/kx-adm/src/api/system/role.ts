@@ -65,7 +65,17 @@ function toRoleWrite(id: string, data: SystemRoleWrite): AdminRoleWrite {
 export const SystemRoleApi = {
   async all(): Promise<SystemRole[]> {
     const roles = await requestClient.get<AdminRole[]>('/auth/role/all');
-    return roles.map((role) => toSystemRole(role));
+    return roles.map((role) => ({
+      ...toSystemRole(role, role.permission_ids),
+      apiIds: role.api_ids?.map(String) ?? [],
+    }));
+  },
+  async detail(id: string): Promise<SystemRole> {
+    const role = await requestClient.get<AdminRoleDetail>(`/auth/role/${id}`);
+    return {
+      ...toSystemRole(role, role.permission_ids),
+      apiIds: role.api_ids.map(String),
+    };
   },
   async list(params: LegacyPageQuery = {}): Promise<LegacyPage<SystemRole>> {
     const result = await requestClient.get<

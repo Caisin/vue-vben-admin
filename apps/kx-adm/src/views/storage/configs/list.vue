@@ -425,7 +425,7 @@ function openCopy(row: StorageConfigView) {
 }
 
 async function openCredentialCenter() {
-  await router.push('/credential/credentials');
+  await router.push('/credential/items');
 }
 
 async function fetchAllActiveCredentials(specs: StorageCredentialSpec[]) {

@@ -1,8 +1,10 @@
 import type { SystemMenu } from '#/api/system/menu';
 import type { SystemRole } from '#/api/system/role';
 
-export interface HomePageOption {
+export interface HomePageTreeOption {
+  children?: HomePageTreeOption[];
   label: string;
+  selectable?: boolean;
   value: string;
 }
 
@@ -24,25 +26,46 @@ function isNavigable(menu: SystemMenu) {
 export function homePageOptions(
   menus: SystemMenu[],
   permissionIds: Iterable<number | string>,
-): HomePageOption[] {
+): HomePageTreeOption[] {
   const allowed = new Set([...permissionIds].map(String));
-  const options: HomePageOption[] = [];
 
-  function visit(items: SystemMenu[], parents: string[]) {
-    for (const menu of items) {
-      const titles = [...parents, menuTitle(menu)];
+  function visit(items: SystemMenu[]): HomePageTreeOption[] {
+    return items.flatMap((menu) => {
+      const children = visit(menu.children ?? []);
       if (allowed.has(menu.id) && isNavigable(menu)) {
-        options.push({
-          label: `${titles.join(' / ')}（${menu.path}）`,
-          value: menu.id,
-        });
+        return [
+          {
+            children: children.length > 0 ? children : undefined,
+            label: `${menuTitle(menu)}（${menu.path}）`,
+            value: menu.id,
+          },
+        ];
       }
-      visit(menu.children ?? [], titles);
-    }
+      if (children.length === 0) return [];
+      return [
+        {
+          children,
+          label: menuTitle(menu),
+          selectable: false,
+          value: `group:${menu.id}`,
+        },
+      ];
+    });
   }
 
-  visit(menus, []);
-  return options;
+  return visit(menus);
+}
+
+export function homePageOptionValues(options: HomePageTreeOption[]) {
+  const values = new Set<string>();
+  function visit(items: HomePageTreeOption[]) {
+    for (const option of items) {
+      if (option.selectable !== false) values.add(option.value);
+      visit(option.children ?? []);
+    }
+  }
+  visit(options);
+  return values;
 }
 
 export function userEffectivePermissionIds(

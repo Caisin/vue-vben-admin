@@ -54,10 +54,12 @@ export interface AdminUserPageQuery extends PageQuery {
 }
 
 export interface AdminRole {
+  api_ids?: Array<number | string>;
   created_at: number | string;
   enabled: boolean;
   home_perm_id?: null | number | string;
   order_no: number;
+  permission_ids?: Array<number | string>;
   remark?: null | string;
   role_id: string;
   role_name: string;

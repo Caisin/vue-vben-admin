@@ -1,6 +1,6 @@
 import type { DescriptionsItemType } from '@vben/common-ui';
 
-import type { HomePageOption } from '../home-page-options';
+import type { HomePageTreeOption } from '../home-page-options';
 
 import type { VbenFormSchema } from '#/adapter/form';
 import type { VxeTableGridColumns } from '#/adapter/vxe-table';
@@ -65,7 +65,7 @@ export function useWeeklyReportRepublishSchema(
 }
 
 export function useFormSchema(
-  resolveHomeOptions: (values: Readonly<SystemUser>) => HomePageOption[],
+  resolveHomeOptions: (values: Readonly<SystemUser>) => HomePageTreeOption[],
 ): VbenFormSchema<SystemUser>[] {
   return [
     {
@@ -94,7 +94,7 @@ export function useFormSchema(
       label: $t('system.user.dept'),
     },
     {
-      component: 'Select',
+      component: 'TreeSelect',
       componentProps: {
         allowClear: true,
         class: 'w-full',
@@ -119,19 +119,21 @@ export function useFormSchema(
       componentProps: {
         allowClear: true,
         class: 'w-full',
-        optionFilterProp: 'label',
         placeholder: '未配置时继承角色默认页或进入我的信息',
         showSearch: true,
+        treeDefaultExpandAll: true,
+        treeNodeFilterProp: 'label',
       },
       dependencies: {
         resolve: ({ values }) => ({
           componentProps: {
             allowClear: true,
             class: 'w-full',
-            optionFilterProp: 'label',
-            options: resolveHomeOptions(values),
             placeholder: '未配置时继承角色默认页或进入我的信息',
             showSearch: true,
+            treeData: resolveHomeOptions(values),
+            treeDefaultExpandAll: true,
+            treeNodeFilterProp: 'label',
           },
         }),
         triggerFields: ['permissions', 'roles'],

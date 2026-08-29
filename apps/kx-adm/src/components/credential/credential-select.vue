@@ -70,25 +70,6 @@ async function loadCredentials() {
     credentials.value = [
       ...new Map(pages.flat().map((item) => [item.code, item])).values(),
     ];
-
-    const selectedCode = modelValue.value?.trim();
-    if (
-      selectedCode &&
-      !credentials.value.some((item) => item.code === selectedCode)
-    ) {
-      try {
-        const selected = await CredentialApi.detail(selectedCode);
-        if (
-          (allowedKinds.value.length === 0 ||
-            allowedKinds.value.includes(selected.kind)) &&
-          (!props.profile || selected.profile === props.profile)
-        ) {
-          credentials.value = [selected, ...credentials.value];
-        }
-      } catch {
-        // 历史失效编码仍由 Select 原样展示，操作者可重新选择有效凭证。
-      }
-    }
   } finally {
     loading.value = false;
   }

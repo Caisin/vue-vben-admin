@@ -14,7 +14,7 @@ import { SystemRoleApi } from '#/api/system/role';
 import { PermissionGrantTrees } from '#/components/permission-grant';
 import { $t } from '#/locales';
 
-import { homePageOptions } from '../../home-page-options';
+import { homePageOptions, homePageOptionValues } from '../../home-page-options';
 import { useFormSchema } from '../data';
 
 const emits = defineEmits(['success']);
@@ -42,8 +42,8 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemRole>({
     const { valid } = await formApi.validate();
     if (!valid) return;
     const values = await formApi.getValues();
-    const validHomeIds = new Set(
-      resolveHomeOptions(values as SystemRole).map((option) => option.value),
+    const validHomeIds = homePageOptionValues(
+      resolveHomeOptions(values as SystemRole),
     );
     const payload = {
       ...values,
@@ -73,11 +73,12 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemRole>({
       const data = drawerApi.getData();
       formApi.reset();
 
-      if (data) {
-        formData.value = data;
-        id.value = data.id;
-        selectedApiIds.value = [...(data.apiIds ?? [])];
-        selectedPermissionIds.value = [...(data.permissions ?? [])];
+      if (data?.id) {
+        const detail = await SystemRoleApi.detail(data.id);
+        formData.value = detail;
+        id.value = detail.id;
+        selectedApiIds.value = [...(detail.apiIds ?? [])];
+        selectedPermissionIds.value = [...(detail.permissions ?? [])];
       } else {
         formData.value = undefined;
         id.value = undefined;
@@ -88,8 +89,8 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemRole>({
       await loadPermissionGrants();
       // Wait for Vue to flush DOM updates (form fields mounted)
       await nextTick();
-      if (data) {
-        formApi.setValues(data);
+      if (formData.value) {
+        formApi.setValues(formData.value);
       }
       await formApi.setFieldValue('permissions', selectedPermissionIds.value);
     }

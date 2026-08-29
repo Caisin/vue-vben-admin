@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   homePageOptions,
+  homePageOptionValues,
   userEffectivePermissionIds,
 } from './home-page-options';
 
@@ -55,12 +56,21 @@ const menus: SystemMenu[] = [
 
 describe('default home page options', () => {
   it('只保留已授权且启用的可导航页面', () => {
-    expect(homePageOptions(menus, ['2', '3', '4'])).toEqual([
+    const options = homePageOptions(menus, ['2', '3', '4']);
+    expect(options).toEqual([
       {
-        label: '系统管理 / 用户管理（/system/user）',
-        value: '2',
+        children: [
+          {
+            label: '用户管理（/system/user）',
+            value: '2',
+          },
+        ],
+        label: '系统管理',
+        selectable: false,
+        value: 'group:1',
       },
     ]);
+    expect([...homePageOptionValues(options)]).toEqual(['2']);
   });
 
   it('合并直接权限与已选择启用角色的权限', () => {

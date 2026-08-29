@@ -18,6 +18,7 @@ import { $t } from '#/locales';
 
 import {
   homePageOptions,
+  homePageOptionValues,
   userEffectivePermissionIds,
 } from '../../home-page-options';
 import { useFormSchema } from '../data';
@@ -54,8 +55,8 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
     const { valid } = await formApi.validate();
     if (!valid) return;
     const values = await formApi.getValues();
-    const validHomeIds = new Set(
-      resolveHomeOptions(values as SystemUser).map((option) => option.value),
+    const validHomeIds = homePageOptionValues(
+      resolveHomeOptions(values as SystemUser),
     );
     const payload = {
       ...values,

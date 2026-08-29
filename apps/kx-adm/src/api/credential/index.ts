@@ -157,6 +157,7 @@ export interface CredentialView {
 
 export interface CredentialQuery extends PageQuery {
   code_prefix?: string;
+  created_by?: number | string;
   kind?: CredentialKind;
   name_prefix?: string;
   profile?: string;

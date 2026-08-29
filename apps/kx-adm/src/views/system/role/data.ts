@@ -1,4 +1,4 @@
-import type { HomePageOption } from '../home-page-options';
+import type { HomePageTreeOption } from '../home-page-options';
 
 import type { VbenFormSchema } from '#/adapter/form';
 import type { OnActionClickFn, VxeTableGridColumns } from '#/adapter/vxe-table';
@@ -99,7 +99,7 @@ export function methodColor(method: string) {
 }
 
 export function useFormSchema(
-  resolveHomeOptions: (values: Readonly<SystemRole>) => HomePageOption[],
+  resolveHomeOptions: (values: Readonly<SystemRole>) => HomePageTreeOption[],
 ): VbenFormSchema<SystemRole>[] {
   return [
     {
@@ -135,23 +135,25 @@ export function useFormSchema(
       modelPropName: 'modelValue',
     },
     {
-      component: 'Select',
+      component: 'TreeSelect',
       componentProps: {
         allowClear: true,
         class: 'w-full',
-        optionFilterProp: 'label',
         placeholder: '未配置时不提供角色默认页',
         showSearch: true,
+        treeDefaultExpandAll: true,
+        treeNodeFilterProp: 'label',
       },
       dependencies: {
         resolve: ({ values }) => ({
           componentProps: {
             allowClear: true,
             class: 'w-full',
-            optionFilterProp: 'label',
-            options: resolveHomeOptions(values),
             placeholder: '未配置时不提供角色默认页',
             showSearch: true,
+            treeData: resolveHomeOptions(values),
+            treeDefaultExpandAll: true,
+            treeNodeFilterProp: 'label',
           },
         }),
         triggerFields: ['permissions'],

@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
-import type { CredentialView } from '#/api/credential';
 import type {
   SoftwareApplication,
   SoftwareInstallation,
@@ -23,12 +22,14 @@ import {
   message,
   Modal,
   Select,
+  Space,
   Tag,
 } from 'antdv-next';
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
-import { CredentialApi } from '#/api/credential';
 import { SoftwareApi } from '#/api/software';
+import { SystemSettingsApi } from '#/api/system/settings';
+import { CredentialSelect } from '#/components/credential';
 import { createIdempotencyKey } from '#/management';
 
 import { useColumns, useGridFormSchema } from './data';
@@ -36,10 +37,9 @@ import { useColumns, useGridFormSchema } from './data';
 const servers = ref<SoftwareServer[]>([]);
 const applications = ref<SoftwareApplication[]>([]);
 const targetVersions = ref<SoftwareVersion[]>([]);
-const databaseCredentials = ref<CredentialView[]>([]);
-const passwordCredentials = ref<CredentialView[]>([]);
 const creating = ref(false);
 const submitting = ref(false);
+const initializeSearchKeyLoading = ref(false);
 const versionLoading = ref(false);
 const createOpen = ref(false);
 const actionOpen = ref(false);
@@ -59,6 +59,7 @@ const actionLabels: Record<string, string> = {
 const action = ref('switch');
 const current = ref<SoftwareInstallation>();
 const targetVersion = ref('');
+const credentialSelect = ref<{ reload: () => Promise<void> }>();
 const createForm = reactive({
   admin_credential_code: '',
   application_id: '',
@@ -91,21 +92,10 @@ const needsSearchCredential = computed(
 const needsAdminCredential = computed(
   () => needsDatabaseCredential.value || needsSearchCredential.value,
 );
-const adminCredentials = computed(() =>
-  needsSearchCredential.value
-    ? passwordCredentials.value
-    : databaseCredentials.value,
-);
 const serverOptions = () =>
   servers.value.map((item) => ({ label: item.name, value: item.id }));
 const applicationOptions = () =>
   applications.value.map((item) => ({ label: item.name, value: item.id }));
-
-function hasConfiguredPassword(item: CredentialView) {
-  return item.summary.fields.some(
-    (field) => field.field === 'password' && field.configured,
-  );
-}
 
 const [Grid, gridApi] = useVbenVxeGrid<SoftwareInstallation>({
   formOptions: {
@@ -138,38 +128,16 @@ const [Grid, gridApi] = useVbenVxeGrid<SoftwareInstallation>({
 });
 
 async function loadReferenceData() {
-  const [serverPage, appPage, databaseCredentialPage, passwordCredentialPage] =
-    await Promise.all([
-      SoftwareApi.servers({ page: 1, size: 200 }),
-      SoftwareApi.applications({ page: 1, size: 200 }),
-      CredentialApi.list({
-        kind: 'username_password',
-        page: 1,
-        size: 200,
-        state: 'active',
-      }),
-      CredentialApi.list({
-        kind: 'password',
-        page: 1,
-        size: 200,
-        state: 'active',
-      }),
-    ]);
+  const [serverPage, appPage] = await Promise.all([
+    SoftwareApi.servers({ page: 1, size: 200 }),
+    SoftwareApi.applications({ page: 1, size: 200 }),
+  ]);
   servers.value = serverPage.items;
   applications.value = appPage.items;
-  databaseCredentials.value = databaseCredentialPage.items;
-  passwordCredentials.value = passwordCredentialPage.items.filter(
-    hasConfiguredPassword,
-  );
 }
 
 async function create() {
-  if (
-    needsAdminCredential.value &&
-    !adminCredentials.value.some(
-      (item) => item.code === createForm.admin_credential_code,
-    )
-  ) {
+  if (needsAdminCredential.value && !createForm.admin_credential_code.trim()) {
     message.warning(
       needsSearchCredential.value
         ? '请选择已配置的 Meilisearch Master Key 凭证'
@@ -194,6 +162,29 @@ async function create() {
     await gridApi.query();
   } finally {
     creating.value = false;
+  }
+}
+
+async function initializeMeilisearchMasterKey() {
+  initializeSearchKeyLoading.value = true;
+  try {
+    const credential = await SystemSettingsApi.initializeMeilisearchMasterKey();
+    if (
+      credential.state !== 'active' ||
+      !credential.summary.fields.some(
+        (field) => field.field === 'password' && field.configured,
+      )
+    ) {
+      message.warning(
+        'Meilisearch Master Key 凭证不可用，请在凭证中心启用或重新配置',
+      );
+      return;
+    }
+    createForm.admin_credential_code = credential.code;
+    await credentialSelect.value?.reload();
+    message.success('Meilisearch Master Key 已生成并选中');
+  } finally {
+    initializeSearchKeyLoading.value = false;
   }
 }
 
@@ -442,14 +433,31 @@ onMounted(loadReferenceData);
           "
           required
         >
-          <Select
-            v-model:value="createForm.admin_credential_code"
-            :options="
-              adminCredentials.map((item) => ({
-                label: `${item.name} (${item.code})`,
-                value: item.code,
-              }))
-            "
+          <Space v-if="needsSearchCredential" class="w-full" wrap>
+            <CredentialSelect
+              ref="credentialSelect"
+              v-model="createForm.admin_credential_code"
+              class="min-w-60 flex-1"
+              create-kind="password"
+              kind="password"
+              profile="generic"
+              placeholder="选择或生成 Meilisearch Master Key"
+            />
+            <Button
+              :loading="initializeSearchKeyLoading"
+              @click="initializeMeilisearchMasterKey"
+            >
+              <template #icon><Plus /></template>
+              生成密钥
+            </Button>
+          </Space>
+          <CredentialSelect
+            v-else
+            v-model="createForm.admin_credential_code"
+            create-kind="username_password"
+            kind="username_password"
+            profile="generic"
+            placeholder="选择数据库管理员凭证"
           />
         </FormItem>
         <FormItem label="实例编码" required>
