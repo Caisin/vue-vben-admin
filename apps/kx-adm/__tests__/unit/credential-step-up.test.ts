@@ -33,10 +33,11 @@ vi.mock('#/auth', () => ({
 }));
 
 vi.mock('antdv-next', () => ({
+  message: { error: vi.fn() },
   notification: { success: vi.fn() },
 }));
 
-vi.mock('#/api', () => ({
+vi.mock('#/api/core', () => ({
   AuthApi: {},
   DingTalkApi: {},
   MfaApi: { stepUp },
