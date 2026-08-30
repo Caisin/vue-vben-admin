@@ -19,6 +19,7 @@ type SelectOption = { label: string; value: string };
 
 export function useCustomFormSchema(): VbenFormSchema[] {
   return [
+    { component: 'Input', fieldName: 'keyword', label: '关键字' },
     { component: 'Input', fieldName: 'robot_code_prefix', label: '机器人编码' },
   ];
 }
@@ -33,6 +34,7 @@ export function useGroupFormSchema(
       fieldName: 'app_key',
       label: '钉钉应用',
     },
+    { component: 'Input', fieldName: 'keyword', label: '关键字' },
     { component: 'Input', fieldName: 'bot_code_prefix', label: '配置编码' },
   ];
 }
@@ -56,6 +58,7 @@ export function useKnowledgeFormSchema(
       fieldName: 'status',
       label: '状态',
     },
+    { component: 'Input', fieldName: 'keyword', label: '关键字' },
     { component: 'Input', fieldName: 'target_code_prefix', label: '目标编码' },
   ];
 }

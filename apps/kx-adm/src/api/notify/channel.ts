@@ -79,7 +79,10 @@ export const NotifyChannelApi = {
     requestClient.post<import('./message').NotifyMessage>(
       `/notify/channels/${id}/actions/test`,
     ),
-  provider_options: (params?: { channel_type?: NotifyChannelType }) =>
+  provider_options: (params?: {
+    channel_type?: NotifyChannelType;
+    keyword?: string;
+  }) =>
     requestClient.get<NotifyProviderOptionsView>('/notify/provider-options', {
       params,
     }),

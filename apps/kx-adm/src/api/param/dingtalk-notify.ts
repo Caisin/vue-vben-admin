@@ -56,6 +56,7 @@ export interface DingtalkKnowledgeTargetWrite {
 
 export interface DingtalkKnowledgeTargetQuery extends PageQuery {
   app_key?: string;
+  keyword?: string;
   status?: DingtalkKnowledgeTargetStatus;
   target_code_prefix?: string;
   target_name_prefix?: string;
@@ -90,6 +91,7 @@ export interface DingtalkGroupBotWrite {
 
 export interface DingtalkGroupBotQuery extends PageQuery {
   app_key?: string;
+  keyword?: string;
   bot_code_prefix?: string;
   bot_name_prefix?: string;
   open_conversation_id?: string;
@@ -114,11 +116,13 @@ export interface DingtalkCustomRobotWrite {
 }
 
 export interface DingtalkCustomRobotSecretView {
+  keyword?: null | string;
   secret: string;
   webhook_url: string;
 }
 
 export interface DingtalkCustomRobotQuery extends PageQuery {
+  keyword?: string;
   open_conversation_id?: string;
   robot_code_prefix?: string;
   robot_name_prefix?: string;

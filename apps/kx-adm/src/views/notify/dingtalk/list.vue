@@ -163,6 +163,7 @@ const [GroupGrid, groupGridApi] = useVbenVxeGrid<DingtalkGroupBotCfg>({
           const { page } = params;
           const result = await DingtalkNotifyApi.group_bots({
             app_key: String(formValues.app_key ?? '') || undefined,
+            keyword: String(formValues.keyword ?? '').trim() || undefined,
             bot_code_prefix:
               String(formValues.bot_code_prefix ?? '').trim() || undefined,
             page: page.currentPage,
@@ -196,6 +197,7 @@ const [CustomGrid, customGridApi] = useVbenVxeGrid<DingtalkCustomRobotCfg>({
         query: async (params, formValues) => {
           const { page } = params;
           const result = await DingtalkNotifyApi.custom_robots({
+            keyword: String(formValues.keyword ?? '').trim() || undefined,
             page: page.currentPage,
             robot_code_prefix:
               String(formValues.robot_code_prefix ?? '').trim() || undefined,
@@ -236,6 +238,7 @@ const [KnowledgeGrid, knowledgeGridApi] =
             const { page } = params;
             const result = await DingtalkNotifyApi.knowledge_targets({
               app_key: String(formValues.app_key ?? '') || undefined,
+              keyword: String(formValues.keyword ?? '').trim() || undefined,
               page: page.currentPage,
               size: page.pageSize,
               target_code_prefix:

@@ -206,10 +206,12 @@ watch(activeTab, async (tab) => {
   await messageListRef.value?.refresh();
 });
 
-async function loadProviderOptions() {
+async function loadProviderOptions(keyword = '') {
   providerOptionsLoading.value = true;
   try {
-    const result = await NotifyChannelApi.provider_options();
+    const result = await NotifyChannelApi.provider_options({
+      keyword: keyword.trim() || undefined,
+    });
     providerOptions.value = result.providers;
     if (
       !editingId.value &&
@@ -229,6 +231,10 @@ async function loadProviderOptions() {
 async function refreshProviderOptions() {
   await loadProviderOptions();
   message.success('Provider 配置列表已刷新');
+}
+
+async function searchProviderOptions(keyword: string) {
+  await loadProviderOptions(keyword);
 }
 
 function resetForm(row?: NotifyChannel) {
@@ -511,6 +517,7 @@ function showChannelMessages(row: NotifyChannel) {
               :show-maintenance="true"
               :show-manage="true"
               @refresh="refreshProviderOptions"
+              @search="searchProviderOptions"
             >
               <template #maintenance="{ complete }">
                 <ProviderQuickCreate

@@ -45,6 +45,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   manage: [];
   refresh: [];
+  search: [keyword: string];
   'update:modelValue': [value: null | number | string | undefined];
 }>();
 
@@ -63,6 +64,10 @@ function openManage() {
 
 function refresh() {
   emit('refresh');
+}
+
+function search(keyword: string) {
+  emit('search', keyword);
 }
 
 function updateValue(value: unknown) {
@@ -99,6 +104,7 @@ defineExpose({ completeMaintenance });
         :placeholder="props.placeholder"
         show-search
         :value="props.modelValue"
+        @search="search"
         @update:value="updateValue"
       >
         <template v-if="props.showMaintenance" #popupRender="menuNode">

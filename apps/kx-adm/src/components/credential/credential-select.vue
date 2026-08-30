@@ -323,7 +323,7 @@ defineExpose({ reload: loadCredentials });
             <TextArea
               v-model:value="quickForm.accessToken"
               :rows="3"
-              placeholder="可粘贴纯 access_token，或 https://oapi.dingtalk.com/robot/send?access_token=..."
+              placeholder="可粘贴纯 access_token，或 https://oapi.dingtalk.com/robot/send?access_token=...&keyword=..."
             />
           </FormItem>
           <FormItem label="加签密钥">

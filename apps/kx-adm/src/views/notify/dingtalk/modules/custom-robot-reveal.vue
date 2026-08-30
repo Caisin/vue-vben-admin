@@ -139,6 +139,10 @@ async function revealRobot() {
           <span>加签密钥</span>
           <Input :value="revealed?.secret" readonly />
         </label>
+        <label class="grid gap-1 text-sm">
+          <span>关键词</span>
+          <Input :value="revealed?.keyword" readonly />
+        </label>
         <TypographyText v-if="!revealed && !hasActiveGrant" type="secondary">
           输入验证码并点击“验证并查看”后才会临时加载明文。
         </TypographyText>
