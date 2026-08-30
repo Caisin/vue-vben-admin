@@ -98,7 +98,7 @@ const wechatSortFields = ['app_id', 'app_name', 'enabled', 'created_at'];
 
 const [DingtalkForm, dingtalkFormApi] = useVbenForm({
   layout: 'vertical',
-  wrapperClass: 'grid-cols-1 md:grid-cols-2',
+  wrapperClass: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-2',
   schema: [
     {
       component: 'Input',
@@ -138,7 +138,7 @@ const [DingtalkForm, dingtalkFormApi] = useVbenForm({
       component: 'Textarea',
       componentProps: { autoSize: { maxRows: 6, minRows: 3 } },
       fieldName: 'remark',
-      formItemClass: 'md:col-span-2 lg:col-span-3',
+      formItemClass: 'md:col-span-2 lg:col-span-2',
       label: '备注',
     },
   ],
@@ -236,6 +236,7 @@ const wechatModalTitle = computed(() =>
 );
 
 const [DingtalkModal, dingtalkModalApi] = useVbenModal({
+  class: 'w-[min(760px,calc(100vw-20px))]',
   connectedComponent: ContentModal,
   destroyOnClose: true,
   async onConfirm() {
@@ -508,7 +509,11 @@ watch(activeTab, async () => {
     <DingtalkModal :title="dingtalkModalTitle">
       <Alert
         class="mb-3"
-        message="AppSecret 属于隐私字段，编辑时不会回填明文；留空表示保持原凭据不变。"
+        :message="
+          editingDingtalk
+            ? '应用凭证与 AppKey 一一对应，创建后不可更换；如需轮换 AppSecret，请在凭证中心替换凭证材料。'
+            : '请选择包含 AppKey / AppSecret 的应用凭证。'
+        "
         show-icon
         type="info"
       />

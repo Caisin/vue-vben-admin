@@ -26,6 +26,7 @@ import {
 
 import { CredentialApi } from '#/api/credential';
 
+import { credentialSelectOptions } from './credential-select-options';
 import JsonFileInput from './json-file-input.vue';
 
 interface Props {
@@ -76,12 +77,7 @@ const allowedKinds = computed(() => {
   return [];
 });
 
-const options = computed(() =>
-  credentials.value.map((item) => ({
-    label: `${item.name} · ${kindLabel(item.kind)} (${item.code})`,
-    value: item.code,
-  })),
-);
+const options = computed(() => credentialSelectOptions(credentials.value));
 
 async function loadCredentials() {
   loading.value = true;
@@ -209,13 +205,6 @@ watch(
 onMounted(loadCredentials);
 
 defineExpose({ reload: loadCredentials });
-
-function kindLabel(kind: CredentialKind) {
-  if (kind === 'access_key') return '访问密钥';
-  if (kind === 'password') return '密码';
-  if (kind === 'username_password') return '账号密码';
-  return kind;
-}
 </script>
 
 <template>
@@ -245,6 +234,7 @@ function kindLabel(kind: CredentialKind) {
     <Tooltip title="刷新凭证列表">
       <Button
         aria-label="刷新凭证列表"
+        :disabled="props.disabled"
         :loading="loading"
         @click="loadCredentials"
       >

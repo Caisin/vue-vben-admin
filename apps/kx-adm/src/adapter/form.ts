@@ -9,21 +9,24 @@ import type { ComponentPropsMap, ComponentType } from './component';
 import { setupVbenForm, useVbenForm as useForm, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 
+export const formModelPropNameMap = {
+  Checkbox: 'checked',
+  CredentialSelect: 'modelValue',
+  FileUrlInput: 'modelValue',
+  FileUrlsInput: 'modelValue',
+  JsonEditor: 'modelValue',
+  Radio: 'checked',
+  Switch: 'checked',
+  Upload: 'fileList',
+} as const;
+
 async function initSetupVbenForm() {
   setupVbenForm<ComponentType>({
     config: {
       // antdv-next 组件库默认都是 v-model:value
       baseModelPropName: 'value',
       // 一些组件是 v-model:checked 或者 v-model:fileList
-      modelPropNameMap: {
-        Checkbox: 'checked',
-        FileUrlInput: 'modelValue',
-        FileUrlsInput: 'modelValue',
-        JsonEditor: 'modelValue',
-        Radio: 'checked',
-        Switch: 'checked',
-        Upload: 'fileList',
-      },
+      modelPropNameMap: formModelPropNameMap,
     },
     rules: {
       // 输入项目必填国际化适配
