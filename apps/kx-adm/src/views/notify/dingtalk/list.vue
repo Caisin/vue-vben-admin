@@ -19,6 +19,7 @@ import { ExternalLink, Eye, Plus, RotateCw } from '@vben/icons';
 
 import {
   Form as AForm,
+  Alert,
   Button,
   FormItem,
   Input,
@@ -105,6 +106,9 @@ const {
   searchOperators: searchKnowledgeOperators,
   selectTreeNode: selectKnowledgeTreeNode,
   treeLoading: knowledgeTreeLoading,
+  treeError: knowledgeTreeError,
+  treeErrorDetail: knowledgeTreeErrorDetail,
+  treeErrorLink: knowledgeTreeErrorLink,
   treeNodes: knowledgeTreeNodes,
   treeValue: knowledgeTreeValue,
 } = useKnowledgeTargetOptions({ editingId, form: knowledgeForm });
@@ -820,27 +824,48 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
                 label="知识库 / 目标目录"
               />
             </template>
-            <div class="compact-row">
-              <TreeSelect
-                v-model:value="knowledgeTreeValue"
-                class="flex-1"
-                :dropdown-style="{ maxHeight: '420px', overflow: 'auto' }"
-                :load-data="loadKnowledgeTreeChildren"
-                :loading="knowledgeTreeLoading"
-                placeholder="请选择知识库或目标目录"
-                show-search
-                :tree-data="knowledgeTreeNodes"
-                tree-line
-                tree-node-filter-prop="path"
-                tree-node-label-prop="path"
-                @select="selectKnowledgeTreeNode"
-              />
-              <Button
-                :loading="knowledgeTreeLoading"
-                @click="loadKnowledgeTreeRoots"
-              >
-                刷新
-              </Button>
+            <div class="grid gap-2">
+              <div class="compact-row">
+                <TreeSelect
+                  v-model:value="knowledgeTreeValue"
+                  class="flex-1"
+                  :dropdown-style="{ maxHeight: '420px', overflow: 'auto' }"
+                  :load-data="loadKnowledgeTreeChildren"
+                  :loading="knowledgeTreeLoading"
+                  placeholder="请选择知识库或目标目录"
+                  show-search
+                  :tree-data="knowledgeTreeNodes"
+                  tree-line
+                  tree-node-filter-prop="path"
+                  tree-node-label-prop="path"
+                  @select="selectKnowledgeTreeNode"
+                />
+                <Button
+                  :loading="knowledgeTreeLoading"
+                  @click="loadKnowledgeTreeRoots"
+                >
+                  刷新
+                </Button>
+              </div>
+              <Alert v-if="knowledgeTreeError" show-icon type="error">
+                <template #message>
+                  <span>{{ knowledgeTreeError }}</span>
+                  <a
+                    v-if="knowledgeTreeErrorLink"
+                    class="dingtalk-error-link"
+                    :href="knowledgeTreeErrorLink"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    去开通权限
+                  </a>
+                </template>
+                <template #description>
+                  <div class="dingtalk-error-detail">
+                    <strong>钉钉返回：</strong>{{ knowledgeTreeErrorDetail }}
+                  </div>
+                </template>
+              </Alert>
             </div>
           </FormItem>
         </div>
@@ -890,6 +915,16 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
 .parse-error {
   font-size: 12px;
   color: rgb(220 38 38);
+}
+
+.dingtalk-error-detail {
+  overflow-wrap: anywhere;
+}
+
+.dingtalk-error-link {
+  display: inline-block;
+  margin-left: 8px;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {

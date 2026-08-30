@@ -17,6 +17,8 @@ import { message } from 'antdv-next';
 import { OrgSyncApi } from '#/api/auth';
 import { DingtalkNotifyApi } from '#/api/param/dingtalk-notify';
 
+import { dingtalkKnowledgeError } from './dingtalk-knowledge-error';
+
 interface KnowledgeTreeNode {
   children?: KnowledgeTreeNode[];
   isLeaf: boolean;
@@ -41,6 +43,9 @@ export function useKnowledgeTargetOptions({
   const treeNodes = ref<KnowledgeTreeNode[]>([]);
   const treeValue = ref<string>();
   const treeLoading = ref(false);
+  const treeError = ref('');
+  const treeErrorDetail = ref('');
+  const treeErrorLink = ref('');
   const operators = ref<DingtalkOperatorOption[]>([]);
   const operatorLoading = ref(false);
   let operatorRequest = 0;
@@ -151,6 +156,9 @@ export function useKnowledgeTargetOptions({
     form.parent_node_path = '';
     treeNodes.value = [];
     treeValue.value = undefined;
+    treeError.value = '';
+    treeErrorDetail.value = '';
+    treeErrorLink.value = '';
   }
 
   function onAppChange(value: string) {
@@ -178,6 +186,9 @@ export function useKnowledgeTargetOptions({
     const appKey = form.app_key;
     const operatorUnionId = form.operator_union_id.trim();
     treeLoading.value = true;
+    treeError.value = '';
+    treeErrorDetail.value = '';
+    treeErrorLink.value = '';
     try {
       const workspaces: DingtalkWorkspaceView[] = [];
       let nextToken: string | undefined;
@@ -236,8 +247,11 @@ export function useKnowledgeTargetOptions({
           treeNodes.value = [...treeNodes.value];
         }
       }
-    } catch {
-      // requestClient 统一展示错误；这里阻止自动加载产生未处理的 Promise rejection。
+    } catch (error) {
+      const detail = dingtalkKnowledgeError(error);
+      treeError.value = detail.message;
+      treeErrorDetail.value = detail.detail;
+      treeErrorLink.value = detail.link;
     } finally {
       if (request === treeRequest) {
         treeLoading.value = false;
@@ -310,6 +324,9 @@ export function useKnowledgeTargetOptions({
     searchOperators,
     selectTreeNode,
     treeLoading,
+    treeError,
+    treeErrorDetail,
+    treeErrorLink,
     treeNodes,
     treeValue,
   };

@@ -87,10 +87,15 @@ export const knowledgeTargetGuide: NotifyConfigGuide = {
       label: '获取知识库详情文档',
       url: 'https://open.dingtalk.com/document/development/obtain-the-knowledge-base',
     },
+    {
+      label: '创建知识库文档',
+      url: 'https://open.dingtalk.com/document/development/create-team-space-document',
+    },
     { label: '打开钉钉开放平台', url: DINGTALK_APP_CONSOLE },
   ],
   steps: [
-    '在钉钉开放平台为企业内部应用开通知识库、文档与表格权限。',
+    '在钉钉开放平台为企业内部应用开通：Wiki.Workspace.Read、Wiki.Node.Read、Document.WorkspaceDocument.Write、Document.Workbook.Read、Document.Workbook.Write。',
+    '若需要把生成的文档授权给钉钉群编辑，还需开通 Storage.Permission.Write；不配置群会话 ID 时不需要该权限。',
     '选择具备目标目录权限的在职钉钉操作人；当前账号有对应组织映射时默认选择本人。',
     '在知识库目录树中展开并选择根目录或文件夹，保存为创建周报 WORKBOOK 的稳定发布目标。',
   ],
