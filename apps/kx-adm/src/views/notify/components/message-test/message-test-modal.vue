@@ -16,13 +16,13 @@ import type {
 } from '#/api/notify';
 import type { JsonValue } from '#/api/request';
 
-import { computed, ref, shallowRef } from 'vue';
+import { computed, h, ref, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useVbenModal } from '@vben/common-ui';
-import { ExternalLink, RotateCw } from '@vben/icons';
+import { ChevronDown, ExternalLink, RotateCw } from '@vben/icons';
 
-import { Button, message, Space, Tooltip } from 'antdv-next';
+import { Alert, Button, message, Space, Tooltip } from 'antdv-next';
 
 import { useVbenForm } from '#/adapter/form';
 import { NotifyTestApi } from '#/api/notify';
@@ -40,11 +40,14 @@ interface NotifySelectOption<T = number | string> {
 }
 
 interface NotifyTestFormValues {
+  advanced_open?: boolean;
   at_mobiles?: string;
   at_user_ids?: string;
   channel_id?: number | string;
   content: string;
+  content_section?: unknown;
   content_type: string;
+  delivery_section?: unknown;
   endpoint_id?: number | string;
   extension_payload?: unknown;
   fallback_to_user_ids?: boolean;
@@ -68,7 +71,10 @@ const endpointRows = shallowRef<NotifyRecipientEndpoint[]>([]);
 const selectedChannelId = ref<number | string>();
 const sourceMessage = ref<NotifyMessage>();
 const sending = ref(false);
+const sendError = ref('');
 const optionsLoading = ref(false);
+const advancedOpen = ref(false);
+const selectedTargetKind = ref<NotifyTestTargetKind>('channel_default');
 const router = useRouter();
 
 const channelOptions = computed<NotifySelectOption[]>(() =>
@@ -101,8 +107,8 @@ const targetKindOptions = computed<NotifySelectOption<NotifyTestTargetKind>[]>(
       case 'dingtalk_custom_robot':
       case 'dingtalk_group_bot': {
         return [
-          { label: '通道默认群或机器人', value: 'channel_default' },
-          { label: '群内提醒目标', value: 'ding_talk_at' },
+          { label: '仅发送到群', value: 'channel_default' },
+          { label: '发送并提醒成员', value: 'ding_talk_at' },
         ];
       }
       case 'email':
@@ -121,6 +127,13 @@ const targetKindOptions = computed<NotifySelectOption<NotifyTestTargetKind>[]>(
 
 const schema: VbenFormSchema<NotifyTestFormValues>[] = [
   {
+    component: 'Divider',
+    fieldName: 'delivery_section',
+    formItemClass: 'col-span-full pb-0',
+    hideLabel: true,
+    renderComponentContent: () => ({ default: () => '发送设置' }),
+  },
+  {
     component: 'Select',
     componentProps: () => ({
       class: 'w-full',
@@ -135,14 +148,20 @@ const schema: VbenFormSchema<NotifyTestFormValues>[] = [
     rules: 'selectRequired',
   },
   {
-    component: 'Select',
+    component: 'Segmented',
     componentProps: () => ({
+      block: true,
       class: 'w-full',
+      onChange: onTargetKindChange,
       options: targetKindOptions.value,
     }),
+    dependencies: {
+      show: () => targetKindOptions.value.length > 1,
+      triggerFields: ['channel_id'],
+    },
     fieldName: 'target_kind',
-    help: '目标类型由通道类型约束，不能通过扩展参数改写。',
-    label: '消息目标',
+    help: '默认只发送消息；选择提醒成员后才会附带 @ 参数。',
+    label: '发送范围',
     rules: 'selectRequired',
   },
   {
@@ -220,6 +239,13 @@ const schema: VbenFormSchema<NotifyTestFormValues>[] = [
     },
     fieldName: 'at_mobiles',
     label: '提醒手机号',
+  },
+  {
+    component: 'Divider',
+    fieldName: 'content_section',
+    formItemClass: 'col-span-full pb-0',
+    hideLabel: true,
+    renderComponentContent: () => ({ default: () => '消息内容' }),
   },
   {
     component: 'Input',
@@ -303,6 +329,25 @@ const schema: VbenFormSchema<NotifyTestFormValues>[] = [
     rules: 'required',
   },
   {
+    component: 'DefaultButton',
+    componentProps: () => ({
+      block: true,
+      onClick: toggleAdvanced,
+    }),
+    defaultValue: false,
+    fieldName: 'advanced_open',
+    formItemClass: 'col-span-full',
+    hideLabel: true,
+    renderComponentContent: () => ({
+      default: () =>
+        advancedOpen.value ? '收起高级参数' : '展开高级参数（可选）',
+      icon: () =>
+        h(ChevronDown, {
+          class: advancedOpen.value ? 'rotate-180 transition-transform' : '',
+        }),
+    }),
+  },
+  {
     component: 'JsonEditor',
     componentProps: {
       maxHeight: '280px',
@@ -310,6 +355,10 @@ const schema: VbenFormSchema<NotifyTestFormValues>[] = [
       valueMode: 'text',
     },
     defaultValue: '{}',
+    dependencies: {
+      show: (values) => Boolean(values.advanced_open),
+      triggerFields: ['advanced_open'],
+    },
     fieldName: 'extension_payload',
     formItemClass: 'col-span-full',
     help: '仅用于 Push 自定义 data 或 provider 的未知业务键，通常保持 {}。不得填写 token、secret、Webhook；固定参数请使用上方字段。',
@@ -346,11 +395,22 @@ function defaultTargetKind(channel?: NotifyChannel): NotifyTestTargetKind {
   }
 }
 
+function onTargetKindChange(value: NotifyTestTargetKind) {
+  selectedTargetKind.value = value;
+}
+
+async function toggleAdvanced() {
+  advancedOpen.value = !advancedOpen.value;
+  await formApi.setFieldValue('advanced_open', advancedOpen.value);
+}
+
 async function onChannelChange(value?: number | string) {
   selectedChannelId.value = value;
   const channel = channelRows.value.find(
     (item) => String(item.id) === String(value),
   );
+  const targetKind = defaultTargetKind(channel);
+  selectedTargetKind.value = targetKind;
   await formApi.setValues({
     at_mobiles: '',
     at_user_ids: '',
@@ -365,7 +425,7 @@ async function onChannelChange(value?: number | string) {
     pic_url: '',
     recipient: '',
     single_title: '',
-    target_kind: defaultTargetKind(channel),
+    target_kind: targetKind,
     url: '',
   });
 }
@@ -455,6 +515,7 @@ async function hydrateMessage(row: NotifyMessage) {
   ) {
     targetKind = 'ding_talk_at';
   }
+  selectedTargetKind.value = targetKind;
   await formApi.setValues({
     at_mobiles: atMobiles.join('\n'),
     at_user_ids: atUserIds.join('\n'),
@@ -475,6 +536,8 @@ async function initializeForm(data: NotifyMessageTestModalData) {
   endpointRows.value = data.recipientEndpoints;
   sourceMessage.value = data.message;
   selectedChannelId.value = undefined;
+  advancedOpen.value = false;
+  sendError.value = '';
   await formApi.reset();
   if (data.message) {
     await hydrateMessage(data.message);
@@ -517,12 +580,18 @@ const [Modal, modalApi] = useVbenModal<NotifyMessageTestModalData>({
       return;
     }
     sending.value = true;
+    sendError.value = '';
     modalApi.lock();
     try {
       const result = await props.submit(payload);
       message.success(`测试消息 ${result.message_code} 已入队`);
       emit('success', result);
       modalApi.close();
+    } catch (error) {
+      sendError.value =
+        error instanceof Error
+          ? error.message
+          : '发送失败，请检查消息通道配置后重试';
     } finally {
       sending.value = false;
       modalApi.unlock();
@@ -552,12 +621,12 @@ const modalTitle = computed(() =>
 
 <template>
   <Modal
-    class="w-full max-w-240"
+    class="w-full max-w-260"
     :confirm-loading="sending"
     confirm-text="发送"
     :title="modalTitle"
   >
-    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
       <span class="text-xs text-gray-500">
         消息通道可在新页面维护；推送端点由 App/小程序上报，当前仅支持刷新。
       </span>
@@ -581,6 +650,23 @@ const modalTitle = computed(() =>
         </Tooltip>
       </Space>
     </div>
-    <Form class="max-h-[72vh] overflow-y-auto px-1 pr-3" />
+    <Alert
+      v-if="
+        selectedChannelType === 'dingtalk_custom_robot' &&
+        selectedTargetKind === 'channel_default'
+      "
+      class="mb-3"
+      message="本次只发送到机器人所在群，不会 @ 任何人"
+      show-icon
+      type="info"
+    />
+    <Alert
+      v-if="sendError"
+      class="mb-3"
+      :message="sendError"
+      show-icon
+      type="error"
+    />
+    <Form class="max-h-[68vh] overflow-y-auto px-1 pr-3" />
   </Modal>
 </template>
