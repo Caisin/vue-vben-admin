@@ -20,6 +20,7 @@ import {
   message,
   Modal,
   Select,
+  SpaceCompact,
   TextArea,
   Tooltip,
 } from 'antdv-next';
@@ -240,39 +241,41 @@ defineExpose({ reload: loadCredentials });
 </script>
 
 <template>
-  <div class="flex w-full items-center gap-2">
-    <Select
-      v-model:value="modelValue"
-      :allow-clear="props.allowClear"
-      class="min-w-0 flex-1"
-      :disabled="props.disabled"
-      :loading="loading"
-      :not-found-content="loading ? '正在加载凭证' : '没有可用凭证'"
-      :options="options"
-      option-filter-prop="label"
-      :placeholder="props.placeholder"
-      show-search
-    >
-      <template #popupRender="menuNode">
-        <component :is="menuNode" />
-        <div class="credential-select-create" @mousedown.prevent.stop>
-          <Button block size="small" type="link" @click="openQuickCreate">
-            <template #icon><Plus /></template>
-            新增凭证
-          </Button>
-        </div>
-      </template>
-    </Select>
-    <Tooltip title="刷新凭证列表">
-      <Button
-        aria-label="刷新凭证列表"
+  <div class="w-full">
+    <SpaceCompact block>
+      <Select
+        v-model:value="modelValue"
+        :allow-clear="props.allowClear"
+        class="min-w-0 flex-1"
         :disabled="props.disabled"
         :loading="loading"
-        @click="loadCredentials"
+        :not-found-content="loading ? '正在加载凭证' : '没有可用凭证'"
+        :options="options"
+        option-filter-prop="label"
+        :placeholder="props.placeholder"
+        show-search
       >
-        <template #icon><RotateCw /></template>
-      </Button>
-    </Tooltip>
+        <template #popupRender="menuNode">
+          <component :is="menuNode" />
+          <div class="credential-select-create" @mousedown.prevent.stop>
+            <Button block size="small" type="link" @click="openQuickCreate">
+              <template #icon><Plus /></template>
+              新增凭证
+            </Button>
+          </div>
+        </template>
+      </Select>
+      <Tooltip title="刷新凭证列表">
+        <Button
+          aria-label="刷新凭证列表"
+          :disabled="props.disabled"
+          :loading="loading"
+          @click="loadCredentials"
+        >
+          <template #icon><RotateCw /></template>
+        </Button>
+      </Tooltip>
+    </SpaceCompact>
     <Modal
       v-model:open="quickCreateOpen"
       destroy-on-close

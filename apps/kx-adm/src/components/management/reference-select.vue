@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 
 import { ExternalLink, Plus, RotateCw } from '@vben/icons';
 
-import { Button, Modal, Select, Space, Tooltip } from 'antdv-next';
+import { Button, Modal, Select, SpaceCompact, Tooltip } from 'antdv-next';
 
 interface Props {
   allowClear?: boolean;
@@ -88,7 +88,7 @@ defineExpose({ completeMaintenance });
 
 <template>
   <div class="reference-select">
-    <Space class="reference-select__controls" :size="6">
+    <SpaceCompact block class="reference-select__controls">
       <Select
         class="reference-select__input"
         :allow-clear="props.allowClear"
@@ -122,7 +122,7 @@ defineExpose({ completeMaintenance });
           <template #icon><RotateCw /></template>
         </Button>
       </Tooltip>
-    </Space>
+    </SpaceCompact>
     <div v-if="props.readOnlySource" class="reference-select__source">
       {{ props.readOnlySource }}
     </div>

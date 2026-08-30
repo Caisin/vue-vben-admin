@@ -5,7 +5,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { RotateCw } from '@vben/icons';
 
-import { Button, Select, Space, Tooltip } from 'antdv-next';
+import { Button, Select, SpaceCompact, Tooltip } from 'antdv-next';
 
 import { SimCardApi } from '#/api/msg';
 
@@ -142,7 +142,7 @@ defineExpose({ reload: loadOptions });
 </script>
 
 <template>
-  <Space class="w-full" :size="6">
+  <SpaceCompact block>
     <Select
       allow-clear
       class="min-w-0 flex-1"
@@ -167,7 +167,7 @@ defineExpose({ reload: loadOptions });
         <template #icon><RotateCw /></template>
       </Button>
     </Tooltip>
-  </Space>
+  </SpaceCompact>
   <div class="mt-1 text-xs text-muted-foreground">
     电话卡由设备上报或批量导入维护，此处仅提供选择和刷新。
   </div>

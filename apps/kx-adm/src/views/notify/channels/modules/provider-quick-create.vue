@@ -140,8 +140,11 @@ onMounted(loadApps);
       </FormItem>
     </template>
     <template v-else-if="isCustomRobot">
-      <FormItem label="配置编码" required>
-        <Input v-model:value="customForm.robotCode" />
+      <FormItem label="配置编码">
+        <Input
+          v-model:value="customForm.robotCode"
+          placeholder="留空自动生成 dtcr-xxxxxxxx"
+        />
       </FormItem>
       <FormItem label="显示名称" required>
         <Input v-model:value="customForm.name" />
@@ -172,8 +175,11 @@ onMounted(loadApps);
       </FormItem>
     </template>
     <template v-else-if="isGroupBot">
-      <FormItem label="配置编码" required>
-        <Input v-model:value="groupForm.botCode" />
+      <FormItem label="配置编码">
+        <Input
+          v-model:value="groupForm.botCode"
+          placeholder="留空自动生成 dtgb-xxxxxxxx"
+        />
       </FormItem>
       <FormItem label="显示名称" required>
         <Input v-model:value="groupForm.name" />

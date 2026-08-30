@@ -600,11 +600,14 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
           <FormItem>
             <template #label>
               <FieldHelp
-                help="供消息通道 provider_code 引用的稳定编码，创建后不要随名称修改。"
+                help="供消息通道 provider_code 引用的稳定编码。新建时留空会自动生成，创建后不要随名称修改。"
                 label="配置编码"
               />
             </template>
-            <Input v-model:value="groupForm.bot_code" />
+            <Input
+              v-model:value="groupForm.bot_code"
+              placeholder="新建时留空自动生成 dtgb-xxxxxxxx"
+            />
           </FormItem>
           <FormItem label="显示名称">
             <Input v-model:value="groupForm.bot_name" />
@@ -671,11 +674,14 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
           <FormItem>
             <template #label>
               <FieldHelp
-                help="供消息通道 provider_code 引用的稳定编码，创建后不要随名称修改。"
+                help="供消息通道 provider_code 引用的稳定编码。新建时留空会自动生成，创建后不要随名称修改。"
                 label="配置编码"
               />
             </template>
-            <Input v-model:value="customForm.robot_code" />
+            <Input
+              v-model:value="customForm.robot_code"
+              placeholder="新建时留空自动生成 dtcr-xxxxxxxx"
+            />
           </FormItem>
           <FormItem label="显示名称">
             <Input v-model:value="customForm.robot_name" />
