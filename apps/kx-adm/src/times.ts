@@ -120,6 +120,19 @@ export const Times = {
     return Times.formatUnix(value, fallback);
   },
 
+  formatDurationSeconds(value: number, fallback = '-'): string {
+    if (!Number.isFinite(value) || value < 0) return fallback;
+    const seconds = Math.floor(value);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    return [
+      hours > 0 ? `${hours}h` : '',
+      minutes > 0 ? `${minutes}m` : '',
+      remainingSeconds > 0 || seconds === 0 ? `${remainingSeconds}s` : '',
+    ].join('');
+  },
+
   formatUnixField(record: object, field: unknown, fallback = '-'): string {
     return typeof field === 'string'
       ? Times.formatUnix(

@@ -111,6 +111,13 @@ function progressText(row: TaskRun) {
   return `总 ${row.total_count} / 执行中 ${row.running_count} / 成功 ${row.succeeded_count} / 失败 ${row.failed_count}`;
 }
 
+function durationText(row: TaskRun) {
+  const startedAt = Times.toUnixSeconds(row.started_at);
+  const finishedAt = Times.toUnixSeconds(row.finished_at);
+  if (startedAt === undefined || finishedAt === undefined) return '-';
+  return Times.formatDurationSeconds(finishedAt - startedAt);
+}
+
 async function openBusinessDetail(row: TaskRun) {
   if (!row.detail_path) return;
   await router.push(row.detail_path);
@@ -157,17 +164,8 @@ onMounted(async () => {
       <template #progress="{ row }">
         {{ progressText(row) }}
       </template>
-      <template #times="{ row }">
-        <div>
-          {{
-            displayValue(
-              row.scheduled_at ? Times.formatUnix(row.scheduled_at) : null,
-            )
-          }}
-        </div>
-        <div class="muted-time">
-          完成：{{ Times.formatOptionalUnix(row.finished_at) }}
-        </div>
+      <template #duration="{ row }">
+        {{ durationText(row) }}
       </template>
       <template #error="{ row }">
         {{ displayValue(row.error_message) }}

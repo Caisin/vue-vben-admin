@@ -20,6 +20,13 @@ describe('times', () => {
     expect(Times.formatOptionalUnix('not-a-time', '无')).toBe('无');
   });
 
+  it('formats elapsed seconds compactly', () => {
+    expect(Times.formatDurationSeconds(3680)).toBe('1h1m20s');
+    expect(Times.formatDurationSeconds(60)).toBe('1m');
+    expect(Times.formatDurationSeconds(0)).toBe('0s');
+    expect(Times.formatDurationSeconds(-1)).toBe('-');
+  });
+
   it('encodes and decodes unix second ranges', () => {
     const range = [
       dayjs.unix(1_700_000_000),

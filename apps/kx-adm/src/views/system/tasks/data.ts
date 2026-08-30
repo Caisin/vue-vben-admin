@@ -185,11 +185,24 @@ export function taskColumns(): VxeTableGridColumns<TaskRun> {
       width: 190,
     },
     {
-      field: 'scheduled_at',
-      slots: { default: 'times' },
+      field: 'started_at',
+      formatter: ({ row }) => Times.formatOptionalUnix(row.started_at),
       sortable: true,
-      title: '时间',
-      width: 280,
+      title: '开始时间',
+      width: 180,
+    },
+    {
+      field: 'finished_at',
+      formatter: ({ row }) => Times.formatOptionalUnix(row.finished_at),
+      sortable: true,
+      title: '结束时间',
+      width: 180,
+    },
+    {
+      field: 'duration',
+      slots: { default: 'duration' },
+      title: '耗时',
+      width: 100,
     },
     {
       field: 'error_message',
