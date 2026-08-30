@@ -1,0 +1,508 @@
+<script lang="ts" setup>
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
+import type {
+  InvoiceExportDispatchView,
+  InvoiceExportScope,
+  InvoiceExportView,
+  InvoiceItemView,
+  InvoiceListQuery,
+  InvoiceStatisticsView,
+  InvoiceUploadView,
+} from '#/api/invoice';
+
+import { computed, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
+
+import { useAccess } from '@vben/access';
+import { Page } from '@vben/common-ui';
+
+import {
+  Button,
+  Card,
+  Checkbox,
+  message,
+  Modal,
+  Space,
+  Statistic,
+  Tag,
+  Tooltip,
+} from 'antdv-next';
+
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
+import { InvoiceApi } from '#/api/invoice';
+import { vxeSortParams } from '#/vxe-sort';
+
+import {
+  cleanInvoiceQuery,
+  createExportPayload,
+  invoiceSortFields,
+  useColumns,
+  useFormSchema,
+} from './data';
+import ExportHistoryDrawer from './modules/export-history-drawer.vue';
+import InvoiceDetailDrawer from './modules/invoice-detail-drawer.vue';
+import InvoiceEditModal from './modules/invoice-edit-modal.vue';
+import UploadResultDrawer from './modules/upload-result-drawer.vue';
+
+type CheckboxGrid = { getCheckboxRecords?: () => InvoiceItemView[] };
+
+const { hasAccessByCodes } = useAccess();
+const route = useRoute();
+const canAdminInvoice = computed(() => hasAccessByCodes(['invoice:admin']));
+const canExportInvoice = computed(() => hasAccessByCodes(['invoice:export']));
+const canUpdateInvoice = computed(() => hasAccessByCodes(['invoice:update']));
+const canUploadInvoice = computed(() => hasAccessByCodes(['invoice:upload']));
+const uploadInputRef = ref<HTMLInputElement>();
+const uploading = ref(false);
+const exportLoading = ref<InvoiceExportScope>();
+const selectedRows = ref<InvoiceItemView[]>([]);
+const currentFilter = ref<InvoiceListQuery>({});
+const uploadResults = ref<InvoiceUploadView[]>([]);
+const uploadResultOpen = ref(false);
+const detailOpen = ref(false);
+const editOpen = ref(false);
+const exportHistoryOpen = ref(false);
+const activeInvoice = ref<InvoiceItemView>();
+const exportRuns = ref<InvoiceExportDispatchView[]>([]);
+const markSubmittedToFinance = ref(false);
+const statistics = ref<InvoiceStatisticsView>({
+  amount_tax_total: '0',
+  needs_review_count: 0,
+  submitted_count: 0,
+  tax_amount_total: '0',
+  total_count: 0,
+  unsubmitted_count: 0,
+});
+
+const [Grid, gridApi] = useVbenVxeGrid<InvoiceItemView>({
+  formOptions: {
+    schema: useFormSchema(canAdminInvoice.value),
+    submitOnChange: true,
+  },
+  gridEvents: {
+    checkboxAll: updateSelectedRows,
+    checkboxChange: updateSelectedRows,
+  },
+  gridOptions: {
+    checkboxConfig: { reserve: true },
+    columns: useColumns(canAdminInvoice.value, canExportInvoice.value),
+    height: 'auto',
+    keepSource: true,
+    pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
+    proxyConfig: {
+      ajax: {
+        query: async (params, formValues) => {
+          const { page } = params;
+          const filter = cleanInvoiceQuery(formValues);
+          currentFilter.value = filter;
+          await refreshStatistics(filter);
+          const result = await InvoiceApi.list({
+            ...filter,
+            ...vxeSortParams(params, invoiceSortFields),
+            page: page.currentPage,
+            size: page.pageSize,
+          });
+          selectedRows.value = [];
+          return {
+            items: result.items.map((item) => ({
+              ...item,
+              _row_key: `${item.uid}:${item.invoice_id}`,
+            })),
+            total: result.total,
+          };
+        },
+      },
+    },
+    rowConfig: { keyField: '_row_key' },
+    sortConfig: {
+      defaultSort: { field: 'uploaded_at', order: 'desc' },
+      remote: true,
+    },
+    toolbarConfig: {
+      custom: true,
+      export: false,
+      refresh: true,
+      search: true,
+      zoom: true,
+    },
+  } as VxeTableGridOptions<InvoiceItemView>,
+});
+
+const selectedCount = computed(() => selectedRows.value.length);
+
+onMounted(async () => {
+  const queryValue = Array.isArray(route.query.export_id)
+    ? route.query.export_id[0]
+    : route.query.export_id;
+  const exportId = Number(queryValue);
+  if (!Number.isInteger(exportId) || exportId <= 0) return;
+  const detail = await InvoiceApi.exportDetail(exportId);
+  exportRuns.value = [
+    {
+      duplicate: false,
+      export: detail,
+      message: '',
+      task_run: null,
+    },
+  ];
+  exportHistoryOpen.value = true;
+});
+
+function updateSelectedRows() {
+  const grid = gridApi.grid as CheckboxGrid | undefined;
+  selectedRows.value =
+    typeof grid?.getCheckboxRecords === 'function'
+      ? grid.getCheckboxRecords()
+      : [];
+}
+
+async function refreshStatistics(filter = currentFilter.value) {
+  statistics.value = await InvoiceApi.statistics(filter);
+}
+
+function triggerUpload() {
+  uploadInputRef.value?.click();
+}
+
+async function onFilesPicked(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = [...(input.files ?? [])];
+  input.value = '';
+  if (files.length === 0) return;
+  uploading.value = true;
+  try {
+    uploadResults.value = await InvoiceApi.uploadFiles(files);
+    uploadResultOpen.value = true;
+    message.success(`已上传并解析 ${files.length} 个文件`);
+    await gridApi.query();
+  } finally {
+    uploading.value = false;
+  }
+}
+
+async function openDetail(row: InvoiceItemView) {
+  activeInvoice.value = row;
+  detailOpen.value = true;
+  try {
+    activeInvoice.value = await InvoiceApi.detail(row.invoice_id, row.uid);
+  } catch (error) {
+    activeInvoice.value = row;
+    throw error;
+  }
+}
+
+function openEdit(row: InvoiceItemView) {
+  if (!canUpdateInvoice.value) return;
+  activeInvoice.value = row;
+  editOpen.value = true;
+}
+
+async function onSaved(row: InvoiceItemView) {
+  activeInvoice.value = row;
+  await gridApi.query();
+}
+
+function exportDescription(scope: InvoiceExportScope) {
+  if (scope === 'selected') {
+    return `将导出已勾选的 ${selectedCount.value} 张发票。`;
+  }
+  return '将导出当前筛选条件命中的全部发票。';
+}
+
+async function createExport(scope: InvoiceExportScope) {
+  updateSelectedRows();
+  if (scope === 'selected' && selectedRows.value.length === 0) {
+    message.warning('请先勾选需要导出的发票');
+    return;
+  }
+  Modal.confirm({
+    content: `${exportDescription(scope)}${
+      markSubmittedToFinance.value ? '导出成功后会同时标记为已提交财务。' : ''
+    }`,
+    okText: '创建导出任务',
+    title: scope === 'selected' ? '导出所选发票' : '按当前筛选导出',
+    async onOk() {
+      exportLoading.value = scope;
+      try {
+        const result = await InvoiceApi.createExport(
+          createExportPayload({
+            filter: currentFilter.value,
+            markSubmitted: markSubmittedToFinance.value,
+            scope,
+            selectedRows: selectedRows.value,
+          }),
+        );
+        exportRuns.value = [result, ...exportRuns.value];
+        if (result.duplicate) {
+          message.info(result.message || '已有相同导出任务，已展示现有任务');
+        } else {
+          message.success(result.message || '导出任务已创建');
+        }
+        exportHistoryOpen.value = true;
+        await gridApi.query();
+      } finally {
+        exportLoading.value = undefined;
+      }
+    },
+  });
+}
+
+async function downloadOriginal(row: InvoiceItemView) {
+  const blob = await InvoiceApi.fileContent(row.upload_id);
+  downloadBlob(blob, row.original_file_name || `invoice-${row.invoice_id}`);
+}
+
+async function downloadExport(row: InvoiceExportView) {
+  const blob = await InvoiceApi.exportContent(row.id);
+  downloadBlob(blob, `invoice-export-${row.id}.zip`);
+}
+
+function onExportRefresh(rows: InvoiceExportDispatchView[]) {
+  exportRuns.value = rows;
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+
+<template>
+  <Page
+    auto-content-height
+    class="invoice-page"
+    content-class="invoice-content"
+  >
+    <header class="page-heading">
+      <h1>发票管理</h1>
+      <Space>
+        <input
+          ref="uploadInputRef"
+          accept=".pdf,.ofd,.xml"
+          class="hidden-input"
+          multiple
+          type="file"
+          @change="onFilesPicked"
+        />
+        <Button
+          v-if="canUploadInvoice"
+          :loading="uploading"
+          type="primary"
+          @click="triggerUpload"
+        >
+          上传发票文件
+        </Button>
+        <Button v-if="canExportInvoice" @click="exportHistoryOpen = true">
+          导出任务
+        </Button>
+      </Space>
+    </header>
+
+    <section class="stats-bar">
+      <Card size="small">
+        <Statistic title="发票总数" :value="Number(statistics.total_count)" />
+      </Card>
+      <Card size="small">
+        <Statistic
+          title="未提交财务"
+          :value="Number(statistics.unsubmitted_count)"
+        />
+      </Card>
+      <Card size="small">
+        <Statistic
+          title="需复核"
+          :value="Number(statistics.needs_review_count)"
+        />
+      </Card>
+      <Card size="small">
+        <Statistic title="价税合计" :value="statistics.amount_tax_total" />
+      </Card>
+      <Card size="small">
+        <Statistic title="税额合计" :value="statistics.tax_amount_total" />
+      </Card>
+    </section>
+
+    <Grid class="invoice-grid" table-title="发票列表">
+      <template #toolbar-tools>
+        <Space v-if="canExportInvoice" wrap>
+          <Checkbox v-model:checked="markSubmittedToFinance">
+            导出后提交财务
+          </Checkbox>
+          <Button
+            :disabled="selectedCount === 0"
+            :loading="exportLoading === 'selected'"
+            @click="createExport('selected')"
+          >
+            导出所选 {{ selectedCount || '' }}
+          </Button>
+          <Button
+            :loading="exportLoading === 'filtered'"
+            type="primary"
+            @click="createExport('filtered')"
+          >
+            按当前筛选导出
+          </Button>
+        </Space>
+      </template>
+
+      <template #invoiceNo="{ row }">
+        <a class="invoice-link" @click="openDetail(row)">
+          {{ row.invoice_no || `发票 #${row.invoice_id}` }}
+        </a>
+        <div class="muted">{{ row.invoice_type || '未识别类型' }}</div>
+      </template>
+      <template #financeState="{ row }">
+        <Tag :color="row.submitted_to_finance ? 'success' : 'warning'">
+          {{ row.submitted_to_finance ? '已提交' : '未提交' }}
+        </Tag>
+      </template>
+      <template #duplicate="{ row }">
+        <Tooltip
+          :title="
+            row.duplicate_user_count
+              ? canAdminInvoice
+                ? '跨用户重复，点击详情查看用户列表'
+                : '跨用户重复'
+              : '未发现跨用户重复'
+          "
+        >
+          <Tag :color="row.duplicate_user_count ? 'warning' : 'success'">
+            {{
+              row.duplicate_user_count
+                ? `重复 ${row.duplicate_user_count}`
+                : '正常'
+            }}
+          </Tag>
+        </Tooltip>
+      </template>
+      <template #operation="{ row }">
+        <Space>
+          <Button
+            v-if="canUpdateInvoice"
+            size="small"
+            type="link"
+            @click="openEdit(row)"
+          >
+            维护
+          </Button>
+          <Button size="small" type="link" @click="downloadOriginal(row)">
+            原文件
+          </Button>
+          <Button size="small" type="link" @click="openDetail(row)">
+            详情
+          </Button>
+        </Space>
+      </template>
+    </Grid>
+
+    <InvoiceDetailDrawer
+      v-model:open="detailOpen"
+      :can-admin="canAdminInvoice"
+      :can-update="canUpdateInvoice"
+      :invoice="activeInvoice"
+      @edit="openEdit"
+    />
+    <InvoiceEditModal
+      v-model:open="editOpen"
+      :invoice="activeInvoice"
+      @saved="onSaved"
+    />
+    <UploadResultDrawer
+      v-model:open="uploadResultOpen"
+      :results="uploadResults"
+    />
+    <ExportHistoryDrawer
+      v-model:open="exportHistoryOpen"
+      :exports="exportRuns"
+      @download="downloadExport"
+      @refresh="onExportRefresh"
+    />
+  </Page>
+</template>
+
+<style scoped>
+.invoice-page {
+  min-height: 0;
+}
+
+.invoice-page :deep(.invoice-content) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.page-heading {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.page-heading h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.invoice-grid {
+  flex: 1;
+  min-height: 0;
+}
+
+.invoice-link {
+  font-weight: 600;
+}
+
+.muted {
+  margin-top: 2px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.hidden-input {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .page-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .stats-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats-bar > :last-child:nth-child(odd) {
+    grid-column: span 2;
+  }
+
+  .invoice-grid :deep(.vxe-toolbar) {
+    flex-wrap: wrap;
+    gap: 8px;
+    height: auto;
+  }
+
+  .invoice-grid :deep(.vxe-buttons--wrapper),
+  .invoice-grid :deep(.vxe-tools--wrapper) {
+    width: 100%;
+  }
+
+  .invoice-grid :deep(.vxe-tools--wrapper) {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+</style>
