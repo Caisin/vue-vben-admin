@@ -412,7 +412,7 @@ onMounted(loadPage);
       <Alert
         banner
         class="security-alert"
-        message="MFA 主密钥保存为机密系统参数 secret.auth.mfa，只展示状态和指纹，不提供明文查看。"
+        message="MFA 主密钥保存为凭证中心 JSON 机密 secret.auth.mfa，只展示状态和指纹，不提供明文查看。"
         type="warning"
       />
 

@@ -103,9 +103,10 @@ export interface DingtalkCustomRobotCfg {
   robot_code: string;
   robot_name: string;
   secret_configured: boolean;
+  secret_credential_code: string;
   updated_at: number | string;
   webhook_configured: boolean;
-  webhook_url_masked: string;
+  webhook_credential_code: string;
 }
 
 export interface DingtalkCustomRobotWrite {
@@ -113,8 +114,8 @@ export interface DingtalkCustomRobotWrite {
   open_conversation_id: string;
   robot_code: string;
   robot_name: string;
-  secret?: string;
-  webhook_url: string;
+  secret_credential_code?: string;
+  webhook_credential_code: string;
 }
 
 export interface DingtalkCustomRobotSecretView {

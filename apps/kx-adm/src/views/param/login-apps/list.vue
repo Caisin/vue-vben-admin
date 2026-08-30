@@ -102,13 +102,6 @@ const [DingtalkForm, dingtalkFormApi] = useVbenForm({
   schema: [
     {
       component: 'Input',
-      fieldName: 'app_key',
-      formItemClass: 'col-span-1',
-      label: 'AppKey',
-      rules: 'required',
-    },
-    {
-      component: 'Input',
       fieldName: 'app_name',
       formItemClass: 'col-span-1',
       label: '应用名称',
@@ -117,14 +110,15 @@ const [DingtalkForm, dingtalkFormApi] = useVbenForm({
     {
       component: 'CredentialSelect',
       componentProps: {
-        createKind: 'password',
-        kind: 'password',
-        profile: 'generic',
-        placeholder: '选择 AppSecret 凭证',
+        createKind: 'access_key',
+        kind: 'access_key',
+        profile: 'app',
+        placeholder: '选择 AppKey / AppSecret 应用凭证',
       },
-      fieldName: 'app_secret_credential_code',
+      fieldName: 'credential_code',
       formItemClass: 'col-span-1',
-      label: 'AppSecret 凭证',
+      label: '应用凭证',
+      rules: 'required',
     },
     {
       component: 'Switch',
@@ -157,13 +151,6 @@ const [WechatForm, wechatFormApi] = useVbenForm({
   schema: [
     {
       component: 'Input',
-      fieldName: 'app_id',
-      formItemClass: 'col-span-1',
-      label: 'AppID',
-      rules: 'required',
-    },
-    {
-      component: 'Input',
       fieldName: 'app_name',
       formItemClass: 'col-span-1',
       label: '应用名称',
@@ -179,14 +166,15 @@ const [WechatForm, wechatFormApi] = useVbenForm({
     {
       component: 'CredentialSelect',
       componentProps: {
-        createKind: 'password',
-        kind: 'password',
-        profile: 'generic',
-        placeholder: '选择 AppSecret 凭证',
+        createKind: 'access_key',
+        kind: 'access_key',
+        profile: 'app',
+        placeholder: '选择 AppID / AppSecret 应用凭证',
       },
-      fieldName: 'app_secret_credential_code',
+      fieldName: 'credential_code',
       formItemClass: 'col-span-1',
-      label: 'AppSecret 凭证',
+      label: '应用凭证',
+      rules: 'required',
     },
     {
       component: 'CredentialSelect',
@@ -258,14 +246,14 @@ const [DingtalkModal, dingtalkModalApi] = useVbenModal({
     try {
       const values = await dingtalkFormApi.getValues();
       if (editingDingtalk.value) {
-        const { app_key: _app_key, ...data } = values;
+        const { credential_code: _credential_code, ...data } = values;
         await LoginAppApi.dingtalk_update(
           editingDingtalk.value.app_key,
           data as DingtalkAppUpdate,
         );
       } else {
-        if (!String(values.app_secret_credential_code ?? '').trim()) {
-          message.error('新建钉钉应用时必须选择 AppSecret 凭证');
+        if (!String(values.credential_code ?? '').trim()) {
+          message.error('新建钉钉应用时必须选择应用凭证');
           return;
         }
         await LoginAppApi.dingtalk_create(values as DingtalkAppCreate);
@@ -291,14 +279,14 @@ const [WechatModal, wechatModalApi] = useVbenModal({
       const values = await wechatFormApi.getValues();
       values.mch_id = Number(values.mch_id ?? 0);
       if (editingWechat.value) {
-        const { app_id: _app_id, ...data } = values;
+        const { credential_code: _credential_code, ...data } = values;
         await LoginAppApi.wechat_update(
           editingWechat.value.app_id,
           data as WechatAppUpdate,
         );
       } else {
-        if (!String(values.app_secret_credential_code ?? '').trim()) {
-          message.error('新建微信应用时必须选择 AppSecret 凭证');
+        if (!String(values.credential_code ?? '').trim()) {
+          message.error('新建微信应用时必须选择应用凭证');
           return;
         }
         await LoginAppApi.wechat_create(values as WechatAppCreate);
@@ -388,8 +376,6 @@ async function onDingtalkEnabledChange(
 ) {
   await LoginAppApi.dingtalk_update(row.app_key, {
     app_name: row.app_name,
-    app_secret: '',
-    app_secret_credential_code: row.app_secret_credential_code,
     enabled,
     is_def: row.is_def,
     remark: row.remark,
@@ -401,15 +387,11 @@ async function onWechatEnabledChange(enabled: boolean, row: WechatAppConfig) {
   await LoginAppApi.wechat_update(row.app_id, {
     app_key: row.app_key,
     app_name: row.app_name,
-    app_secret: '',
-    app_secret_credential_code: row.app_secret_credential_code,
     company: row.company,
     enabled,
     mch_id: row.mch_id,
-    msg_aes_key: '',
     offer_id: row.offer_id,
     remark: row.remark,
-    token: '',
     token_credential_code: row.token_credential_code,
     msg_aes_key_credential_code: row.msg_aes_key_credential_code,
   });
@@ -422,7 +404,7 @@ async function openDingtalkCreate() {
   await nextTick();
   await dingtalkFormApi.reset();
   await dingtalkFormApi.updateSchema([
-    { componentProps: { disabled: false }, fieldName: 'app_key' },
+    { componentProps: { disabled: false }, fieldName: 'credential_code' },
   ]);
 }
 
@@ -432,9 +414,9 @@ async function openDingtalkEdit(row: DingtalkAppConfig) {
   await nextTick();
   await dingtalkFormApi.reset();
   const detail = await LoginAppApi.dingtalk_detail(row.app_key);
-  await dingtalkFormApi.setValues({ ...detail, app_secret: '' });
+  await dingtalkFormApi.setValues(detail);
   await dingtalkFormApi.updateSchema([
-    { componentProps: { disabled: true }, fieldName: 'app_key' },
+    { componentProps: { disabled: true }, fieldName: 'credential_code' },
   ]);
 }
 
@@ -461,7 +443,7 @@ async function openWechatCreate() {
   await nextTick();
   await wechatFormApi.reset();
   await wechatFormApi.updateSchema([
-    { componentProps: { disabled: false }, fieldName: 'app_id' },
+    { componentProps: { disabled: false }, fieldName: 'credential_code' },
   ]);
 }
 
@@ -473,15 +455,9 @@ async function openWechatEdit(row: WechatAppConfig) {
   const detail = await LoginAppApi.wechat_detail(row.app_id);
   await wechatFormApi.setValues({
     ...detail,
-    app_secret: '',
-    msg_aes_key: '',
-    token: '',
-    app_secret_credential_code: detail.app_secret_credential_code,
-    token_credential_code: detail.token_credential_code,
-    msg_aes_key_credential_code: detail.msg_aes_key_credential_code,
   });
   await wechatFormApi.updateSchema([
-    { componentProps: { disabled: true }, fieldName: 'app_id' },
+    { componentProps: { disabled: true }, fieldName: 'credential_code' },
   ]);
 }
 

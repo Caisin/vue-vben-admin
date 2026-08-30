@@ -108,7 +108,11 @@ export function customRobotColumns(): VxeTableGridColumns<DingtalkCustomRobotCfg
       sortable: true,
       title: '群会话 ID',
     },
-    { field: 'webhook_url_masked', minWidth: 280, title: 'Webhook 摘要' },
+    {
+      field: 'webhook_credential_code',
+      minWidth: 220,
+      title: 'Webhook 凭证',
+    },
     {
       field: 'secret_configured',
       slots: { default: 'secretConfigured' },

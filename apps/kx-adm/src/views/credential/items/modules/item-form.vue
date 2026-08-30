@@ -51,7 +51,8 @@ function fieldComponent(
   field: CredentialFieldSpec,
   profile: CredentialProfileSpec,
 ) {
-  if (field.name === 'service_account_json') return 'JsonFileInput';
+  if (field.name === 'service_account_json' || field.name === 'json')
+    return 'JsonFileInput';
   if (field.name === 'header_name' && profile.allowed_headers.length > 0)
     return 'Select';
   if (field.name === 'scheme') return 'Select';
@@ -91,16 +92,24 @@ function formSchema(profilePair?: unknown): VbenFormSchema[] {
   const profile = selectedSpec(profilePair);
   const editingMetadata = Boolean(editing.value);
   return [
-    ...(editingMetadata
-      ? [
-          {
-            component: 'Input',
-            componentProps: { class: 'w-full', disabled: true },
-            fieldName: 'code',
-            label: '凭证编码',
-          } satisfies VbenFormSchema,
-        ]
-      : []),
+    {
+      component: 'Input',
+      componentProps: {
+        class: 'w-full',
+        disabled: editingMetadata,
+        placeholder:
+          profile?.kind === 'json_secret'
+            ? 'secret.domain.name'
+            : '留空自动生成',
+      },
+      fieldName: 'code',
+      help:
+        profile?.kind === 'json_secret'
+          ? '参数 JSON 机密必须使用 secret. 前缀。'
+          : '留空时由服务端按凭证类型生成。',
+      label: '凭证编码',
+      rules: profile?.kind === 'json_secret' ? 'required' : undefined,
+    } satisfies VbenFormSchema,
     {
       component: 'Input',
       componentProps: { class: 'w-full' },
@@ -178,6 +187,7 @@ const [Modal, modalApi] = useVbenModal<{
           string,
         ];
         await CredentialApi.create({
+          code: String(values.code ?? '').trim() || undefined,
           expires_at: values.expires_at as number | string | undefined,
           kind,
           name: String(values.name ?? '').trim(),

@@ -31,6 +31,7 @@ import JsonFileInput from './json-file-input.vue';
 interface Props {
   allowClear?: boolean;
   createKind?: CredentialKind;
+  disabled?: boolean;
   kind?: CredentialKind;
   kinds?: CredentialKind[];
   managePath?: string;
@@ -42,6 +43,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   allowClear: true,
   createKind: undefined,
+  disabled: false,
   kind: undefined,
   kinds: () => [],
   managePath: '/credential/items',
@@ -57,12 +59,14 @@ const quickCreateOpen = ref(false);
 const quickCreating = ref(false);
 const credentials = ref<CredentialView[]>([]);
 const quickForm = reactive({
+  accessKeyId: '',
   cookie: '',
   name: '',
   passphrase: '',
   password: '',
   privateKey: '',
   serviceAccountJson: '',
+  secretAccessKey: '',
   userAgent: '',
   username: '',
 });
@@ -115,6 +119,14 @@ const quickKind = computed(
 );
 
 function quickPayload(kind: CredentialKind): CredentialPayload | undefined {
+  if (kind === 'access_key') {
+    return {
+      access_key_id: quickForm.accessKeyId,
+      kind,
+      secret_access_key: quickForm.secretAccessKey,
+      session_token: '',
+    };
+  }
   if (kind === 'password') {
     return { kind, password: quickForm.password };
   }
@@ -151,12 +163,14 @@ function quickPayload(kind: CredentialKind): CredentialPayload | undefined {
 
 function openQuickCreate() {
   Object.assign(quickForm, {
+    accessKeyId: '',
     cookie: '',
     name: '',
     passphrase: '',
     password: '',
     privateKey: '',
     serviceAccountJson: '',
+    secretAccessKey: '',
     userAgent: '',
     username: '',
   });
@@ -197,6 +211,7 @@ onMounted(loadCredentials);
 defineExpose({ reload: loadCredentials });
 
 function kindLabel(kind: CredentialKind) {
+  if (kind === 'access_key') return '访问密钥';
   if (kind === 'password') return '密码';
   if (kind === 'username_password') return '账号密码';
   return kind;
@@ -209,6 +224,7 @@ function kindLabel(kind: CredentialKind) {
       v-model:value="modelValue"
       :allow-clear="props.allowClear"
       class="min-w-0 flex-1"
+      :disabled="props.disabled"
       :loading="loading"
       :not-found-content="loading ? '正在加载凭证' : '没有可用凭证'"
       :options="options"
@@ -245,7 +261,15 @@ function kindLabel(kind: CredentialKind) {
         <FormItem label="凭证名称" required>
           <Input v-model:value="quickForm.name" />
         </FormItem>
-        <FormItem v-if="quickKind === 'password'" label="密码" required>
+        <template v-if="quickKind === 'access_key'">
+          <FormItem label="AppID / AppKey" required>
+            <Input v-model:value="quickForm.accessKeyId" />
+          </FormItem>
+          <FormItem label="AppSecret / SK" required>
+            <InputPassword v-model:value="quickForm.secretAccessKey" />
+          </FormItem>
+        </template>
+        <FormItem v-else-if="quickKind === 'password'" label="密码" required>
           <InputPassword v-model:value="quickForm.password" />
         </FormItem>
         <template v-else-if="quickKind === 'username_password'">

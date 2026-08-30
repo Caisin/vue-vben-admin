@@ -22,7 +22,6 @@ import {
   Button,
   FormItem,
   Input,
-  InputPassword,
   message,
   Select,
   Space,
@@ -35,6 +34,7 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { DingtalkNotifyApi } from '#/api/param/dingtalk-notify';
+import { CredentialSelect } from '#/components/credential';
 import { ConfigGuide, FieldHelp } from '#/components/management';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
@@ -57,7 +57,6 @@ import {
 import { useKnowledgeTargetOptions } from './knowledge-target-options';
 import CustomRobotReveal from './modules/custom-robot-reveal.vue';
 import PopupDrawer from './modules/popup-drawer.vue';
-import { parseDingtalkWebhookConfig } from './webhook-config';
 
 type ActiveTab = 'custom' | 'group' | 'knowledge';
 type FormKind = 'custom' | 'group' | 'knowledge';
@@ -84,8 +83,8 @@ const customForm = reactive<DingtalkCustomRobotWrite>({
   open_conversation_id: '',
   robot_code: '',
   robot_name: '',
-  secret: '',
-  webhook_url: '',
+  secret_credential_code: '',
+  webhook_credential_code: '',
 });
 const knowledgeForm = reactive<DingtalkKnowledgeTargetWrite>({
   app_key: '',
@@ -123,19 +122,6 @@ const currentConfigGuide = computed(() => {
   if (formKind.value === 'custom') return customRobotGuide;
   if (formKind.value === 'group') return groupRobotGuide;
   return knowledgeTargetGuide;
-});
-const customWebhookState = computed(() => {
-  if (!customForm.webhook_url.trim()) return undefined;
-  try {
-    parseDingtalkWebhookConfig(customForm.webhook_url);
-    return {
-      error: '',
-    };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : 'Webhook 配置无效',
-    };
-  }
 });
 const groupSortFields = [
   'id',
@@ -339,8 +325,8 @@ function openCustom(row?: DingtalkCustomRobotCfg) {
     open_conversation_id: row?.open_conversation_id ?? '',
     robot_code: row?.robot_code ?? '',
     robot_name: row?.robot_name ?? '',
-    secret: '',
-    webhook_url: '',
+    secret_credential_code: row?.secret_credential_code ?? '',
+    webhook_credential_code: row?.webhook_credential_code ?? '',
   });
   drawerOpen.value = true;
 }
@@ -406,22 +392,17 @@ function trimGroup(): DingtalkGroupBotWrite {
   };
 }
 function trimCustom(): DingtalkCustomRobotWrite {
-  const input = customForm.webhook_url.trim();
-  if (!input && !editingId.value) {
-    throw new Error('请填写钉钉群机器人 Webhook URL');
-  }
-  const parsed = input ? parseDingtalkWebhookConfig(input) : undefined;
-  const secret = (customForm.secret ?? '').trim();
-  if (secret && !secret.startsWith('SEC')) {
-    throw new Error('钉钉加签密钥必须以 SEC 开头');
+  const webhookCredentialCode = customForm.webhook_credential_code.trim();
+  if (!webhookCredentialCode && !editingId.value) {
+    throw new Error('请选择钉钉群机器人 Webhook 凭证');
   }
   return {
     keyword: customForm.keyword?.trim() || null,
     open_conversation_id: customForm.open_conversation_id.trim(),
     robot_code: customForm.robot_code.trim(),
     robot_name: customForm.robot_name.trim(),
-    secret,
-    webhook_url: parsed?.webhookUrl ?? '',
+    secret_credential_code: customForm.secret_credential_code?.trim() || '',
+    webhook_credential_code: webhookCredentialCode,
   };
 }
 function trimKnowledge(): DingtalkKnowledgeTargetWrite {
@@ -716,39 +697,31 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
           <FormItem class="full-row">
             <template #label>
               <FieldHelp
-                help="粘贴钉钉提供的完整 URL；系统从查询参数自动识别 access_token，并移除 timestamp、sign 等临时参数。"
-                label="Webhook URL"
+                help="选择保存钉钉机器人 access_token 的密码凭证。"
+                label="Webhook 凭证"
               />
             </template>
-            <Input
-              v-model:value="customForm.webhook_url"
-              :placeholder="
-                editingId
-                  ? '已配置；不修改可留空'
-                  : 'https://oapi.dingtalk.com/robot/send?access_token=...'
-              "
+            <CredentialSelect
+              v-model="customForm.webhook_credential_code"
+              create-kind="password"
+              kind="password"
+              placeholder="选择 access_token 凭证"
+              profile="generic"
             />
-            <div v-if="customWebhookState" class="webhook-status">
-              <Tag :color="customWebhookState.error ? 'error' : 'success'">
-                {{
-                  customWebhookState.error ? '解析失败' : 'access_token 已识别'
-                }}
-              </Tag>
-              <span v-if="customWebhookState.error" class="parse-error">
-                {{ customWebhookState.error }}
-              </span>
-            </div>
           </FormItem>
           <FormItem>
             <template #label>
               <FieldHelp
-                help="启用加签时填写钉钉提供的 SEC 开头密钥；编辑留空表示保留原密钥。"
-                label="加签密钥"
+                help="可选。选择保存 SEC 开头加签密钥的密码凭证。"
+                label="加签密钥凭证"
               />
             </template>
-            <InputPassword
-              v-model:value="customForm.secret"
-              :placeholder="editingId ? '留空表示不修改' : 'SEC...'"
+            <CredentialSelect
+              v-model="customForm.secret_credential_code"
+              create-kind="password"
+              kind="password"
+              placeholder="选择加签密钥凭证"
+              profile="generic"
             />
           </FormItem>
           <FormItem>

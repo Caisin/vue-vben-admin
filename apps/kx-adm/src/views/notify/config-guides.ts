@@ -67,8 +67,8 @@ export const firebasePushGuide: NotifyConfigGuide = {
   steps: [
     '在 Firebase 控制台创建或选择项目，确认 Android / iOS App 已接入 Firebase SDK 并能上报注册 token。',
     '在 Google Cloud 服务账号中创建具备 Firebase Cloud Messaging 发送权限的服务账号，并下载 JSON 密钥。',
-    '将服务账号 JSON 保存为 param 机密参数（例如 secret.notify.firebase.default），配置内容包含 enabled 与 service_account_json。',
-    '在消息通道中选择 Firebase 推送，再从 Provider 配置下拉框选择该机密参数；推送消息 payload 必须携带有效 endpoint_id。',
+    '在凭证中心新增 Firebase 服务账号凭证，类型选择 google_service_account / firebase_fcm，并上传完整 JSON。',
+    '在消息通道中选择 Firebase 推送，再从 Provider 配置下拉框选择该凭证；推送消息 payload 必须携带有效 endpoint_id。',
   ],
   title: 'Firebase Cloud Messaging 推送配置',
 };

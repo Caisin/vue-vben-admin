@@ -18,6 +18,7 @@ export const kindOptions: { label: string; value: CredentialKind }[] = [
   { label: 'SSH Key', value: 'ssh_key' },
   { label: 'TikTok Web', value: 'tt_web' },
   { label: 'Firebase 服务账号', value: 'google_service_account' },
+  { label: '参数 JSON 机密', value: 'json_secret' },
 ];
 
 export const stateOptions: {
@@ -52,6 +53,7 @@ const summaryFieldLabels: Record<string, string> = {
   username: '用户名',
   value: '值',
   service_account_json: 'Service Account JSON',
+  json: 'JSON 机密',
 };
 
 export function kindLabel(kind?: CredentialKind) {
@@ -173,7 +175,6 @@ export function useFormSchema(
 
 export function useColumns(): VxeTableGridColumns<CredentialView> {
   return [
-    { field: 'id', title: 'ID', width: 90 },
     {
       field: 'name',
       fixed: 'left',

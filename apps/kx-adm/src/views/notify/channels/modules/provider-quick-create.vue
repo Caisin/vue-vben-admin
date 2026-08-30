@@ -10,16 +10,13 @@ import {
   Form,
   FormItem,
   Input,
-  InputPassword,
   message,
   Select,
 } from 'antdv-next';
 
 import { CredentialApi } from '#/api/credential';
 import { DingtalkNotifyApi } from '#/api/param/dingtalk-notify';
-import { JsonFileInput } from '#/components/credential';
-
-import { parseDingtalkWebhookConfig } from '../../dingtalk/webhook-config';
+import { CredentialSelect, JsonFileInput } from '#/components/credential';
 
 const props = defineProps<{ channelType: NotifyChannelType }>();
 const emit = defineEmits<{ success: [providerCode: string] }>();
@@ -36,8 +33,8 @@ const customForm = reactive({
   name: '',
   openConversationId: '',
   robotCode: '',
-  secret: '',
-  webhookUrl: '',
+  secretCredentialCode: '',
+  webhookCredentialCode: '',
 });
 const groupForm = reactive({
   appKey: '',
@@ -92,18 +89,13 @@ async function save() {
       });
       providerCode = created.code;
     } else if (isCustomRobot.value) {
-      const parsed = parseDingtalkWebhookConfig(customForm.webhookUrl);
-      const secret = customForm.secret.trim();
-      if (secret && !secret.startsWith('SEC')) {
-        throw new Error('钉钉加签密钥必须以 SEC 开头');
-      }
       const created = await DingtalkNotifyApi.create_custom_robot({
         keyword: customForm.keyword.trim() || null,
         open_conversation_id: customForm.openConversationId.trim(),
         robot_code: customForm.robotCode.trim(),
         robot_name: customForm.name.trim(),
-        secret,
-        webhook_url: parsed.webhookUrl,
+        secret_credential_code: customForm.secretCredentialCode.trim(),
+        webhook_credential_code: customForm.webhookCredentialCode.trim(),
       });
       providerCode = created.robot_code;
     } else if (isGroupBot.value) {
@@ -154,11 +146,23 @@ onMounted(loadApps);
       <FormItem label="显示名称" required>
         <Input v-model:value="customForm.name" />
       </FormItem>
-      <FormItem label="Webhook URL" required>
-        <Input v-model:value="customForm.webhookUrl" />
+      <FormItem label="Webhook 凭证" required>
+        <CredentialSelect
+          v-model="customForm.webhookCredentialCode"
+          create-kind="password"
+          kind="password"
+          placeholder="选择 access_token 凭证"
+          profile="generic"
+        />
       </FormItem>
-      <FormItem label="加签密钥">
-        <InputPassword v-model:value="customForm.secret" placeholder="SEC..." />
+      <FormItem label="加签密钥凭证">
+        <CredentialSelect
+          v-model="customForm.secretCredentialCode"
+          create-kind="password"
+          kind="password"
+          placeholder="选择 SEC 加签密钥凭证"
+          profile="generic"
+        />
       </FormItem>
       <FormItem label="关键字">
         <Input v-model:value="customForm.keyword" />

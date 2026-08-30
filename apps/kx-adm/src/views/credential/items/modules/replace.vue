@@ -31,7 +31,8 @@ const spec = computed(() =>
 );
 
 function fieldComponent(field: CredentialFieldSpec) {
-  if (field.name === 'service_account_json') return 'JsonFileInput';
+  if (field.name === 'service_account_json' || field.name === 'json')
+    return 'JsonFileInput';
   if (
     field.name === 'header_name' &&
     (spec.value?.allowed_headers.length ?? 0) > 0

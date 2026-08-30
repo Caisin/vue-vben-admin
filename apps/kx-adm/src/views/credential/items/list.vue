@@ -172,7 +172,7 @@ const [Grid, gridApi] = useVbenVxeGrid<CredentialView>({
         },
       },
     },
-    rowConfig: { keyField: 'id' },
+    rowConfig: { keyField: 'code' },
     sortConfig: { remote: true },
     toolbarConfig: {
       custom: true,

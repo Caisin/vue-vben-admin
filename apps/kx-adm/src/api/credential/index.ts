@@ -7,6 +7,7 @@ export type CredentialKind =
   | 'google_service_account'
   | 'http_header'
   | 'http_token'
+  | 'json_secret'
   | 'password'
   | 'ssh_key'
   | 'tt_web'
@@ -76,6 +77,7 @@ export type CredentialPayload =
       kind: 'tt_web';
       user_agent?: string;
     }
+  | { json: string; kind: 'json_secret' }
   | {
       kind: 'google_service_account';
       service_account_json: string;
@@ -144,6 +146,9 @@ export function buildCredentialPayload(
       service_account_json: textValue(values, 'service_account_json'),
     };
   }
+  if (kind === 'json_secret') {
+    return { json: textValue(values, 'json'), kind };
+  }
   return {
     kind,
     passphrase: textValue(values, 'passphrase'),
@@ -160,7 +165,6 @@ export interface CredentialView {
   created_at: number | string;
   created_by: number | string;
   expires_at: number | string;
-  id: number | string;
   kind: CredentialKind;
   last_error: string;
   last_used_at: number | string;
