@@ -133,8 +133,7 @@ const executorOptions = computed(() =>
   executors.value
     .filter((item) => item.allow_cron)
     .map((item) => ({
-      disabled: !editingId.value && item.cardinality === 'singleton',
-      label: `${item.display_name}（${item.executor_code}）`,
+      label: `${item.display_name}（${item.executor_code}${item.cardinality === 'singleton' ? '，单例' : ''}）`,
       value: item.executor_code,
     })),
 );
@@ -158,6 +157,13 @@ watch(
   async (executorCode) => {
     if (resettingForm || !executorCode) return;
     form.biz_key = executorCode;
+    if (selectedExecutor.value?.cardinality === 'singleton') {
+      form.instance_key = 'default';
+      form.schedule_code = `user.${executorCode.replaceAll('.', '-')}`;
+    } else {
+      form.instance_key = '';
+      form.schedule_code = '';
+    }
     form.params_version = selectedExecutor.value?.params_version ?? 1;
     await loadExecutorSchema(executorCode, {});
     resetPayloadForm({});
@@ -252,6 +258,10 @@ async function resetForm(row?: TaskSchedule) {
   const detail = row ? await TaskScheduleApi.detail(row.id) : undefined;
   const params = detail?.params ?? {};
   applyDetail(detail);
+  if (!detail && selectedExecutor.value?.cardinality === 'singleton') {
+    form.instance_key = 'default';
+    form.schedule_code = `user.${form.executor_code.replaceAll('.', '-')}`;
+  }
   originalParamsSignature.value = JSON.stringify(params);
   try {
     if (form.executor_code) {
@@ -449,14 +459,22 @@ async function openRuns(row: TaskSchedule) {
       <label>
         调度编码<Input
           v-model:value="form.schedule_code"
-          :disabled="Boolean(editingId)"
-          placeholder="留空由后端生成"
+          :disabled="
+            Boolean(editingId) || selectedExecutor?.cardinality === 'singleton'
+          "
+          :placeholder="
+            selectedExecutor?.cardinality === 'singleton'
+              ? '单例调度由后端固定生成'
+              : '留空由后端生成'
+          "
         />
       </label>
       <label>
         实例键<Input
           v-model:value="form.instance_key"
-          :disabled="Boolean(editingId)"
+          :disabled="
+            Boolean(editingId) || selectedExecutor?.cardinality === 'singleton'
+          "
           placeholder="多实例调度用于区分参数实例"
         />
       </label>
