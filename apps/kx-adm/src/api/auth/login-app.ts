@@ -34,6 +34,7 @@ export interface DingtalkAppCreate {
 
 export interface DingtalkAppUpdate {
   app_name: string;
+  credential_code: string;
   enabled: boolean;
   is_def: boolean;
   remark: string;

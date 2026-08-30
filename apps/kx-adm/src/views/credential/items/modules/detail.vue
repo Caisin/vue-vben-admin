@@ -223,7 +223,7 @@ function closeAndEmit(
               v-if="hasAccessByCodes(['credential:replace'])"
               @click="closeAndEmit('replace')"
             >
-              替换材料
+              更换类型与材料
             </Button>
             <Button
               v-if="hasAccessByCodes(['credential:reveal'])"

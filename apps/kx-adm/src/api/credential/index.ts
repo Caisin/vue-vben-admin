@@ -225,8 +225,10 @@ export interface CredentialUpdateWrite {
 
 export interface CredentialReplaceWrite {
   expires_at?: number | string;
+  kind: CredentialKind;
   not_before?: number | string;
   payload: CredentialPayload;
+  profile: string;
 }
 
 export interface CredentialRetireWrite {

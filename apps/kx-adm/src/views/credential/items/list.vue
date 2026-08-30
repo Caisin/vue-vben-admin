@@ -318,7 +318,7 @@ function retire(row: CredentialView) {
             type="link"
             @click.stop="openReplace(row)"
           >
-            <RotateCw class="size-4" />替换
+            <RotateCw class="size-4" />更换
           </Button>
           <Dropdown>
             <Button size="small" title="更多操作" type="text">

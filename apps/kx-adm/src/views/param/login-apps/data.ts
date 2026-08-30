@@ -84,6 +84,13 @@ export function useDingtalkColumns(
       width: 90,
     },
     { field: 'remark', minWidth: 220, title: '备注' },
+    {
+      field: 'operation',
+      fixed: 'right',
+      slots: { default: 'operation' },
+      title: '操作',
+      width: 80,
+    },
   ];
 }
 

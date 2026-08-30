@@ -15,7 +15,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { Page, useVbenModal } from '@vben/common-ui';
-import { Plus, Settings } from '@vben/icons';
+import { IconifyIcon, Plus, Settings } from '@vben/icons';
 
 import {
   Alert,
@@ -27,6 +27,7 @@ import {
   TabPane,
   Tabs,
   Tag,
+  Tooltip,
 } from 'antdv-next';
 
 import { useVbenForm } from '#/adapter/form';
@@ -74,12 +75,6 @@ const [DingtalkCallback, dingtalkCallbackApi] = useVbenModal({
 const appContextMenuItems: MenuProps['items'] = [
   { danger: true, key: 'delete', label: '删除' },
 ];
-const dingtalkRowContextMenu = useVxeRowContextMenu<DingtalkAppConfig>(
-  appContextMenuItems,
-  (key, row) => {
-    if (key === 'delete') confirmDeleteDingtalk(row);
-  },
-);
 const wechatRowContextMenu = useVxeRowContextMenu<WechatAppConfig>(
   appContextMenuItems,
   (key, row) => {
@@ -247,10 +242,9 @@ const [DingtalkModal, dingtalkModalApi] = useVbenModal({
     try {
       const values = await dingtalkFormApi.getValues();
       if (editingDingtalk.value) {
-        const { credential_code: _credential_code, ...data } = values;
         await LoginAppApi.dingtalk_update(
           editingDingtalk.value.app_key,
-          data as DingtalkAppUpdate,
+          values as DingtalkAppUpdate,
         );
       } else {
         if (!String(values.credential_code ?? '').trim()) {
@@ -377,6 +371,7 @@ async function onDingtalkEnabledChange(
 ) {
   await LoginAppApi.dingtalk_update(row.app_key, {
     app_name: row.app_name,
+    credential_code: row.credential_code,
     enabled,
     is_def: row.is_def,
     remark: row.remark,
@@ -404,9 +399,6 @@ async function openDingtalkCreate() {
   dingtalkModalApi.open();
   await nextTick();
   await dingtalkFormApi.reset();
-  await dingtalkFormApi.updateSchema([
-    { componentProps: { disabled: false }, fieldName: 'credential_code' },
-  ]);
 }
 
 async function openDingtalkEdit(row: DingtalkAppConfig) {
@@ -416,9 +408,6 @@ async function openDingtalkEdit(row: DingtalkAppConfig) {
   await dingtalkFormApi.reset();
   const detail = await LoginAppApi.dingtalk_detail(row.app_key);
   await dingtalkFormApi.setValues(detail);
-  await dingtalkFormApi.updateSchema([
-    { componentProps: { disabled: true }, fieldName: 'credential_code' },
-  ]);
 }
 
 async function deleteDingtalk(row: DingtalkAppConfig) {
@@ -480,7 +469,6 @@ function confirmDeleteWechat(row: WechatAppConfig) {
 }
 
 function bindContextMenus() {
-  void dingtalkRowContextMenu.bind(dingtalkGridApi.grid);
   void wechatRowContextMenu.bind(wechatGridApi.grid);
 }
 
@@ -511,7 +499,7 @@ watch(activeTab, async () => {
         class="mb-3"
         :message="
           editingDingtalk
-            ? '应用凭证与 AppKey 一一对应，创建后不可更换；如需轮换 AppSecret，请在凭证中心替换凭证材料。'
+            ? '可以更换应用凭证，但新凭证中的 AppKey 必须与当前应用一致。若需更换 AppKey，请删除后重建。'
             : '请选择包含 AppKey / AppSecret 的应用凭证。'
         "
         show-icon
@@ -561,17 +549,6 @@ watch(activeTab, async () => {
           </template>
         </Alert>
         <DingtalkGrid table-title="钉钉应用">
-          <Dropdown
-            :menu="dingtalkRowContextMenu.menu.value"
-            :open="dingtalkRowContextMenu.open.value"
-            :trigger="['click']"
-            @open-change="dingtalkRowContextMenu.onOpenChange"
-          >
-            <span
-              class="fixed size-0 overflow-hidden"
-              :style="dingtalkRowContextMenu.anchorStyle.value"
-            ></span>
-          </Dropdown>
           <template #dingtalkNameCell="{ row }">
             <div class="flex min-w-0 items-center gap-2">
               <Button
@@ -583,6 +560,19 @@ watch(activeTab, async () => {
                 {{ row.app_name }}
               </Button>
             </div>
+          </template>
+          <template #operation="{ row }">
+            <Tooltip title="删除钉钉应用">
+              <Button
+                aria-label="删除钉钉应用"
+                danger
+                size="small"
+                type="text"
+                @click.stop="confirmDeleteDingtalk(row)"
+              >
+                <IconifyIcon class="size-4" icon="lucide:trash-2" />
+              </Button>
+            </Tooltip>
           </template>
           <template #toolbar-tools>
             <Space wrap size="small">

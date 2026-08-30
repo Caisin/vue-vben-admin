@@ -9,6 +9,8 @@ import type {
 
 import { Times } from '#/times';
 
+import { kindLabel } from './credential-kind-options';
+
 export {
   credentialKindTabs,
   kindLabel,
@@ -85,11 +87,16 @@ export function expiryInfo(
   return { color: 'success', days, label: `${days} 天后过期` } as const;
 }
 
-export function profileOptions(profiles: CredentialProfileSpec[]) {
-  return profiles.map((item) => ({
-    label: item.label,
-    value: `${item.kind}:${item.profile}`,
-  }));
+export function profileOptions(
+  profiles: CredentialProfileSpec[],
+  kind?: CredentialKind,
+) {
+  return profiles
+    .filter((item) => !kind || item.kind === kind)
+    .map((item) => ({
+      label: kind ? item.label : `${kindLabel(item.kind)} / ${item.label}`,
+      value: `${item.kind}:${item.profile}`,
+    }));
 }
 
 export function profileLabel(
