@@ -16,11 +16,11 @@ import type {
 } from '#/api/notify';
 import type { JsonValue } from '#/api/request';
 
-import { computed, h, ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useVbenModal } from '@vben/common-ui';
-import { ChevronDown, ExternalLink, RotateCw } from '@vben/icons';
+import { ExternalLink, RotateCw } from '@vben/icons';
 
 import { Alert, Button, message, Space, Tooltip } from 'antdv-next';
 
@@ -40,7 +40,6 @@ interface NotifySelectOption<T = number | string> {
 }
 
 interface NotifyTestFormValues {
-  advanced_open?: boolean;
   at_mobiles?: string;
   at_user_ids?: string;
   channel_id?: number | string;
@@ -49,7 +48,6 @@ interface NotifyTestFormValues {
   content_type: string;
   delivery_section?: unknown;
   endpoint_id?: number | string;
-  extension_payload?: unknown;
   fallback_to_user_ids?: boolean;
   img_url?: string;
   is_at_all?: boolean;
@@ -73,7 +71,6 @@ const sourceMessage = ref<NotifyMessage>();
 const sending = ref(false);
 const sendError = ref('');
 const optionsLoading = ref(false);
-const advancedOpen = ref(false);
 const selectedTargetKind = ref<NotifyTestTargetKind>('channel_default');
 const router = useRouter();
 
@@ -328,43 +325,6 @@ const schema: VbenFormSchema<NotifyTestFormValues>[] = [
     label: '消息内容',
     rules: 'required',
   },
-  {
-    component: 'DefaultButton',
-    componentProps: () => ({
-      block: true,
-      onClick: toggleAdvanced,
-    }),
-    defaultValue: false,
-    fieldName: 'advanced_open',
-    formItemClass: 'col-span-full',
-    hideLabel: true,
-    renderComponentContent: () => ({
-      default: () =>
-        advancedOpen.value ? '收起高级参数' : '展开高级参数（可选）',
-      icon: () =>
-        h(ChevronDown, {
-          class: advancedOpen.value ? 'rotate-180 transition-transform' : '',
-        }),
-    }),
-  },
-  {
-    component: 'JsonEditor',
-    componentProps: {
-      maxHeight: '280px',
-      minHeight: '140px',
-      valueMode: 'text',
-    },
-    defaultValue: '{}',
-    dependencies: {
-      show: (values) => Boolean(values.advanced_open),
-      triggerFields: ['advanced_open'],
-    },
-    fieldName: 'extension_payload',
-    formItemClass: 'col-span-full',
-    help: '仅用于 Push 自定义 data 或 provider 的未知业务键，通常保持 {}。不得填写 token、secret、Webhook；固定参数请使用上方字段。',
-    label: '扩展参数',
-    rules: 'required',
-  },
 ];
 
 const [Form, formApi] = useVbenForm<NotifyTestFormValues>({
@@ -399,11 +359,6 @@ function onTargetKindChange(value: NotifyTestTargetKind) {
   selectedTargetKind.value = value;
 }
 
-async function toggleAdvanced() {
-  advancedOpen.value = !advancedOpen.value;
-  await formApi.setFieldValue('advanced_open', advancedOpen.value);
-}
-
 async function onChannelChange(value?: number | string) {
   selectedChannelId.value = value;
   const channel = channelRows.value.find(
@@ -418,7 +373,6 @@ async function onChannelChange(value?: number | string) {
     content_type:
       contentTypeOptionsForChannel(channel?.channel_type)[0]?.value ?? 'text',
     endpoint_id: undefined,
-    extension_payload: '{}',
     fallback_to_user_ids: false,
     img_url: '',
     is_at_all: false,
@@ -536,7 +490,6 @@ async function initializeForm(data: NotifyMessageTestModalData) {
   endpointRows.value = data.recipientEndpoints;
   sourceMessage.value = data.message;
   selectedChannelId.value = undefined;
-  advancedOpen.value = false;
   sendError.value = '';
   await formApi.reset();
   if (data.message) {

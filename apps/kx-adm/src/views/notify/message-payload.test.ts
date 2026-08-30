@@ -7,7 +7,7 @@ import {
 } from './message-payload';
 
 describe('notify message payload form helpers', () => {
-  it('splits structured fields from safe extension data', () => {
+  it('reads supported fields without exposing raw payload data', () => {
     expect(
       splitNotifyMessagePayload({
         at_mobiles: ['138****0000'],
@@ -19,7 +19,6 @@ describe('notify message payload form helpers', () => {
         url: 'https://example.test/detail',
       }),
     ).toEqual({
-      extension_payload: '{\n  "custom": {\n    "source": "admin"\n  }\n}',
       fallback_to_user_ids: true,
       img_url: undefined,
       pic_url: undefined,
@@ -28,12 +27,10 @@ describe('notify message payload form helpers', () => {
     });
   });
 
-  it('merges extension data without allowing reserved field overrides', () => {
+  it('builds link payload from named fields only', () => {
     expect(
       buildNotifyMessagePayload(
         {
-          extension_payload:
-            '{"url":"https://invalid.test","recipient":"leak","secret":"must-not-save","custom":true}',
           pic_url: ' https://example.test/card.png ',
           url: ' https://example.test/detail ',
         },
@@ -41,17 +38,15 @@ describe('notify message payload form helpers', () => {
         'link',
       ),
     ).toEqual({
-      custom: true,
       pic_url: 'https://example.test/card.png',
       url: 'https://example.test/detail',
     });
   });
 
-  it('keeps push custom data and adds the structured image URL', () => {
+  it('builds push payload from the named image field', () => {
     expect(
       buildNotifyMessagePayload(
         {
-          extension_payload: '{"route":"orders","order_id":"9007199254740993"}',
           img_url: 'https://example.test/push.png',
         },
         'push',
@@ -59,8 +54,6 @@ describe('notify message payload form helpers', () => {
       ),
     ).toEqual({
       img_url: 'https://example.test/push.png',
-      order_id: '9007199254740993',
-      route: 'orders',
     });
   });
 
@@ -68,7 +61,6 @@ describe('notify message payload form helpers', () => {
     expect(
       buildNotifyMessagePayload(
         {
-          extension_payload: '{}',
           fallback_to_user_ids: true,
           is_at_all: true,
           target_kind: 'ding_talk_at',

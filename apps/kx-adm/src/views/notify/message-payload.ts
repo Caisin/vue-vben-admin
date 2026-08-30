@@ -1,15 +1,9 @@
 import type { NotifyChannelType, NotifyTestTargetKind } from '#/api/notify';
 import type { JsonValue } from '#/api/request';
 
-import {
-  formatJsonEditorValue,
-  parseJsonEditorValue,
-} from '#/views/_shared/crud-page';
-
 import { editableNotifyPayloadObject } from './editable-payload';
 
 export interface NotifyMessagePayloadFormValues {
-  extension_payload?: unknown;
   fallback_to_user_ids?: boolean;
   img_url?: string;
   is_at_all?: boolean;
@@ -18,29 +12,6 @@ export interface NotifyMessagePayloadFormValues {
   target_kind?: NotifyTestTargetKind;
   url?: string;
 }
-
-const structuredKeys = [
-  'fallback_to_user_ids',
-  'img_url',
-  'pic_url',
-  'single_title',
-  'url',
-] as const;
-
-const serverControlledKeys = [
-  'at_mobiles',
-  'at_user_ids',
-  'at_userids',
-  'endpoint_id',
-  'is_at_all',
-  'recipient',
-  'test',
-] as const;
-
-const reservedKeys = new Set<string>([
-  ...structuredKeys,
-  ...serverControlledKeys,
-]);
 
 function optionalString(value: JsonValue | undefined) {
   return typeof value === 'string' ? value : undefined;
@@ -51,27 +22,17 @@ function trimmed(value?: string) {
   return result || undefined;
 }
 
-function withoutReservedKeys(value: Record<string, JsonValue>) {
-  return Object.fromEntries(
-    Object.entries(value).filter(([key]) => !reservedKeys.has(key)),
-  ) as Record<string, JsonValue>;
-}
-
 export function splitNotifyMessagePayload(
   value: JsonValue,
 ): NotifyMessagePayloadFormValues {
   const payload = editableNotifyPayloadObject(value);
-  const result: NotifyMessagePayloadFormValues = {
+  return {
     fallback_to_user_ids: payload.fallback_to_user_ids === true,
     img_url: optionalString(payload.img_url),
     pic_url: optionalString(payload.pic_url),
     single_title: optionalString(payload.single_title),
     url: optionalString(payload.url),
   };
-  result.extension_payload = formatJsonEditorValue(
-    withoutReservedKeys(payload),
-  );
-  return result;
 }
 
 export function buildNotifyMessagePayload(
@@ -79,11 +40,7 @@ export function buildNotifyMessagePayload(
   channelType: NotifyChannelType | undefined,
   contentType: string,
 ): Record<string, JsonValue> {
-  const parsed = parseJsonEditorValue(values.extension_payload ?? '{}');
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error('扩展参数必须是 JSON object');
-  }
-  const payload = withoutReservedKeys(editableNotifyPayloadObject(parsed));
+  const payload: Record<string, JsonValue> = {};
 
   if (contentType === 'link' || contentType === 'action_card') {
     const url = trimmed(values.url);
