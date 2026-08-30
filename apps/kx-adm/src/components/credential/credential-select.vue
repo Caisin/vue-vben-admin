@@ -62,12 +62,15 @@ const quickCreating = ref(false);
 const credentials = ref<CredentialView[]>([]);
 const quickForm = reactive({
   accessKeyId: '',
+  accessToken: '',
   cookie: '',
+  keyword: '',
   name: '',
   passphrase: '',
   password: '',
   privateKey: '',
   serviceAccountJson: '',
+  secret: '',
   secretAccessKey: '',
   userAgent: '',
   username: '',
@@ -141,9 +144,12 @@ const quickPayloadType = computed(() => {
     return 'access_key';
   if (
     kind === 'password' ||
-    ['dingtalk', 'douyin', 'wechat', 'wechat_merchant'].includes(kind ?? '')
+    (['dingtalk', 'douyin', 'wechat', 'wechat_merchant'].includes(kind ?? '') &&
+      !(kind === 'dingtalk' && profile === 'custom_robot'))
   )
     return 'password';
+  if (kind === 'dingtalk' && profile === 'custom_robot')
+    return 'dingtalk_robot';
   return kind;
 });
 
@@ -158,6 +164,14 @@ function quickPayload(kind: CredentialKind): CredentialPayload | undefined {
   }
   if (quickPayloadType.value === 'password') {
     return { kind: 'password', password: quickForm.password };
+  }
+  if (quickPayloadType.value === 'dingtalk_robot') {
+    return {
+      access_token: quickForm.accessToken,
+      kind: 'dingtalk_robot',
+      keyword: quickForm.keyword,
+      secret: quickForm.secret,
+    };
   }
   if (kind === 'username_password') {
     return {
@@ -193,12 +207,15 @@ function quickPayload(kind: CredentialKind): CredentialPayload | undefined {
 function openQuickCreate() {
   Object.assign(quickForm, {
     accessKeyId: '',
+    accessToken: '',
     cookie: '',
+    keyword: '',
     name: '',
     passphrase: '',
     password: '',
     privateKey: '',
     serviceAccountJson: '',
+    secret: '',
     secretAccessKey: '',
     userAgent: '',
     username: '',
@@ -301,6 +318,27 @@ defineExpose({ reload: loadCredentials });
         >
           <InputPassword v-model:value="quickForm.password" />
         </FormItem>
+        <template v-else-if="quickPayloadType === 'dingtalk_robot'">
+          <FormItem label="Access Token 或 Webhook 地址" required>
+            <TextArea
+              v-model:value="quickForm.accessToken"
+              :rows="3"
+              placeholder="可粘贴纯 access_token，或 https://oapi.dingtalk.com/robot/send?access_token=..."
+            />
+          </FormItem>
+          <FormItem label="加签密钥">
+            <InputPassword
+              v-model:value="quickForm.secret"
+              placeholder="选填；未启用加签可留空"
+            />
+          </FormItem>
+          <FormItem label="关键词">
+            <Input
+              v-model:value="quickForm.keyword"
+              placeholder="选填；未启用关键词安全可留空"
+            />
+          </FormItem>
+        </template>
         <template v-else-if="quickKind === 'username_password'">
           <FormItem label="用户名" required>
             <Input v-model:value="quickForm.username" />

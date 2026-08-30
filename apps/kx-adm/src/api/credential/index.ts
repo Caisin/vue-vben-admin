@@ -59,6 +59,12 @@ export type CredentialPayload =
       session_token?: string;
     }
   | {
+      access_token: string;
+      keyword?: string;
+      kind: 'dingtalk_robot';
+      secret?: string;
+    }
+  | {
       base_url: string;
       header_name: string;
       kind: 'http_header';
@@ -131,6 +137,14 @@ export function buildCredentialPayload(
   }
   if (kind === 'password') {
     return { kind, password: textValue(values, 'password') };
+  }
+  if (kind === 'dingtalk' && profile === 'custom_robot') {
+    return {
+      access_token: textValue(values, 'access_token'),
+      kind: 'dingtalk_robot',
+      keyword: textValue(values, 'keyword'),
+      secret: textValue(values, 'secret'),
+    };
   }
   if (['dingtalk', 'douyin', 'wechat', 'wechat_merchant'].includes(kind)) {
     return { kind: 'password', password: textValue(values, 'password') };

@@ -27,7 +27,6 @@ import {
   Space,
   TabPane,
   Tabs,
-  Tag,
   Tooltip,
   TreeSelect,
 } from 'antdv-next';
@@ -79,12 +78,10 @@ const groupForm = reactive<DingtalkGroupBotWrite>({
   robot_code: '',
 });
 const customForm = reactive<DingtalkCustomRobotWrite>({
-  keyword: null,
+  credential_code: '',
   open_conversation_id: '',
   robot_code: '',
   robot_name: '',
-  secret_credential_code: '',
-  webhook_credential_code: '',
 });
 const knowledgeForm = reactive<DingtalkKnowledgeTargetWrite>({
   app_key: '',
@@ -321,12 +318,10 @@ function openCustom(row?: DingtalkCustomRobotCfg) {
   formKind.value = 'custom';
   editingId.value = row?.id;
   Object.assign(customForm, {
-    keyword: row?.keyword ?? null,
+    credential_code: row?.credential_code ?? '',
     open_conversation_id: row?.open_conversation_id ?? '',
     robot_code: row?.robot_code ?? '',
     robot_name: row?.robot_name ?? '',
-    secret_credential_code: row?.secret_credential_code ?? '',
-    webhook_credential_code: row?.webhook_credential_code ?? '',
   });
   drawerOpen.value = true;
 }
@@ -392,17 +387,15 @@ function trimGroup(): DingtalkGroupBotWrite {
   };
 }
 function trimCustom(): DingtalkCustomRobotWrite {
-  const webhookCredentialCode = customForm.webhook_credential_code.trim();
-  if (!webhookCredentialCode && !editingId.value) {
-    throw new Error('请选择钉钉群机器人 Webhook 凭证');
+  const credentialCode = customForm.credential_code.trim();
+  if (!credentialCode) {
+    throw new Error('请选择钉钉自定义机器人凭证');
   }
   return {
-    keyword: customForm.keyword?.trim() || null,
+    credential_code: credentialCode,
     open_conversation_id: customForm.open_conversation_id.trim(),
     robot_code: customForm.robot_code.trim(),
     robot_name: customForm.robot_name.trim(),
-    secret_credential_code: customForm.secret_credential_code?.trim() || '',
-    webhook_credential_code: webhookCredentialCode,
   };
 }
 function trimKnowledge(): DingtalkKnowledgeTargetWrite {
@@ -492,11 +485,9 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
               {{ row.robot_name }}
             </Button>
           </template>
-          <template #secretConfigured="{ row }">
+          <template #credentialCode="{ row }">
             <Space>
-              <Tag :color="row.secret_configured ? 'success' : 'default'">
-                {{ row.secret_configured ? '已配置' : '未配置' }}
-              </Tag>
+              <span>{{ row.credential_code || '-' }}</span>
               <Button
                 v-access:code="'notify:dingtalk-provider:reveal'"
                 size="small"
@@ -703,41 +694,17 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
           <FormItem class="full-row">
             <template #label>
               <FieldHelp
-                help="选择保存钉钉机器人 access_token 的密码凭证。"
-                label="Webhook 凭证"
+                help="选择保存 access_token、可选加签密钥和可选关键词的钉钉自定义机器人凭证。"
+                label="机器人凭证"
               />
             </template>
             <CredentialSelect
-              v-model="customForm.webhook_credential_code"
+              v-model="customForm.credential_code"
               create-kind="dingtalk"
               kind="dingtalk"
-              placeholder="选择 access_token 凭证"
-              profile="webhook_access_token"
+              placeholder="选择钉钉自定义机器人凭证"
+              profile="custom_robot"
             />
-          </FormItem>
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="可选。选择保存 SEC 开头加签密钥的密码凭证。"
-                label="加签密钥凭证"
-              />
-            </template>
-            <CredentialSelect
-              v-model="customForm.secret_credential_code"
-              create-kind="dingtalk"
-              kind="dingtalk"
-              placeholder="选择加签密钥凭证"
-              profile="webhook_sign_secret"
-            />
-          </FormItem>
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="机器人启用关键字安全校验时填写，发送正文必须包含该关键字。"
-                label="关键字提醒"
-              />
-            </template>
-            <Input v-model:value="customForm.keyword" />
           </FormItem>
         </div>
         <div v-else class="form-grid">

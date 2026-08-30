@@ -37,13 +37,13 @@ describe('凭证中心类型分类', () => {
             allowed_headers: [],
             fields: [],
             kind: 'dingtalk',
-            label: '钉钉机器人 Access Token',
-            profile: 'webhook_access_token',
+            label: '钉钉自定义机器人',
+            profile: 'custom_robot',
           },
         ],
         'dingtalk',
-        'webhook_access_token',
+        'custom_robot',
       ),
-    ).toBe('钉钉机器人 Access Token');
+    ).toBe('钉钉自定义机器人');
   });
 });

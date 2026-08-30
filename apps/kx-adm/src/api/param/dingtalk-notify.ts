@@ -96,26 +96,21 @@ export interface DingtalkGroupBotQuery extends PageQuery {
 }
 
 export interface DingtalkCustomRobotCfg {
+  credential_code: string;
+  credential_configured: boolean;
   created_at: number | string;
   id: number | string;
-  keyword?: null | string;
   open_conversation_id?: null | string;
   robot_code: string;
   robot_name: string;
-  secret_configured: boolean;
-  secret_credential_code: string;
   updated_at: number | string;
-  webhook_configured: boolean;
-  webhook_credential_code: string;
 }
 
 export interface DingtalkCustomRobotWrite {
-  keyword?: null | string;
+  credential_code: string;
   open_conversation_id: string;
   robot_code: string;
   robot_name: string;
-  secret_credential_code?: string;
-  webhook_credential_code: string;
 }
 
 export interface DingtalkCustomRobotSecretView {

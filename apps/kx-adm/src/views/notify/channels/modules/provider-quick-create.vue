@@ -29,12 +29,10 @@ const firebaseForm = reactive({
   serviceAccountJson: '',
 });
 const customForm = reactive({
-  keyword: '',
+  credentialCode: '',
   name: '',
   openConversationId: '',
   robotCode: '',
-  secretCredentialCode: '',
-  webhookCredentialCode: '',
 });
 const groupForm = reactive({
   appKey: '',
@@ -90,12 +88,10 @@ async function save() {
       providerCode = created.code;
     } else if (isCustomRobot.value) {
       const created = await DingtalkNotifyApi.create_custom_robot({
-        keyword: customForm.keyword.trim() || null,
+        credential_code: customForm.credentialCode.trim(),
         open_conversation_id: customForm.openConversationId.trim(),
         robot_code: customForm.robotCode.trim(),
         robot_name: customForm.name.trim(),
-        secret_credential_code: customForm.secretCredentialCode.trim(),
-        webhook_credential_code: customForm.webhookCredentialCode.trim(),
       });
       providerCode = created.robot_code;
     } else if (isGroupBot.value) {
@@ -149,26 +145,14 @@ onMounted(loadApps);
       <FormItem label="显示名称" required>
         <Input v-model:value="customForm.name" />
       </FormItem>
-      <FormItem label="Webhook 凭证" required>
+      <FormItem label="机器人凭证" required>
         <CredentialSelect
-          v-model="customForm.webhookCredentialCode"
+          v-model="customForm.credentialCode"
           create-kind="dingtalk"
           kind="dingtalk"
-          placeholder="选择 access_token 凭证"
-          profile="webhook_access_token"
+          placeholder="选择钉钉自定义机器人凭证"
+          profile="custom_robot"
         />
-      </FormItem>
-      <FormItem label="加签密钥凭证">
-        <CredentialSelect
-          v-model="customForm.secretCredentialCode"
-          create-kind="dingtalk"
-          kind="dingtalk"
-          placeholder="选择 SEC 加签密钥凭证"
-          profile="webhook_sign_secret"
-        />
-      </FormItem>
-      <FormItem label="关键字">
-        <Input v-model:value="customForm.keyword" />
       </FormItem>
       <FormItem label="群会话 ID">
         <Input v-model:value="customForm.openConversationId" />

@@ -34,6 +34,7 @@ export const riskOptions = [
 
 const summaryFieldLabels: Record<string, string> = {
   access_key_id: 'Access Key',
+  access_token: 'Access Token',
   base_url: '地址',
   cookie: 'Cookie',
   header_name: '请求头',
@@ -42,12 +43,14 @@ const summaryFieldLabels: Record<string, string> = {
   private_key: '私钥',
   public_key: '公钥',
   scheme: '认证方案',
+  secret: '加签密钥',
   secret_access_key: 'Secret',
   session_token: 'Session Token',
   token: 'Token',
   user_agent: 'User-Agent',
   username: '用户名',
   value: '值',
+  keyword: '关键词',
   service_account_json: 'Service Account JSON',
   json: 'JSON 机密',
 };
