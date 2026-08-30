@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import type { Dayjs } from 'dayjs';
+
 import type { NotifyChannelOption } from './data';
 
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
@@ -13,13 +15,15 @@ import type {
 import type { JsonValue } from '#/api/request';
 
 import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
-import { Plus } from '@vben/icons';
+import { ExternalLink, Plus, RotateCw } from '@vben/icons';
 
 import {
   Form as AForm,
   Button,
+  DatePicker,
   Descriptions,
   DescriptionsItem,
   FormItem,
@@ -29,8 +33,12 @@ import {
   Popconfirm,
   Select,
   Space,
+  TabPane,
+  Tabs,
   Tag,
+  Tooltip,
 } from 'antdv-next';
+import dayjs from 'dayjs';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { NotifyChannelApi, NotifyMessageApi } from '#/api/notify';
@@ -62,6 +70,7 @@ const props = withDefaults(
   }>(),
   { channel: undefined, embedded: false },
 );
+const router = useRouter();
 
 const rootComponent = computed(() => (props.embedded ? 'div' : Page));
 const rootProps = computed(() =>
@@ -84,13 +93,15 @@ const messageSortFields = [
 ];
 const drawerOpen = ref(false);
 const detailOpen = ref(false);
-const attemptsOpen = ref(false);
 const saving = ref(false);
 const composeTitle = ref('手动入队消息');
+const composeTab = ref<'content' | 'delivery'>('content');
+const detailTab = ref<'attempts' | 'overview'>('overview');
 const currentMessage = ref<NotifyMessage>();
 const attempts = ref<NotifyDeliveryAttempt[]>([]);
 const attemptsLoading = ref(false);
 const channelRows = shallowRef<NotifyChannel[]>([]);
+const channelLoading = ref(false);
 const payloadText = ref('{}');
 const form = reactive<NotifyMessageEnqueue>({
   biz_id: '',
@@ -107,6 +118,15 @@ const form = reactive<NotifyMessageEnqueue>({
 });
 
 const payloadPlaceholder = '{"url":"https://..."}';
+const notBefore = computed<Dayjs | undefined>({
+  get: () =>
+    form.not_before && form.not_before > 0
+      ? dayjs.unix(Number(form.not_before))
+      : undefined,
+  set: (value) => {
+    form.not_before = value ? value.unix() : null;
+  },
+});
 const contentTypeOptions = [
   { label: '文本', value: 'text' },
   { label: 'Markdown', value: 'markdown' },
@@ -192,10 +212,17 @@ const [Grid, gridApi] = useVbenVxeGrid<NotifyMessage>({
   } as VxeTableGridOptions<NotifyMessage>,
 });
 
-onMounted(async () => {
+async function loadChannels() {
   if (props.embedded) return;
-  channelRows.value = await NotifyChannelApi.all();
-});
+  channelLoading.value = true;
+  try {
+    channelRows.value = await NotifyChannelApi.all();
+  } finally {
+    channelLoading.value = false;
+  }
+}
+
+onMounted(loadChannels);
 
 watch(
   () => props.channel?.id,
@@ -224,6 +251,7 @@ function openCreate() {
   });
   payloadText.value = '{}';
   composeTitle.value = '手动入队消息';
+  composeTab.value = 'content';
   drawerOpen.value = true;
 }
 
@@ -245,6 +273,7 @@ function openResend(row: NotifyMessage) {
   });
   payloadText.value = jsonText(payload);
   composeTitle.value = `编辑并重发：${row.subject}`;
+  composeTab.value = 'content';
   drawerOpen.value = true;
 }
 function buildPayload(): NotifyMessageEnqueue {
@@ -308,14 +337,22 @@ async function cancel(row: NotifyMessage) {
 }
 function openDetail(row: NotifyMessage) {
   currentMessage.value = row;
+  detailTab.value = 'overview';
   detailOpen.value = true;
 }
 async function openAttempts(row: NotifyMessage) {
   currentMessage.value = row;
-  attemptsOpen.value = true;
+  detailTab.value = 'attempts';
+  attempts.value = [];
+  detailOpen.value = true;
+  await loadAttempts();
+}
+
+async function loadAttempts() {
+  if (!currentMessage.value || attempts.value.length > 0) return;
   attemptsLoading.value = true;
   try {
-    const result = await NotifyMessageApi.attempts(row.id, {
+    const result = await NotifyMessageApi.attempts(currentMessage.value.id, {
       page: 1,
       size: 50,
     });
@@ -324,6 +361,17 @@ async function openAttempts(row: NotifyMessage) {
     attemptsLoading.value = false;
   }
 }
+
+watch(detailTab, (tab) => {
+  if (detailOpen.value && tab === 'attempts') void loadAttempts();
+});
+
+watch(detailOpen, (open) => {
+  if (!open) {
+    attempts.value = [];
+    currentMessage.value = undefined;
+  }
+});
 function jsonText(value: unknown) {
   return JSON.stringify(value ?? {}, null, 2);
 }
@@ -336,7 +384,19 @@ function channelLabel(row: NotifyMessage) {
 }
 
 async function refresh() {
+  await loadChannels();
   await gridApi.reload();
+}
+
+function openChannelManagement() {
+  const href = router.resolve({ path: '/notify/channels' }).href;
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
+async function refreshChannels() {
+  await loadChannels();
+  await gridApi.reload();
+  message.success('消息通道列表已刷新');
 }
 
 defineExpose({ refresh });
@@ -346,16 +406,38 @@ defineExpose({ refresh });
   <component :is="rootComponent" v-bind="rootProps">
     <Grid class="management-grid" :table-title="tableTitle">
       <template #toolbar-tools>
-        <Button
-          v-access:code="'notify:message:write'"
-          :disabled="
-            props.embedded ? !props.channel : channelOptions.length === 0
-          "
-          type="primary"
-          @click="openCreate"
-        >
-          <template #icon><Plus /></template>手动入队
-        </Button>
+        <Space size="small">
+          <Button
+            v-if="!props.embedded"
+            size="small"
+            type="link"
+            @click="openChannelManagement"
+          >
+            <template #icon><ExternalLink /></template>
+            维护通道
+          </Button>
+          <Tooltip v-if="!props.embedded" title="刷新消息通道选项">
+            <Button
+              aria-label="刷新消息通道选项"
+              size="small"
+              type="text"
+              :loading="channelLoading"
+              @click="refreshChannels"
+            >
+              <template #icon><RotateCw /></template>
+            </Button>
+          </Tooltip>
+          <Button
+            v-access:code="'notify:message:write'"
+            :disabled="
+              props.embedded ? !props.channel : channelOptions.length === 0
+            "
+            type="primary"
+            @click="openCreate"
+          >
+            <template #icon><Plus /></template>手动入队
+          </Button>
+        </Space>
       </template>
       <template #status="{ row }">
         <Tag :color="messageStatusColor(row.status)">
@@ -426,115 +508,158 @@ defineExpose({ refresh });
       width="760"
     >
       <AForm layout="vertical">
-        <div class="form-grid">
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="选择实际投递消息的通道；在通道工作台中会自动带入当前通道。"
-                label="消息通道"
-              />
-            </template>
-            <Select
-              v-model:value="form.channel_id"
-              class="w-full"
-              :disabled="props.embedded"
-              :options="channelOptions"
-              show-search
-            />
-          </FormItem>
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="同一批待投递消息中，高优先级会先被扫描；不会绕过通道限速。"
-                label="优先级"
-              />
-            </template>
-            <Select
-              v-model:value="form.priority"
-              :options="messagePriorityOptions"
-            />
-          </FormItem>
-          <FormItem label="标题">
-            <Input v-model:value="form.subject" />
-          </FormItem>
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="必须与正文和 provider 支持的格式一致，例如 markdown 通道发送 Markdown 正文。"
-                label="内容类型"
-              />
-            </template>
-            <Select
-              v-model:value="form.content_type"
-              :options="contentTypeOptions"
-            />
-          </FormItem>
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="标识消息所属业务，例如 weekly_report，用于查询和审计。"
-                label="业务类型"
-              />
-            </template>
-            <Input v-model:value="form.biz_type" />
-          </FormItem>
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="保存业务对象的稳定标识，与业务类型共同定位消息来源。"
-                label="业务 ID"
-              />
-            </template>
-            <Input v-model:value="form.biz_id" />
-          </FormItem>
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="同一业务动作应使用稳定键；已有排队、执行、重试或成功消息时返回原消息，避免重复推送。"
-                label="幂等键"
-              />
-            </template>
-            <Input v-model:value="form.dedupe_key" />
-          </FormItem>
-          <FormItem>
-            <template #label>
-              <FieldHelp
-                help="为空时使用通道的最大重试配置；填写后仅覆盖当前消息。"
-                label="最大尝试次数"
-              />
-            </template>
-            <InputNumber
-              v-model:value="form.max_attempts"
-              class="w-full"
-              :min="1"
-            />
-          </FormItem>
-          <FormItem class="full-row">
-            <template #label>
-              <FieldHelp
-                help="最终发送正文，不得包含 webhook token、应用密钥或其它凭据。"
-                label="内容"
-              />
-            </template>
-            <textarea
-              v-model="form.content"
-              class="content-textarea"
-            ></textarea>
-          </FormItem>
-          <FormItem class="full-row">
-            <template #label>
-              <FieldHelp
-                help="填写 JSON object，可包含链接和 at 规则等协议参数；不得保存第三方凭据。"
-                label="Payload JSON"
-              />
-            </template>
-            <textarea
-              v-model="payloadText"
-              class="json-textarea"
-              :placeholder="payloadPlaceholder"
-            ></textarea>
-          </FormItem>
-        </div>
+        <Tabs v-model:active-key="composeTab">
+          <TabPane key="content" tab="消息内容">
+            <div class="form-grid">
+              <FormItem>
+                <template #label>
+                  <FieldHelp
+                    help="选择实际投递消息的通道；在通道工作台中会自动带入当前通道。"
+                    label="消息通道"
+                  />
+                </template>
+                <Select
+                  v-model:value="form.channel_id"
+                  class="w-full"
+                  :disabled="props.embedded"
+                  :options="channelOptions"
+                  show-search
+                />
+                <Space v-if="!props.embedded" class="mt-2" size="small">
+                  <Button
+                    size="small"
+                    type="link"
+                    @click="openChannelManagement"
+                  >
+                    <template #icon><ExternalLink /></template>
+                    维护通道
+                  </Button>
+                  <Tooltip title="刷新消息通道选项">
+                    <Button
+                      aria-label="刷新消息通道选项"
+                      size="small"
+                      type="text"
+                      :loading="channelLoading"
+                      @click="refreshChannels"
+                    >
+                      <template #icon><RotateCw /></template>
+                    </Button>
+                  </Tooltip>
+                </Space>
+              </FormItem>
+              <FormItem label="标题">
+                <Input v-model:value="form.subject" />
+              </FormItem>
+              <FormItem>
+                <template #label>
+                  <FieldHelp
+                    help="必须与正文和 provider 支持的格式一致，例如 markdown 通道发送 Markdown 正文。"
+                    label="内容类型"
+                  />
+                </template>
+                <Select
+                  v-model:value="form.content_type"
+                  :options="contentTypeOptions"
+                />
+              </FormItem>
+              <FormItem>
+                <template #label>
+                  <FieldHelp
+                    help="同一批待投递消息中，高优先级会先被扫描；不会绕过通道限速。"
+                    label="优先级"
+                  />
+                </template>
+                <Select
+                  v-model:value="form.priority"
+                  :options="messagePriorityOptions"
+                />
+              </FormItem>
+              <FormItem class="full-row">
+                <template #label>
+                  <FieldHelp
+                    help="最终发送正文，不得包含 webhook token、应用密钥或其它凭据。"
+                    label="内容"
+                  />
+                </template>
+                <textarea
+                  v-model="form.content"
+                  class="content-textarea"
+                ></textarea>
+              </FormItem>
+            </div>
+          </TabPane>
+          <TabPane key="delivery" tab="投递策略与业务定位">
+            <div class="form-grid">
+              <FormItem>
+                <template #label>
+                  <FieldHelp
+                    help="标识消息所属业务，例如 weekly_report，用于查询和审计。"
+                    label="业务类型"
+                  />
+                </template>
+                <Input v-model:value="form.biz_type" />
+              </FormItem>
+              <FormItem>
+                <template #label>
+                  <FieldHelp
+                    help="保存业务对象的稳定标识，与业务类型共同定位消息来源。"
+                    label="业务 ID"
+                  />
+                </template>
+                <Input v-model:value="form.biz_id" />
+              </FormItem>
+              <FormItem>
+                <template #label>
+                  <FieldHelp
+                    help="同一业务动作应使用稳定键；已有排队、执行、重试或成功消息时返回原消息，避免重复推送。"
+                    label="幂等键"
+                  />
+                </template>
+                <Input v-model:value="form.dedupe_key" />
+              </FormItem>
+              <FormItem>
+                <template #label>
+                  <FieldHelp
+                    help="为空时使用通道的最大重试配置；填写后仅覆盖当前消息。"
+                    label="最大尝试次数"
+                  />
+                </template>
+                <InputNumber
+                  v-model:value="form.max_attempts"
+                  class="w-full"
+                  :min="1"
+                />
+              </FormItem>
+              <FormItem>
+                <template #label>
+                  <FieldHelp
+                    help="留空表示立即进入队列；设置后消息会在该时间之后才开始投递。"
+                    label="计划发送时间"
+                  />
+                </template>
+                <DatePicker
+                  v-model:value="notBefore"
+                  class="w-full"
+                  show-time
+                  allow-clear
+                />
+              </FormItem>
+              <FormItem class="full-row">
+                <template #label>
+                  <FieldHelp
+                    help="填写 JSON object，可包含链接和 at 规则等协议参数；不得保存第三方凭据。"
+                    label="Payload JSON"
+                  />
+                </template>
+                <textarea
+                  v-model="payloadText"
+                  class="json-textarea"
+                  :placeholder="payloadPlaceholder"
+                ></textarea>
+              </FormItem>
+            </div>
+          </TabPane>
+        </Tabs>
       </AForm>
       <template #footer>
         <Space>
@@ -552,62 +677,79 @@ defineExpose({ refresh });
       title="消息详情"
       width="760"
     >
-      <Descriptions v-if="currentMessage" bordered :column="1" size="small">
-        <DescriptionsItem label="消息编码">
-          {{ currentMessage.message_code }}
-        </DescriptionsItem>
-        <DescriptionsItem label="正文">
-          <pre>{{ currentMessage.content }}</pre>
-        </DescriptionsItem>
-        <DescriptionsItem label="Payload">
-          <pre>{{ jsonText(currentMessage.payload) }}</pre>
-        </DescriptionsItem>
-        <DescriptionsItem label="错误">
-          {{ currentMessage.last_error || '-' }}
-        </DescriptionsItem>
-      </Descriptions>
-    </PopupDrawer>
-
-    <PopupDrawer
-      v-model:open="attemptsOpen"
-      destroy-on-close
-      :title="`投递记录：${currentMessage?.subject || ''}`"
-      width="900"
-    >
-      <div v-if="attemptsLoading">加载中...</div>
-      <div v-else class="attempt-list">
-        <div
-          v-for="item in attempts"
-          :key="String(item.id)"
-          class="attempt-card"
+      <Tabs v-if="currentMessage" v-model:active-key="detailTab">
+        <TabPane key="overview" tab="概览">
+          <Descriptions bordered :column="1" size="small">
+            <DescriptionsItem label="状态">
+              <Tag :color="messageStatusColor(currentMessage.status)">
+                {{ messageStatusLabel(currentMessage.status) }}
+              </Tag>
+            </DescriptionsItem>
+            <DescriptionsItem label="消息编码">
+              {{ currentMessage.message_code }}
+            </DescriptionsItem>
+            <DescriptionsItem label="通道 / 优先级">
+              {{ channelLabel(currentMessage) }} ·
+              {{ messagePriorityLabel(currentMessage.priority) }}
+            </DescriptionsItem>
+            <DescriptionsItem label="业务定位">
+              {{ currentMessage.biz_type || '-' }} /
+              {{ currentMessage.biz_id || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="正文">
+              <pre>{{ currentMessage.content }}</pre>
+            </DescriptionsItem>
+            <DescriptionsItem label="Payload">
+              <pre>{{ jsonText(currentMessage.payload) }}</pre>
+            </DescriptionsItem>
+            <DescriptionsItem label="最近错误">
+              {{ currentMessage.last_error || '暂无错误' }}
+            </DescriptionsItem>
+          </Descriptions>
+        </TabPane>
+        <TabPane
+          key="attempts"
+          :tab="`投递记录（${currentMessage.attempt_count}）`"
         >
-          <div>
-            <Tag
-              :color="
-                item.status === 'succeeded'
-                  ? 'success'
-                  : item.status === 'failed'
-                    ? 'error'
-                    : 'processing'
-              "
-            >
-              {{
-                deliveryStatusOptions.find((x) => x.value === item.status)
-                  ?.label ?? item.status
-              }}
-            </Tag>
-            第 {{ item.attempt_no }} 次 ·
-            {{ Times.formatOptionalUnix(item.started_at) }}
+          <div v-if="attemptsLoading">加载中...</div>
+          <div v-else-if="attempts.length === 0" class="empty-state">
+            暂无投递记录
           </div>
-          <pre>{{
-            jsonText({
-              request_summary: item.request_summary,
-              response_summary: item.response_summary,
-              error_message: item.error_message,
-            })
-          }}</pre>
-        </div>
-      </div>
+          <div v-else class="attempt-list">
+            <div
+              v-for="item in attempts"
+              :key="String(item.id)"
+              class="attempt-card"
+            >
+              <div>
+                <Tag
+                  :color="
+                    item.status === 'succeeded'
+                      ? 'success'
+                      : item.status === 'failed'
+                        ? 'error'
+                        : 'processing'
+                  "
+                >
+                  {{
+                    deliveryStatusOptions.find((x) => x.value === item.status)
+                      ?.label ?? item.status
+                  }}
+                </Tag>
+                第 {{ item.attempt_no }} 次 ·
+                {{ Times.formatOptionalUnix(item.started_at) }}
+              </div>
+              <pre>{{
+                jsonText({
+                  request_summary: item.request_summary,
+                  response_summary: item.response_summary,
+                  error_message: item.error_message,
+                })
+              }}</pre>
+            </div>
+          </div>
+        </TabPane>
+      </Tabs>
     </PopupDrawer>
   </component>
 </template>

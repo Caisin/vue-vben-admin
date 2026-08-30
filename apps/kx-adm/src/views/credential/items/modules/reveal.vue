@@ -27,7 +27,18 @@ const loading = ref(false);
 const totpCode = ref('');
 const grantExpiresAt = ref<number | string>();
 const hasActiveGrant = ref(false);
-const confirmText = computed(() => (revealed.value ? '关闭' : '验证并查看'));
+const now = ref(Math.floor(Date.now() / 1000));
+let countdownTimer: ReturnType<typeof setInterval> | undefined;
+const grantRemainingText = computed(() => {
+  const remaining = Math.max(0, Number(grantExpiresAt.value ?? 0) - now.value);
+  const minutes = Math.floor(remaining / 60);
+  const seconds = String(remaining % 60).padStart(2, '0');
+  return `${minutes}:${seconds}`;
+});
+const confirmText = computed(() => {
+  if (revealed.value) return '关闭';
+  return hasActiveGrant.value ? '点击查看明文' : '验证并查看';
+});
 const grantExpiresAtText = computed(() =>
   Times.formatOptionalUnix(grantExpiresAt.value),
 );
@@ -40,6 +51,7 @@ const [Modal, modalApi] = useVbenModal<CredentialView>({
   },
   onOpenChange(open) {
     if (!open) {
+      stopCountdown();
       credential.value = undefined;
       revealed.value = undefined;
       totpCode.value = '';
@@ -51,21 +63,38 @@ const [Modal, modalApi] = useVbenModal<CredentialView>({
     const grant = authStore.currentPrivacyRevealGrant();
     grantExpiresAt.value = grant?.expires_at;
     hasActiveGrant.value = Boolean(grant);
-    if (grant) {
-      void revealCredential().catch(() =>
-        message.error('凭证明文加载失败，请重新验证后重试'),
-      );
-    }
+    startCountdown();
   },
 });
+
+function startCountdown() {
+  stopCountdown();
+  now.value = Math.floor(Date.now() / 1000);
+  countdownTimer = setInterval(() => {
+    now.value = Math.floor(Date.now() / 1000);
+    if (grantExpiresAt.value && Number(grantExpiresAt.value) <= now.value) {
+      hasActiveGrant.value = false;
+      authStore.clearPrivacyRevealGrant();
+    }
+  }, 1000);
+}
+
+function stopCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = undefined;
+}
 
 function normalizeCode(value: string) {
   return value.replaceAll(/\D/g, '').slice(0, 6);
 }
 
 async function copyField(label: string, value: string) {
-  await navigator.clipboard.writeText(value);
-  message.success(`${label} 已复制`);
+  try {
+    await navigator.clipboard.writeText(value);
+    message.success(`${label} 已复制`);
+  } catch {
+    message.error(`${label} 复制失败，请手动复制`);
+  }
 }
 
 async function revealCredential() {
@@ -101,6 +130,7 @@ async function revealCredential() {
 }
 
 onBeforeUnmount(() => {
+  stopCountdown();
   revealed.value = undefined;
   credential.value = undefined;
   totpCode.value = '';
@@ -141,6 +171,12 @@ onBeforeUnmount(() => {
           show-icon
           type="success"
           :message="`授权有效至 ${grantExpiresAtText}。`"
+        />
+        <Alert
+          v-else-if="hasActiveGrant"
+          show-icon
+          type="info"
+          :message="`本次授权还剩 ${grantRemainingText}，点击“${confirmText}”后才会展示明文。`"
         />
         <div
           v-for="field in revealed?.fields ?? []"

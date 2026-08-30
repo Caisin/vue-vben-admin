@@ -17,6 +17,7 @@ export const kindOptions: { label: string; value: CredentialKind }[] = [
   { label: 'HTTP Header', value: 'http_header' },
   { label: 'SSH Key', value: 'ssh_key' },
   { label: 'TikTok Web', value: 'tt_web' },
+  { label: 'Firebase 服务账号', value: 'google_service_account' },
 ];
 
 export const stateOptions: {
@@ -29,6 +30,30 @@ export const stateOptions: {
   { color: 'default', label: '退役', value: 'retired' },
 ];
 
+export const riskOptions = [
+  { label: '即将过期（7 天内）', value: 'expiring' },
+  { label: '最近使用失败', value: 'failed' },
+];
+
+const summaryFieldLabels: Record<string, string> = {
+  access_key_id: 'Access Key',
+  base_url: '地址',
+  cookie: 'Cookie',
+  header_name: '请求头',
+  password: '密码',
+  passphrase: '私钥口令',
+  private_key: '私钥',
+  public_key: '公钥',
+  scheme: '认证方案',
+  secret_access_key: 'Secret',
+  session_token: 'Session Token',
+  token: 'Token',
+  user_agent: 'User-Agent',
+  username: '用户名',
+  value: '值',
+  service_account_json: 'Service Account JSON',
+};
+
 export function kindLabel(kind?: CredentialKind) {
   return kindOptions.find((item) => item.value === kind)?.label ?? kind ?? '-';
 }
@@ -40,16 +65,32 @@ export function stateLabel(state?: CredentialState) {
 }
 
 export function summaryText(row: Pick<CredentialView, 'summary'>) {
-  return (
-    (row.summary?.fields ?? [])
-      .filter((field) => field.configured)
-      .map((field) =>
-        field.masked_hint
-          ? `${field.field}:${field.masked_hint}`
-          : `${field.field}:已配置`,
-      )
-      .join('；') || '-'
-  );
+  const fields = row.summary?.fields ?? [];
+  if (fields.length === 0) return '未配置';
+  const configuredCount = fields.filter((field) => field.configured).length;
+  const details = fields.slice(0, 3).map((field) => {
+    const label = summaryFieldLabels[field.field] ?? field.field;
+    return `${label}：${field.configured ? '已配置' : '未配置'}`;
+  });
+  return `已配置 ${configuredCount}/${fields.length} 项 · ${details.join('；')}`;
+}
+
+export function expiryInfo(
+  value: number | string | undefined,
+  now = Math.floor(Date.now() / 1000),
+) {
+  const expiresAt = Number(value ?? 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) {
+    return { color: 'default', days: undefined, label: '永不过期' } as const;
+  }
+  const seconds = expiresAt - now;
+  if (seconds <= 0)
+    return { color: 'error', days: 0, label: '已过期' } as const;
+  const days = Math.ceil(seconds / 86_400);
+  if (days <= 7) {
+    return { color: 'warning', days, label: `还有 ${days} 天` } as const;
+  }
+  return { color: 'success', days, label: `${days} 天后过期` } as const;
 }
 
 export function profileOptions(
@@ -59,7 +100,8 @@ export function profileOptions(
   return profiles
     .filter((item) => !kind || item.kind === kind)
     .map((item) => ({
-      label: `${kindLabel(item.kind)} / ${item.label}`,
+      // 未选择类型时保留类型前缀，避免不同类型下的同名 Profile 产生歧义。
+      label: kind ? item.label : `${kindLabel(item.kind)} / ${item.label}`,
       value: `${item.kind}:${item.profile}`,
     }));
 }
@@ -68,8 +110,18 @@ export function useFormSchema(
   profiles: CredentialProfileSpec[] = [],
 ): VbenFormSchema[] {
   return [
-    { component: 'Input', fieldName: 'code_prefix', label: '编码' },
-    { component: 'Input', fieldName: 'name_prefix', label: '名称' },
+    {
+      component: 'Input',
+      componentProps: { placeholder: '例如：aws-prod-' },
+      fieldName: 'code_prefix',
+      label: '编码前缀',
+    },
+    {
+      component: 'Input',
+      componentProps: { placeholder: '例如：生产环境' },
+      fieldName: 'name_prefix',
+      label: '名称前缀',
+    },
     {
       component: 'Select',
       componentProps: { allowClear: true, options: kindOptions },
@@ -78,7 +130,25 @@ export function useFormSchema(
     },
     {
       component: 'Select',
-      componentProps: { allowClear: true, options: profileOptions(profiles) },
+      componentProps: {
+        allowClear: true,
+        options: profileOptions(profiles),
+        placeholder: '可选，按 Profile 筛选',
+        showSearch: true,
+      },
+      dependencies: {
+        resolve: ({ values }) => ({
+          componentProps: {
+            allowClear: true,
+            options: profileOptions(profiles, values.kind),
+            placeholder: values.kind
+              ? '可选，筛选该类型下的 Profile'
+              : '可选，按 Profile 筛选',
+            showSearch: true,
+          },
+        }),
+        triggerFields: ['kind'],
+      },
       fieldName: 'profile_pair',
       label: 'Profile',
     },
@@ -87,6 +157,16 @@ export function useFormSchema(
       componentProps: { allowClear: true, options: stateOptions },
       fieldName: 'state',
       label: '状态',
+    },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: riskOptions,
+        placeholder: '按风险快速定位',
+      },
+      fieldName: 'risk',
+      label: '风险',
     },
   ];
 }
@@ -112,11 +192,17 @@ export function useColumns(): VxeTableGridColumns<CredentialView> {
       slots: { default: 'summary' },
       title: '字段摘要',
     },
+    {
+      field: 'health',
+      slots: { default: 'health' },
+      title: '使用状态',
+      width: 130,
+    },
     { field: 'binding_count', title: '绑定', width: 80 },
     {
       field: 'expires_at',
-      formatter: ({ row }) => Times.formatOptionalUnix(row.expires_at),
-      title: '过期时间',
+      slots: { default: 'expires' },
+      title: '有效期',
       width: 180,
     },
     {
@@ -131,7 +217,7 @@ export function useColumns(): VxeTableGridColumns<CredentialView> {
       fixed: 'right',
       slots: { default: 'operation' },
       title: '操作',
-      width: 220,
+      width: 180,
     },
   ];
 }

@@ -10,11 +10,12 @@ import type {
 } from '#/api/notify';
 
 import { computed, onMounted, ref, shallowRef } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { Page, useVbenModal } from '@vben/common-ui';
-import { IconifyIcon } from '@vben/icons';
+import { ExternalLink, IconifyIcon, RotateCw } from '@vben/icons';
 
-import { Alert, Button, Space, Tag } from 'antdv-next';
+import { Alert, Button, message, Space, Tag, Tooltip } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { NotifyTestApi } from '#/api/notify';
@@ -31,6 +32,8 @@ const endpointRows = shallowRef<NotifyRecipientEndpoint[]>([]);
 const recordOpen = ref(false);
 const selectedRecord = ref<NotifyMessage>();
 const lastSendResult = ref<NotifyTestMessageResult>();
+const optionsLoading = ref(false);
+const router = useRouter();
 
 const channelOptions = computed(() =>
   channelRows.value.map((channel) => ({
@@ -89,11 +92,18 @@ const [Grid, gridApi] = useVbenVxeGrid<NotifyMessage>({
   } as VxeTableGridOptions<NotifyMessage>,
 });
 
-onMounted(async () => {
-  const options = await NotifyTestApi.options();
-  channelRows.value = options.channels;
-  endpointRows.value = options.recipient_endpoints;
-});
+async function loadOptions() {
+  optionsLoading.value = true;
+  try {
+    const options = await NotifyTestApi.options();
+    channelRows.value = options.channels;
+    endpointRows.value = options.recipient_endpoints;
+  } finally {
+    optionsLoading.value = false;
+  }
+}
+
+onMounted(loadOptions);
 
 function modalData(message?: NotifyMessage) {
   return {
@@ -136,6 +146,17 @@ function onMessageSent(result: NotifyTestMessageResult) {
   lastSendResult.value = result;
   refreshHistory();
 }
+
+function openChannelManagement() {
+  const href = router.resolve({ path: '/notify/channels' }).href;
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
+async function refreshOptions() {
+  await loadOptions();
+  await gridApi.reload();
+  message.success('消息通道选项已刷新');
+}
 </script>
 
 <template>
@@ -160,6 +181,23 @@ function onMessageSent(result: NotifyTestMessageResult) {
         <IconifyIcon icon="lucide:send-horizontal" />
         发送测试
       </Button>
+      <Space size="small">
+        <Button size="small" type="link" @click="openChannelManagement">
+          <template #icon><ExternalLink /></template>
+          维护通道
+        </Button>
+        <Tooltip title="刷新消息通道选项">
+          <Button
+            aria-label="刷新消息通道选项"
+            size="small"
+            type="text"
+            :loading="optionsLoading"
+            @click="refreshOptions"
+          >
+            <template #icon><RotateCw /></template>
+          </Button>
+        </Tooltip>
+      </Space>
     </header>
 
     <Alert

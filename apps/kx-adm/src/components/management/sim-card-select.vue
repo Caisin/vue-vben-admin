@@ -3,7 +3,9 @@ import type { SimCardView } from '#/api/msg';
 
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
-import { Select } from 'antdv-next';
+import { RotateCw } from '@vben/icons';
+
+import { Button, Select, Space, Tooltip } from 'antdv-next';
 
 import { SimCardApi } from '#/api/msg';
 
@@ -135,21 +137,38 @@ watch(
 onBeforeUnmount(() => {
   requestSequence += 1;
 });
+
+defineExpose({ reload: loadOptions });
 </script>
 
 <template>
-  <Select
-    allow-clear
-    :filter-option="false"
-    :loading="loading"
-    :mode="mode"
-    :options="options"
-    :placeholder="placeholder"
-    option-label-prop="label"
-    :popup-match-select-width="true"
-    show-search
-    :value="modelValue"
-    @search="search"
-    @update:value="updateValue"
-  />
+  <Space class="w-full" :size="6">
+    <Select
+      allow-clear
+      class="min-w-0 flex-1"
+      :filter-option="false"
+      :loading="loading"
+      :mode="mode"
+      :options="options"
+      :placeholder="placeholder"
+      option-label-prop="label"
+      :popup-match-select-width="true"
+      show-search
+      :value="modelValue"
+      @search="search"
+      @update:value="updateValue"
+    />
+    <Tooltip title="刷新电话卡列表">
+      <Button
+        aria-label="刷新电话卡列表"
+        :loading="loading"
+        @click="loadOptions"
+      >
+        <template #icon><RotateCw /></template>
+      </Button>
+    </Tooltip>
+  </Space>
+  <div class="mt-1 text-xs text-muted-foreground">
+    电话卡由设备上报或批量导入维护，此处仅提供选择和刷新。
+  </div>
 </template>

@@ -26,6 +26,7 @@ export interface DicCommonProps {
 export interface DicSelectProps extends DicCommonProps {
   creatable?: boolean;
   createPlaceholder?: string;
+  managePath?: string;
   showSearch?: boolean;
 }
 

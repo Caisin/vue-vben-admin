@@ -1,18 +1,32 @@
 <script lang="ts" setup>
 import type {
   CredentialKind,
+  CredentialPayload,
   CredentialState,
   CredentialView,
 } from '#/api/credential';
 
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { ExternalLink, Plus, RotateCw } from '@vben/icons';
 
-import { Button, Select, Tooltip } from 'antdv-next';
+import {
+  Button,
+  Form,
+  FormItem,
+  Input,
+  InputPassword,
+  message,
+  Modal,
+  Select,
+  TextArea,
+  Tooltip,
+} from 'antdv-next';
 
 import { CredentialApi } from '#/api/credential';
+
+import JsonFileInput from './json-file-input.vue';
 
 interface Props {
   allowClear?: boolean;
@@ -39,7 +53,19 @@ const modelValue = defineModel<null | string>();
 
 const router = useRouter();
 const loading = ref(false);
+const quickCreateOpen = ref(false);
+const quickCreating = ref(false);
 const credentials = ref<CredentialView[]>([]);
+const quickForm = reactive({
+  cookie: '',
+  name: '',
+  passphrase: '',
+  password: '',
+  privateKey: '',
+  serviceAccountJson: '',
+  userAgent: '',
+  username: '',
+});
 const allowedKinds = computed(() => {
   if (props.kinds.length > 0) return props.kinds;
   if (props.kind) return [props.kind];
@@ -84,6 +110,83 @@ function openCredentialCenter(action?: 'create') {
   window.open(href, '_blank', 'noopener,noreferrer');
 }
 
+const quickKind = computed(
+  () => props.createKind ?? props.kind ?? props.kinds[0],
+);
+
+function quickPayload(kind: CredentialKind): CredentialPayload | undefined {
+  if (kind === 'password') {
+    return { kind, password: quickForm.password };
+  }
+  if (kind === 'username_password') {
+    return {
+      base_url: '',
+      kind,
+      password: quickForm.password,
+      username: quickForm.username,
+    };
+  }
+  if (kind === 'ssh_key') {
+    return {
+      kind,
+      passphrase: quickForm.passphrase,
+      private_key: quickForm.privateKey,
+      public_key: '',
+      username: quickForm.username,
+    };
+  }
+  if (kind === 'tt_web') {
+    return {
+      cookie: quickForm.cookie,
+      curl: '',
+      kind,
+      user_agent: quickForm.userAgent,
+    };
+  }
+  if (kind === 'google_service_account') {
+    return { kind, service_account_json: quickForm.serviceAccountJson };
+  }
+  return undefined;
+}
+
+function openQuickCreate() {
+  Object.assign(quickForm, {
+    cookie: '',
+    name: '',
+    passphrase: '',
+    password: '',
+    privateKey: '',
+    serviceAccountJson: '',
+    userAgent: '',
+    username: '',
+  });
+  quickCreateOpen.value = true;
+}
+
+async function createCredential() {
+  const kind = quickKind.value;
+  if (!kind) return;
+  quickCreating.value = true;
+  try {
+    const profile = props.profile ?? (kind === 'tt_web' ? 'tt_web' : 'generic');
+    const payload = quickPayload(kind);
+    if (!payload) throw new Error('当前凭证类型请前往完整维护页面新增');
+    const created = await CredentialApi.create({
+      kind,
+      name: quickForm.name.trim(),
+      payload,
+      profile,
+    });
+    await loadCredentials();
+    modelValue.value = created.code;
+    quickCreateOpen.value = false;
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '凭证新增失败');
+  } finally {
+    quickCreating.value = false;
+  }
+}
+
 watch(
   () => [props.kind, props.kinds, props.profile, props.state],
   () => void loadCredentials(),
@@ -112,21 +215,17 @@ function kindLabel(kind: CredentialKind) {
       option-filter-prop="label"
       :placeholder="props.placeholder"
       show-search
-    />
-    <Tooltip title="新增凭证">
-      <Button
-        v-access:code="'credential:create'"
-        aria-label="新增凭证"
-        @click="openCredentialCenter('create')"
-      >
-        <template #icon><Plus /></template>
-      </Button>
-    </Tooltip>
-    <Tooltip title="打开凭证中心">
-      <Button aria-label="打开凭证中心" @click="openCredentialCenter()">
-        <template #icon><ExternalLink /></template>
-      </Button>
-    </Tooltip>
+    >
+      <template #popupRender="menuNode">
+        <component :is="menuNode" />
+        <div class="credential-select-create" @mousedown.prevent.stop>
+          <Button block size="small" type="link" @click="openQuickCreate">
+            <template #icon><Plus /></template>
+            新增凭证
+          </Button>
+        </div>
+      </template>
+    </Select>
     <Tooltip title="刷新凭证列表">
       <Button
         aria-label="刷新凭证列表"
@@ -136,5 +235,71 @@ function kindLabel(kind: CredentialKind) {
         <template #icon><RotateCw /></template>
       </Button>
     </Tooltip>
+    <Modal
+      v-model:open="quickCreateOpen"
+      destroy-on-close
+      title="新增凭证"
+      width="620"
+    >
+      <Form layout="vertical">
+        <FormItem label="凭证名称" required>
+          <Input v-model:value="quickForm.name" />
+        </FormItem>
+        <FormItem v-if="quickKind === 'password'" label="密码" required>
+          <InputPassword v-model:value="quickForm.password" />
+        </FormItem>
+        <template v-else-if="quickKind === 'username_password'">
+          <FormItem label="用户名" required>
+            <Input v-model:value="quickForm.username" />
+          </FormItem>
+          <FormItem label="密码" required>
+            <InputPassword v-model:value="quickForm.password" />
+          </FormItem>
+        </template>
+        <template v-else-if="quickKind === 'ssh_key'">
+          <FormItem label="用户名" required>
+            <Input v-model:value="quickForm.username" />
+          </FormItem>
+          <FormItem label="私钥" required>
+            <TextArea v-model:value="quickForm.privateKey" :rows="6" />
+          </FormItem>
+          <FormItem label="口令">
+            <InputPassword v-model:value="quickForm.passphrase" />
+          </FormItem>
+        </template>
+        <template v-else-if="quickKind === 'tt_web'">
+          <FormItem label="Cookie" required>
+            <TextArea v-model:value="quickForm.cookie" :rows="4" />
+          </FormItem>
+          <FormItem label="User-Agent">
+            <Input v-model:value="quickForm.userAgent" />
+          </FormItem>
+        </template>
+        <FormItem v-else label="凭证材料" required>
+          <JsonFileInput v-model="quickForm.serviceAccountJson" :rows="8" />
+        </FormItem>
+      </Form>
+      <template #footer>
+        <Button type="link" @click="openCredentialCenter('create')">
+          <template #icon><ExternalLink /></template>
+          前往完整维护页面
+        </Button>
+        <Button @click="quickCreateOpen = false">取消</Button>
+        <Button
+          :loading="quickCreating"
+          type="primary"
+          @click="createCredential"
+        >
+          新增
+        </Button>
+      </template>
+    </Modal>
   </div>
 </template>
+
+<style scoped>
+.credential-select-create {
+  padding: 6px 8px;
+  border-top: 1px solid var(--vben-border-color, #f0f0f0);
+}
+</style>

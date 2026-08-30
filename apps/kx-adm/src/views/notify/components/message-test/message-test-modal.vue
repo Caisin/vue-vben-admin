@@ -17,12 +17,15 @@ import type {
 import type { JsonValue } from '#/api/request';
 
 import { computed, ref, shallowRef } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { useVbenModal } from '@vben/common-ui';
+import { ExternalLink, RotateCw } from '@vben/icons';
 
-import { message } from 'antdv-next';
+import { Button, message, Space, Tooltip } from 'antdv-next';
 
 import { useVbenForm } from '#/adapter/form';
+import { NotifyTestApi } from '#/api/notify';
 
 import { editableNotifyPayloadObject } from '../../editable-payload';
 import {
@@ -65,6 +68,8 @@ const endpointRows = shallowRef<NotifyRecipientEndpoint[]>([]);
 const selectedChannelId = ref<number | string>();
 const sourceMessage = ref<NotifyMessage>();
 const sending = ref(false);
+const optionsLoading = ref(false);
+const router = useRouter();
 
 const channelOptions = computed<NotifySelectOption[]>(() =>
   channelRows.value.map((channel) => ({
@@ -480,6 +485,23 @@ async function initializeForm(data: NotifyMessageTestModalData) {
   await formApi.setValues({ content: '', subject: '' });
 }
 
+async function refreshOptions() {
+  optionsLoading.value = true;
+  try {
+    const options = await NotifyTestApi.options();
+    channelRows.value = options.channels;
+    endpointRows.value = options.recipient_endpoints;
+    message.success('通道和推送端点已刷新');
+  } finally {
+    optionsLoading.value = false;
+  }
+}
+
+function openChannelManagement() {
+  const href = router.resolve({ path: '/notify/channels' }).href;
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
 const [Modal, modalApi] = useVbenModal<NotifyMessageTestModalData>({
   destroyOnClose: false,
   async onConfirm() {
@@ -535,6 +557,30 @@ const modalTitle = computed(() =>
     confirm-text="发送"
     :title="modalTitle"
   >
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <span class="text-xs text-gray-500">
+        消息通道可在新页面维护；推送端点由 App/小程序上报，当前仅支持刷新。
+      </span>
+      <Space size="small">
+        <Tooltip title="维护消息通道">
+          <Button size="small" type="link" @click="openChannelManagement">
+            <template #icon><ExternalLink /></template>
+            维护通道
+          </Button>
+        </Tooltip>
+        <Tooltip title="刷新通道和推送端点">
+          <Button
+            aria-label="刷新通道和推送端点"
+            size="small"
+            type="text"
+            :loading="optionsLoading"
+            @click="refreshOptions"
+          >
+            <template #icon><RotateCw /></template>
+          </Button>
+        </Tooltip>
+      </Space>
+    </div>
     <Form class="max-h-[72vh] overflow-y-auto px-1 pr-3" />
   </Modal>
 </template>

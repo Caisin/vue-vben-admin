@@ -11,14 +11,17 @@ import type {
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { Plus } from '@vben/icons';
+import { Ellipsis, Plus } from '@vben/icons';
 
 import {
   Form as AForm,
   Button,
+  Dropdown,
   FormItem,
   Input,
   InputNumber,
+  Menu,
+  MenuItem,
   message,
   Popconfirm,
   Select,
@@ -29,7 +32,11 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { NotifyChannelApi } from '#/api';
-import { ConfigGuide, FieldHelp } from '#/components/management';
+import {
+  ConfigGuide,
+  FieldHelp,
+  ReferenceSelect,
+} from '#/components/management';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
 
@@ -42,6 +49,7 @@ import {
   useFormSchema,
 } from './data';
 import PopupDrawer from './modules/popup-drawer.vue';
+import ProviderQuickCreate from './modules/provider-quick-create.vue';
 
 const channelSortFields = [
   'id',
@@ -117,6 +125,30 @@ const selectedProviderConfigDescription = computed(
 const selectedConfigGuide = computed(
   () => channelConfigGuides[form.channel_type],
 );
+const providerConfigTarget = computed(() => {
+  if (form.channel_type === 'dingtalk_custom_robot') {
+    return {
+      label: '维护钉钉自定义机器人',
+      path: '/notify/dingtalk',
+      query: { tab: 'custom' },
+    };
+  }
+  if (form.channel_type === 'dingtalk_group_bot') {
+    return {
+      label: '维护钉钉企业群机器人',
+      path: '/notify/dingtalk',
+      query: { tab: 'group' },
+    };
+  }
+  if (form.channel_type === 'push') {
+    return {
+      label: '维护 Firebase 服务账号',
+      path: '/credential/items',
+      query: { kind: 'google_service_account', profile: 'firebase_fcm' },
+    };
+  }
+  return { label: '打开参数管理', path: '/param/parameters', query: undefined };
+});
 
 const [Grid, gridApi] = useVbenVxeGrid<NotifyChannel>({
   formOptions: { schema: useFormSchema(), submitOnChange: true },
@@ -192,6 +224,11 @@ async function loadProviderOptions() {
   } finally {
     providerOptionsLoading.value = false;
   }
+}
+
+async function refreshProviderOptions() {
+  await loadProviderOptions();
+  message.success('Provider 配置列表已刷新');
 }
 
 function resetForm(row?: NotifyChannel) {
@@ -370,27 +407,34 @@ function showChannelMessages(row: NotifyChannel) {
                 >
                   消息
                 </Button>
-                <Button
-                  v-access:code="'notify:channel:test'"
-                  size="small"
-                  type="link"
-                  @click.stop="testChannel(row)"
-                >
-                  测试
-                </Button>
-                <Popconfirm
-                  :title="`确认删除或禁用通道 ${row.channel_name}？`"
-                  @confirm="removeChannel(row)"
-                >
-                  <Button
-                    v-access:code="'notify:channel:write'"
-                    danger
-                    size="small"
-                    type="link"
-                  >
-                    删除
+                <Dropdown>
+                  <Button size="small" title="更多操作" type="text">
+                    <Ellipsis class="size-4" />
                   </Button>
-                </Popconfirm>
+                  <template #popupRender>
+                    <Menu>
+                      <MenuItem
+                        v-access:code="'notify:channel:test'"
+                        key="test"
+                        @click="testChannel(row)"
+                      >
+                        发送测试消息
+                      </MenuItem>
+                      <Popconfirm
+                        :title="`确认删除或停用通道 ${row.channel_name}？历史消息和审计记录会保留。`"
+                        @confirm="removeChannel(row)"
+                      >
+                        <MenuItem
+                          v-access:code="'notify:channel:write'"
+                          danger
+                          key="remove"
+                        >
+                          删除或停用
+                        </MenuItem>
+                      </Popconfirm>
+                    </Menu>
+                  </template>
+                </Dropdown>
               </Space>
             </template>
           </Grid>
@@ -456,16 +500,25 @@ function showChannelMessages(row: NotifyChannel) {
                 label="Provider 配置"
               />
             </template>
-            <Select
-              v-model:value="form.provider_code"
+            <ReferenceSelect
+              v-model:model-value="form.provider_code"
               :loading="providerOptionsLoading"
-              not-found-content="暂无可用配置，请先完成对应 Provider 配置"
               :options="providerConfigOptions"
-              option-filter-prop="label"
               placeholder="请选择 Provider 配置"
-              show-search
-              @focus="loadProviderOptions"
-            />
+              :manage-path="providerConfigTarget.path"
+              :manage-query="providerConfigTarget.query"
+              maintenance-title="新增 Provider 配置"
+              :show-maintenance="true"
+              :show-manage="true"
+              @refresh="refreshProviderOptions"
+            >
+              <template #maintenance="{ complete }">
+                <ProviderQuickCreate
+                  :channel-type="form.channel_type"
+                  @success="complete"
+                />
+              </template>
+            </ReferenceSelect>
             <div v-if="selectedProviderConfigDescription" class="muted-summary">
               {{ selectedProviderConfigDescription }}
             </div>

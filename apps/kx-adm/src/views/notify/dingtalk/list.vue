@@ -12,9 +12,10 @@ import type {
 } from '#/api';
 
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 import { Page, useVbenModal } from '@vben/common-ui';
-import { Eye, Plus } from '@vben/icons';
+import { ExternalLink, Eye, Plus, RotateCw } from '@vben/icons';
 
 import {
   Form as AForm,
@@ -28,6 +29,7 @@ import {
   TabPane,
   Tabs,
   Tag,
+  Tooltip,
   TreeSelect,
 } from 'antdv-next';
 
@@ -61,7 +63,10 @@ type ActiveTab = 'custom' | 'group' | 'knowledge';
 type FormKind = 'custom' | 'group' | 'knowledge';
 
 const activeTab = ref<ActiveTab>('custom');
+const route = useRoute();
+const router = useRouter();
 const apps = ref<DingtalkAppOption[]>([]);
+const appsLoading = ref(false);
 const drawerOpen = ref(false);
 const drawerSaving = ref(false);
 const formKind = ref<FormKind>('custom');
@@ -100,6 +105,7 @@ const {
   operatorLoading: knowledgeOperatorLoading,
   operatorOptions: knowledgeOperatorOptions,
   prepare: prepareKnowledgeTargetOptions,
+  refreshOperators: refreshKnowledgeOperators,
   searchOperators: searchKnowledgeOperators,
   selectTreeNode: selectKnowledgeTreeNode,
   treeLoading: knowledgeTreeLoading,
@@ -268,15 +274,50 @@ const [KnowledgeGrid, knowledgeGridApi] =
     } as VxeTableGridOptions<DingtalkKnowledgeTargetCfg>,
   });
 
+async function loadApps() {
+  appsLoading.value = true;
+  try {
+    apps.value = await DingtalkNotifyApi.apps();
+    await Promise.all([
+      groupGridApi.formApi.updateSchema(useGroupFormSchema(appOptions.value)),
+      knowledgeGridApi.formApi.updateSchema(
+        useKnowledgeFormSchema(appOptions.value),
+      ),
+    ]);
+  } finally {
+    appsLoading.value = false;
+  }
+}
+
 onMounted(async () => {
-  apps.value = await DingtalkNotifyApi.apps();
-  await Promise.all([
-    groupGridApi.formApi.updateSchema(useGroupFormSchema(appOptions.value)),
-    knowledgeGridApi.formApi.updateSchema(
-      useKnowledgeFormSchema(appOptions.value),
-    ),
-  ]);
+  const requestedTab = String(route.query.tab ?? '');
+  if (
+    requestedTab === 'custom' ||
+    requestedTab === 'group' ||
+    requestedTab === 'knowledge'
+  ) {
+    activeTab.value = requestedTab;
+  }
+  await loadApps();
 });
+
+function openDingtalkAppManagement() {
+  const href = router.resolve({
+    path: '/param/login-apps',
+    query: { tab: 'dingtalk' },
+  }).href;
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
+async function refreshDingtalkApps() {
+  await loadApps();
+  message.success('钉钉应用列表已刷新');
+}
+
+function openOrgSyncManagement() {
+  const href = router.resolve({ path: '/system/org-sync' }).href;
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
 
 function openGroup(row?: DingtalkGroupBotCfg) {
   formKind.value = 'group';
@@ -424,6 +465,29 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
     class="management-page"
     content-class="management-content"
   >
+    <header class="page-heading">
+      <div>
+        <h1>钉钉推送配置</h1>
+        <p>维护机器人、知识库目标及其引用的钉钉应用</p>
+      </div>
+      <Space size="small">
+        <Button size="small" type="link" @click="openDingtalkAppManagement">
+          <template #icon><ExternalLink /></template>
+          维护钉钉应用
+        </Button>
+        <Tooltip title="刷新钉钉应用列表">
+          <Button
+            aria-label="刷新钉钉应用列表"
+            size="small"
+            type="text"
+            :loading="appsLoading"
+            @click="refreshDingtalkApps"
+          >
+            <template #icon><RotateCw /></template>
+          </Button>
+        </Tooltip>
+      </Space>
+    </header>
     <Tabs v-model:active-key="activeTab" destroy-inactive-tab-pane>
       <TabPane key="custom" tab="自定义群机器人">
         <ConfigGuide v-bind="customRobotGuide" />
@@ -571,7 +635,35 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
                 label="钉钉应用"
               />
             </template>
-            <Select v-model:value="groupForm.app_key" :options="appOptions" />
+            <div class="compact-row">
+              <Select
+                v-model:value="groupForm.app_key"
+                class="flex-1"
+                :loading="appsLoading"
+                :options="appOptions"
+              />
+              <Tooltip title="维护钉钉应用">
+                <Button
+                  aria-label="维护钉钉应用"
+                  size="small"
+                  type="text"
+                  @click="openDingtalkAppManagement"
+                >
+                  <template #icon><ExternalLink /></template>
+                </Button>
+              </Tooltip>
+              <Tooltip title="刷新钉钉应用列表">
+                <Button
+                  aria-label="刷新钉钉应用列表"
+                  size="small"
+                  type="text"
+                  :loading="appsLoading"
+                  @click="refreshDingtalkApps"
+                >
+                  <template #icon><RotateCw /></template>
+                </Button>
+              </Tooltip>
+            </div>
           </FormItem>
           <FormItem>
             <template #label>
@@ -689,11 +781,36 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
                 label="钉钉应用"
               />
             </template>
-            <Select
-              v-model:value="knowledgeForm.app_key"
-              :options="appOptions"
-              @change="(value) => onKnowledgeAppChange(String(value))"
-            />
+            <div class="compact-row">
+              <Select
+                v-model:value="knowledgeForm.app_key"
+                class="flex-1"
+                :loading="appsLoading"
+                :options="appOptions"
+                @change="(value) => onKnowledgeAppChange(String(value))"
+              />
+              <Tooltip title="维护钉钉应用">
+                <Button
+                  aria-label="维护钉钉应用"
+                  size="small"
+                  type="text"
+                  @click="openDingtalkAppManagement"
+                >
+                  <template #icon><ExternalLink /></template>
+                </Button>
+              </Tooltip>
+              <Tooltip title="刷新钉钉应用列表">
+                <Button
+                  aria-label="刷新钉钉应用列表"
+                  size="small"
+                  type="text"
+                  :loading="appsLoading"
+                  @click="refreshDingtalkApps"
+                >
+                  <template #icon><RotateCw /></template>
+                </Button>
+              </Tooltip>
+            </div>
           </FormItem>
           <FormItem>
             <template #label>
@@ -714,17 +831,41 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
                 label="操作人"
               />
             </template>
-            <Select
-              v-model:value="knowledgeForm.operator_union_id"
-              allow-clear
-              :filter-option="false"
-              :loading="knowledgeOperatorLoading"
-              :options="knowledgeOperatorOptions"
-              placeholder="请选择或搜索在职人员"
-              show-search
-              @change="onKnowledgeOperatorChange"
-              @search="searchKnowledgeOperators"
-            />
+            <div class="compact-row">
+              <Select
+                v-model:value="knowledgeForm.operator_union_id"
+                allow-clear
+                class="flex-1"
+                :filter-option="false"
+                :loading="knowledgeOperatorLoading"
+                :options="knowledgeOperatorOptions"
+                placeholder="请选择或搜索在职人员"
+                show-search
+                @change="onKnowledgeOperatorChange"
+                @search="searchKnowledgeOperators"
+              />
+              <Tooltip title="维护并执行组织同步">
+                <Button
+                  aria-label="维护并执行组织同步"
+                  size="small"
+                  type="text"
+                  @click="openOrgSyncManagement"
+                >
+                  <template #icon><ExternalLink /></template>
+                </Button>
+              </Tooltip>
+              <Tooltip title="刷新操作人列表">
+                <Button
+                  aria-label="刷新操作人列表"
+                  size="small"
+                  type="text"
+                  :loading="knowledgeOperatorLoading"
+                  @click="refreshKnowledgeOperators"
+                >
+                  <template #icon><RotateCw /></template>
+                </Button>
+              </Tooltip>
+            </div>
           </FormItem>
           <FormItem class="full-row">
             <template #label>

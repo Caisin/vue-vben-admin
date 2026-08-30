@@ -31,6 +31,7 @@ const spec = computed(() =>
 );
 
 function fieldComponent(field: CredentialFieldSpec) {
+  if (field.name === 'service_account_json') return 'JsonFileInput';
   if (
     field.name === 'header_name' &&
     (spec.value?.allowed_headers.length ?? 0) > 0
@@ -66,9 +67,11 @@ function schema(): VbenFormSchema[] {
       rules: field.required ? 'required' : undefined,
     })),
     {
-      component: 'InputNumber',
+      component: 'DatePicker',
+      componentProps: { class: 'w-full', showTime: true, valueFormat: 'X' },
       fieldName: 'expires_at',
-      label: '过期 Unix 秒',
+      help: '不填写表示永不过期。',
+      label: '过期时间',
     },
   ];
 }
@@ -98,6 +101,7 @@ const [Drawer, drawerApi] = useVbenDrawer<{
       values,
     );
     drawerApi.lock();
+    let succeeded = false;
     try {
       const grant = await authStore.authorizeStepUp(
         'credential.replace',
@@ -112,12 +116,13 @@ const [Drawer, drawerApi] = useVbenDrawer<{
         grant.grant_token,
       );
       message.success('凭证已替换');
+      succeeded = true;
       emit('success');
       drawerApi.close();
     } finally {
       drawerApi.unlock();
       totpCode.value = '';
-      await formApi.reset();
+      if (succeeded) await formApi.reset();
     }
   },
   async onOpenChange(open) {

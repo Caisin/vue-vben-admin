@@ -11,18 +11,29 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { Page, useVbenDrawer, useVbenModal } from '@vben/common-ui';
-import { Eye, Plus, RotateCw } from '@vben/icons';
+import { Ellipsis, Eye, Plus, RotateCw } from '@vben/icons';
 import { useUserStore } from '@vben/stores';
 
 import { useDebounceFn } from '@vueuse/core';
-import { Button, Select, Space, Tag } from 'antdv-next';
+import {
+  Button,
+  Dropdown,
+  Menu,
+  MenuItem,
+  Segmented,
+  Select,
+  Space,
+  Tag,
+} from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { AdminUserApi } from '#/api/auth/admin';
 import { CredentialApi } from '#/api/credential';
+import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
 
 import {
+  expiryInfo,
   kindLabel,
   stateLabel,
   stateOptions,
@@ -31,6 +42,7 @@ import {
   useFormSchema,
 } from './data';
 import BindingsDrawer from './modules/bindings.vue';
+import DetailDrawer from './modules/detail.vue';
 import CredentialForm from './modules/item-form.vue';
 import ReplaceDrawer from './modules/replace.vue';
 import RetireModal from './modules/retire.vue';
@@ -41,6 +53,8 @@ const profiles = ref<CredentialProfileSpec[]>([]);
 const route = useRoute();
 const userStore = useUserStore();
 const isAdmin = computed(() => userStore.userInfo?.roles?.includes('admin'));
+type OwnerScope = 'all' | 'mine' | 'specific';
+const ownerScope = ref<OwnerScope>('all');
 const selectedOwnerUid = ref<number | string>();
 const ownerLoading = ref(false);
 const ownerOptions = ref<{ label: string; value: number | string }[]>([]);
@@ -73,6 +87,13 @@ const searchOwners = useDebounceFn((keyword: string) => {
   void loadOwnerOptions(keyword);
 }, 300);
 
+const ownerQueryUid = computed(() => {
+  if (!isAdmin.value) return undefined;
+  if (ownerScope.value === 'mine') return userStore.userInfo?.userId;
+  if (ownerScope.value === 'specific') return selectedOwnerUid.value;
+  return undefined;
+});
+
 const [CredentialModal, credentialModalApi] = useVbenModal({
   connectedComponent: CredentialForm,
   destroyOnClose: true,
@@ -97,9 +118,25 @@ const [StatusModalComp, statusModalApi] = useVbenModal({
   connectedComponent: StatusModal,
   destroyOnClose: true,
 });
+const [DetailDrawerComp, detailDrawerApi] = useVbenDrawer({
+  connectedComponent: DetailDrawer,
+  destroyOnClose: true,
+});
 
 const [Grid, gridApi] = useVbenVxeGrid<CredentialView>({
-  formOptions: { schema: useFormSchema(), submitOnChange: true },
+  formOptions: {
+    handleValuesChange(values, changedFields) {
+      if (!changedFields.includes('kind')) return;
+      const selectedKind = values.kind as CredentialKind | undefined;
+      const profilePair = String(values.profile_pair ?? '');
+      const [profileKind] = profilePair.split(':');
+      if (profilePair && selectedKind && profileKind !== selectedKind) {
+        void gridApi.formApi.setFieldValue('profile_pair', undefined);
+      }
+    },
+    schema: useFormSchema(),
+    submitOnChange: false,
+  },
   gridOptions: {
     columns: useColumns(),
     height: 'auto',
@@ -111,17 +148,22 @@ const [Grid, gridApi] = useVbenVxeGrid<CredentialView>({
           const [profileKind, profile] = String(
             formValues.profile_pair ?? '',
           ).split(':');
+          const selectedKind = formValues.kind as CredentialKind | undefined;
           const result = await CredentialApi.list({
             code_prefix:
               String(formValues.code_prefix ?? '').trim() || undefined,
-            kind: (formValues.kind || profileKind || undefined) as
-              | CredentialKind
-              | undefined,
+            kind: selectedKind || (profileKind as CredentialKind) || undefined,
             name_prefix:
               String(formValues.name_prefix ?? '').trim() || undefined,
-            created_by: selectedOwnerUid.value,
+            created_by: ownerQueryUid.value,
+            expiring_within_days:
+              formValues.risk === 'expiring' ? 7 : undefined,
+            has_recent_failure: formValues.risk === 'failed' ? true : undefined,
             page: page.currentPage,
-            profile: profile || undefined,
+            profile:
+              profile && (!selectedKind || selectedKind === profileKind)
+                ? profile
+                : undefined,
             size: page.pageSize,
             state: formValues.state as CredentialState | undefined,
             ...vxeSortParams(params, ['code', 'name', 'updated_at']),
@@ -166,6 +208,10 @@ function openEdit(row: CredentialView) {
   credentialModalApi.setData({ item: row, profiles: profiles.value }).open();
 }
 
+function openDetail(row: CredentialView) {
+  detailDrawerApi.setData(row).open();
+}
+
 function openReplace(row: CredentialView) {
   replaceDrawerApi.setData({ item: row, profiles: profiles.value }).open();
 }
@@ -199,14 +245,16 @@ function retire(row: CredentialView) {
     <RevealModal />
     <RetireModalComp @success="gridApi.query" />
     <StatusModalComp @success="gridApi.query" />
+    <DetailDrawerComp
+      @edit="openEdit"
+      @replace="openReplace"
+      @reveal="openReveal"
+      @retire="retire"
+      @status="toggleState"
+    />
     <Grid class="management-grid" table-title="凭证中心">
       <template #name="{ row }">
-        <Button
-          v-access:code="'credential:update'"
-          class="px-0"
-          type="link"
-          @click.stop="openEdit(row)"
-        >
+        <Button class="px-0" type="link" @click.stop="openDetail(row)">
           {{ row.name }}
         </Button>
       </template>
@@ -219,6 +267,39 @@ function retire(row: CredentialView) {
         </Tag>
       </template>
       <template #summary="{ row }">{{ summaryText(row) }}</template>
+      <template #health="{ row }">
+        <Tag
+          :color="
+            Number(row.failed_binding_count) > 0
+              ? 'error'
+              : Number(row.binding_count) === 0
+                ? 'default'
+                : Number(row.last_used_at) > 0
+                  ? 'success'
+                  : 'warning'
+          "
+        >
+          {{
+            Number(row.failed_binding_count) > 0
+              ? `${row.failed_binding_count} 个使用失败`
+              : Number(row.binding_count) === 0
+                ? '未绑定'
+                : Number(row.last_used_at) > 0
+                  ? '最近可用'
+                  : '尚未使用'
+          }}
+        </Tag>
+      </template>
+      <template #expires="{ row }">
+        <div class="flex flex-wrap items-center gap-1">
+          <Tag :color="expiryInfo(row.expires_at).color">
+            {{ expiryInfo(row.expires_at).label }}
+          </Tag>
+          <span class="text-xs text-gray-500">
+            {{ Times.formatOptionalUnix(row.expires_at) }}
+          </span>
+        </div>
+      </template>
       <template #operation="{ row }">
         <Space>
           <Button
@@ -238,48 +319,69 @@ function retire(row: CredentialView) {
           >
             <RotateCw class="size-4" />替换
           </Button>
-          <Button size="small" type="link" @click.stop="openBindings(row)">
-            使用
-          </Button>
-          <Button
-            v-if="row.state !== 'retired'"
-            v-access:code="'credential:status'"
-            size="small"
-            type="link"
-            @click.stop="toggleState(row)"
-          >
-            {{ row.state === 'active' ? '禁用' : '启用' }}
-          </Button>
-          <Button
-            v-if="row.state !== 'retired'"
-            v-access:code="'credential:retire'"
-            danger
-            size="small"
-            type="link"
-            @click.stop="retire(row)"
-          >
-            退役
-          </Button>
+          <Dropdown>
+            <Button size="small" title="更多操作" type="text">
+              <Ellipsis class="size-4" />
+            </Button>
+            <template #popupRender>
+              <Menu>
+                <MenuItem key="bindings" @click="openBindings(row)">
+                  使用位置
+                </MenuItem>
+                <MenuItem
+                  v-if="row.state !== 'retired'"
+                  v-access:code="'credential:status'"
+                  key="status"
+                  @click="toggleState(row)"
+                >
+                  {{ row.state === 'active' ? '禁用' : '启用' }}
+                </MenuItem>
+                <MenuItem
+                  v-if="row.state !== 'retired'"
+                  v-access:code="'credential:retire'"
+                  danger
+                  key="retire"
+                  @click="retire(row)"
+                >
+                  退役
+                </MenuItem>
+              </Menu>
+            </template>
+          </Dropdown>
         </Space>
       </template>
       <template #toolbar-tools>
         <Space>
-          <Select
+          <Segmented
             v-if="isAdmin"
+            v-model:value="ownerScope"
+            :options="[
+              { label: '全部凭证', value: 'all' },
+              { label: '我的凭证', value: 'mine' },
+              { label: '指定用户', value: 'specific' },
+            ]"
+            @change="
+              (value) => {
+                if (value !== 'specific') selectedOwnerUid = undefined;
+                gridApi.query();
+              }
+            "
+          />
+          <Select
+            v-if="isAdmin && ownerScope === 'specific'"
             v-model:value="selectedOwnerUid"
             allow-clear
             class="w-56"
             :filter-option="false"
             :loading="ownerLoading"
             :options="ownerOptions"
-            placeholder="我的凭证"
+            placeholder="创建人（全部）"
             show-search
             @change="() => gridApi.query()"
             @dropdown-visible-change="(open) => open && loadOwnerOptions()"
             @search="searchOwners"
           />
           <Button
-            v-if="!selectedOwnerUid"
             v-access:code="'credential:create'"
             type="primary"
             @click="openCreate"

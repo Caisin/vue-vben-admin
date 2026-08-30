@@ -7,6 +7,7 @@ export interface DingtalkAppConfig {
   app_name: string;
   created_at: number | string;
   credentials_configured: boolean;
+  app_secret_credential_code: string;
   enabled: boolean;
   is_def: boolean;
   remark: string;
@@ -27,6 +28,7 @@ export interface DingtalkAppCreate {
   app_key: string;
   app_name: string;
   app_secret: string;
+  app_secret_credential_code?: string;
   enabled: boolean;
   is_def: boolean;
   remark: string;
@@ -35,6 +37,7 @@ export interface DingtalkAppCreate {
 export interface DingtalkAppUpdate {
   app_name: string;
   app_secret: string;
+  app_secret_credential_code?: string;
   enabled: boolean;
   is_def: boolean;
   remark: string;
@@ -47,6 +50,9 @@ export interface WechatAppConfig {
   company: string;
   created_at: number | string;
   credentials_configured: boolean;
+  app_secret_credential_code: string;
+  token_credential_code: string;
+  msg_aes_key_credential_code: string;
   enabled: boolean;
   mch_id: number | string;
   offer_id: string;
@@ -64,6 +70,7 @@ export interface WechatAppCreate {
   app_key: string;
   app_name: string;
   app_secret: string;
+  app_secret_credential_code?: string;
   company: string;
   enabled: boolean;
   mch_id: number | string;
@@ -71,6 +78,8 @@ export interface WechatAppCreate {
   offer_id: string;
   remark: string;
   token: string;
+  token_credential_code?: string;
+  msg_aes_key_credential_code?: string;
 }
 
 export type WechatAppUpdate = Omit<WechatAppCreate, 'app_id'>;

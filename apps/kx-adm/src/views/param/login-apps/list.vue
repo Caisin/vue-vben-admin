@@ -12,6 +12,7 @@ import type {
 } from '#/api';
 
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Plus, Settings } from '@vben/icons';
@@ -45,6 +46,7 @@ import DingtalkCallbackModal from './modules/dingtalk-callback.vue';
 import ContentModal from './modules/modal.vue';
 
 const activeTab = ref('dingtalk');
+const route = useRoute();
 const editingDingtalk = ref<DingtalkAppConfig>();
 const editingWechat = ref<WechatAppConfig>();
 const dingtalkCallbackBase = ref('');
@@ -113,11 +115,16 @@ const [DingtalkForm, dingtalkFormApi] = useVbenForm({
       rules: 'required',
     },
     {
-      component: 'InputPassword',
-      componentProps: { autocomplete: 'new-password' },
-      fieldName: 'app_secret',
+      component: 'CredentialSelect',
+      componentProps: {
+        createKind: 'password',
+        kind: 'password',
+        profile: 'generic',
+        placeholder: '选择 AppSecret 凭证',
+      },
+      fieldName: 'app_secret_credential_code',
       formItemClass: 'col-span-1',
-      label: 'AppSecret',
+      label: 'AppSecret 凭证',
     },
     {
       component: 'Switch',
@@ -170,25 +177,40 @@ const [WechatForm, wechatFormApi] = useVbenForm({
       rules: 'required',
     },
     {
-      component: 'InputPassword',
-      componentProps: { autocomplete: 'new-password' },
-      fieldName: 'app_secret',
+      component: 'CredentialSelect',
+      componentProps: {
+        createKind: 'password',
+        kind: 'password',
+        profile: 'generic',
+        placeholder: '选择 AppSecret 凭证',
+      },
+      fieldName: 'app_secret_credential_code',
       formItemClass: 'col-span-1',
-      label: 'AppSecret',
+      label: 'AppSecret 凭证',
     },
     {
-      component: 'InputPassword',
-      componentProps: { autocomplete: 'new-password' },
-      fieldName: 'token',
+      component: 'CredentialSelect',
+      componentProps: {
+        createKind: 'password',
+        kind: 'password',
+        profile: 'generic',
+        placeholder: '选择回调 Token 凭证',
+      },
+      fieldName: 'token_credential_code',
       formItemClass: 'col-span-1',
-      label: '回调 Token',
+      label: '回调 Token 凭证',
     },
     {
-      component: 'InputPassword',
-      componentProps: { autocomplete: 'new-password' },
-      fieldName: 'msg_aes_key',
+      component: 'CredentialSelect',
+      componentProps: {
+        createKind: 'password',
+        kind: 'password',
+        profile: 'generic',
+        placeholder: '选择消息加解密密钥凭证',
+      },
+      fieldName: 'msg_aes_key_credential_code',
       formItemClass: 'col-span-1',
-      label: '消息加解密密钥',
+      label: '消息加解密密钥凭证',
     },
     { component: 'Input', fieldName: 'offer_id', label: 'Offer ID' },
     {
@@ -242,8 +264,8 @@ const [DingtalkModal, dingtalkModalApi] = useVbenModal({
           data as DingtalkAppUpdate,
         );
       } else {
-        if (!String(values.app_secret ?? '').trim()) {
-          message.error('新建钉钉应用时必须填写 AppSecret');
+        if (!String(values.app_secret_credential_code ?? '').trim()) {
+          message.error('新建钉钉应用时必须选择 AppSecret 凭证');
           return;
         }
         await LoginAppApi.dingtalk_create(values as DingtalkAppCreate);
@@ -275,8 +297,8 @@ const [WechatModal, wechatModalApi] = useVbenModal({
           data as WechatAppUpdate,
         );
       } else {
-        if (!String(values.app_secret ?? '').trim()) {
-          message.error('新建微信应用时必须填写 AppSecret');
+        if (!String(values.app_secret_credential_code ?? '').trim()) {
+          message.error('新建微信应用时必须选择 AppSecret 凭证');
           return;
         }
         await LoginAppApi.wechat_create(values as WechatAppCreate);
@@ -367,6 +389,7 @@ async function onDingtalkEnabledChange(
   await LoginAppApi.dingtalk_update(row.app_key, {
     app_name: row.app_name,
     app_secret: '',
+    app_secret_credential_code: row.app_secret_credential_code,
     enabled,
     is_def: row.is_def,
     remark: row.remark,
@@ -379,6 +402,7 @@ async function onWechatEnabledChange(enabled: boolean, row: WechatAppConfig) {
     app_key: row.app_key,
     app_name: row.app_name,
     app_secret: '',
+    app_secret_credential_code: row.app_secret_credential_code,
     company: row.company,
     enabled,
     mch_id: row.mch_id,
@@ -386,6 +410,8 @@ async function onWechatEnabledChange(enabled: boolean, row: WechatAppConfig) {
     offer_id: row.offer_id,
     remark: row.remark,
     token: '',
+    token_credential_code: row.token_credential_code,
+    msg_aes_key_credential_code: row.msg_aes_key_credential_code,
   });
   return true;
 }
@@ -450,6 +476,9 @@ async function openWechatEdit(row: WechatAppConfig) {
     app_secret: '',
     msg_aes_key: '',
     token: '',
+    app_secret_credential_code: detail.app_secret_credential_code,
+    token_credential_code: detail.token_credential_code,
+    msg_aes_key_credential_code: detail.msg_aes_key_credential_code,
   });
   await wechatFormApi.updateSchema([
     { componentProps: { disabled: true }, fieldName: 'app_id' },
@@ -479,6 +508,10 @@ function bindContextMenus() {
 }
 
 onMounted(() => {
+  const requestedTab = String(route.query.tab ?? '');
+  if (requestedTab === 'dingtalk' || requestedTab === 'wechat') {
+    activeTab.value = requestedTab;
+  }
   bindContextMenus();
   void loadDingtalkCallbackBase();
 });

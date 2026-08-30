@@ -4,8 +4,11 @@ import type { DicSelectProps } from './use-dictionary';
 import type { JsonValue } from '#/api/request';
 
 import { computed, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
-import { Button, Input, message, Select } from 'antdv-next';
+import { ExternalLink, Plus } from '@vben/icons';
+
+import { Button, Input, message, Modal, Select } from 'antdv-next';
 
 import { DictionaryApi } from '#/api/param/dictionary';
 
@@ -23,6 +26,7 @@ const props = withDefaults(defineProps<DicSelectProps>(), {
   createPlaceholder: '输入新选项名称',
   creatable: false,
   disabled: false,
+  managePath: '/param/dictionaries',
   placeholder: '请选择',
   showSearch: true,
 });
@@ -31,6 +35,8 @@ const code = computed(() => props.code);
 const { items, loading, options, reload } = useDictionary(code);
 const creating = ref(false);
 const createLabel = ref('');
+const createOpen = ref(false);
+const router = useRouter();
 
 const selectedKey = computed({
   get: () =>
@@ -89,6 +95,7 @@ async function createOption() {
   if (existing) {
     modelValue.value = existing.value;
     createLabel.value = '';
+    createOpen.value = false;
     message.info('已选择已有选项');
     return;
   }
@@ -108,10 +115,19 @@ async function createOption() {
     await reload();
     modelValue.value = value;
     createLabel.value = '';
+    createOpen.value = false;
     message.success('选项已新增');
   } finally {
     creating.value = false;
   }
+}
+
+function openManage() {
+  const href = router.resolve({
+    path: props.managePath,
+    query: { code: props.code },
+  }).href;
+  window.open(href, '_blank', 'noopener,noreferrer');
 }
 </script>
 
@@ -132,24 +148,40 @@ async function createOption() {
     <template v-if="creatable" #popupRender="menuNode">
       <component :is="menuNode" />
       <div class="dic-select-create" @mousedown.prevent.stop>
-        <Input
-          v-model:value="createLabel"
-          :placeholder="createPlaceholder"
-          size="small"
-          @press-enter="createOption"
-        />
-        <Button
-          :disabled="!createLabel.trim()"
-          :loading="creating"
-          size="small"
-          type="link"
-          @click="createOption"
-        >
+        <Button block size="small" type="link" @click="createOpen = true">
+          <template #icon><Plus /></template>
           新增
         </Button>
       </div>
     </template>
   </Select>
+  <Modal
+    v-model:open="createOpen"
+    destroy-on-close
+    title="新增字典项"
+    width="520"
+  >
+    <Input
+      v-model:value="createLabel"
+      :placeholder="createPlaceholder"
+      @press-enter="createOption"
+    />
+    <template #footer>
+      <Button type="link" @click="openManage">
+        <template #icon><ExternalLink /></template>
+        前往完整维护页面
+      </Button>
+      <Button @click="createOpen = false">取消</Button>
+      <Button
+        :disabled="!createLabel.trim()"
+        :loading="creating"
+        type="primary"
+        @click="createOption"
+      >
+        新增
+      </Button>
+    </template>
+  </Modal>
 </template>
 
 <style scoped>

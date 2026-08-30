@@ -25,6 +25,7 @@ import type {
 import type { Recordable } from '@vben/types';
 
 import type { JsonEditorProps } from '#/components/codemirror';
+import type { JsonFileInputProps } from '#/components/credential';
 import type {
   DicRadioGroupProps,
   DicSelectProps,
@@ -39,6 +40,7 @@ import { $t } from '@vben/locales';
 import { notification } from 'antdv-next';
 import dayjs from 'dayjs';
 
+import CredentialSelect from '#/components/credential/credential-select.vue';
 import { DicRadioGroup, DicSelect } from '#/components/dictionary';
 import { productFormComponents } from '#/products/components';
 
@@ -73,6 +75,9 @@ const InputPassword = defineAsyncComponent(() =>
 );
 const JsonEditor = defineAsyncComponent(
   () => import('#/components/codemirror/json-editor.vue'),
+);
+const JsonFileInput = defineAsyncComponent(
+  () => import('#/components/credential/json-file-input.vue'),
 );
 const RadioGroup = defineAsyncComponent(() =>
   import('antdv-next/dist/radio/index').then((res) => res.RadioGroup),
@@ -184,6 +189,7 @@ export type ComponentType =
   | 'ApiTreeSelect'
   | 'AutoComplete'
   | 'Checkbox'
+  | 'CredentialSelect'
   | 'DefaultButton'
   | 'DicRadioGroup'
   | 'DicSelect'
@@ -195,6 +201,7 @@ export type ComponentType =
   | 'InputNumber'
   | 'InputPassword'
   | 'JsonEditor'
+  | 'JsonFileInput'
   | 'PrimaryButton'
   | 'RadioGroup'
   | 'RangePicker'
@@ -209,6 +216,7 @@ export interface ComponentPropsMap {
   ApiTreeSelect: ApiComponentSharedProps & TreeSelectProps;
   AutoComplete: AutoCompleteProps;
   Checkbox: CheckboxProps;
+  CredentialSelect: InstanceType<typeof CredentialSelect>['$props'];
   DatePicker: DatePickerProps;
   DefaultButton: ButtonProps;
   DicRadioGroup: DicRadioGroupProps;
@@ -221,6 +229,7 @@ export interface ComponentPropsMap {
   InputNumber: InputNumberProps;
   InputPassword: InputProps;
   JsonEditor: JsonEditorProps;
+  JsonFileInput: JsonFileInputProps;
   PrimaryButton: ButtonProps;
   RadioGroup: RadioGroupProps;
   RangePicker: RangePickerProps;
@@ -236,6 +245,7 @@ async function initComponentAdapter() {
     ApiTreeSelect,
     AutoComplete: withDefaultPlaceholder(AutoComplete, 'select'),
     Checkbox,
+    CredentialSelect,
     DatePicker: withDefaultPlaceholder(DatePicker, 'select'),
     DefaultButton: (props, { attrs, slots }) =>
       h(Button, { ...props, attrs, type: 'default' }, slots),
@@ -249,6 +259,7 @@ async function initComponentAdapter() {
     InputPassword: withDefaultPlaceholder(InputPassword, 'input'),
     IconPicker,
     JsonEditor,
+    JsonFileInput,
     PrimaryButton: (props, { attrs, slots }) =>
       h(Button, { ...props, attrs, type: 'primary' }, slots),
     RadioGroup,

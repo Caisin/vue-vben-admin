@@ -1,5 +1,6 @@
 export * from './api-permission';
 export * from './audit-log';
+export * from './data-source';
 export * from './dept';
 export * from './menu';
 export * from './role';

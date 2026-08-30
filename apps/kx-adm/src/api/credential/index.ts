@@ -4,6 +4,7 @@ import { requestClient } from '#/api/request';
 
 export type CredentialKind =
   | 'access_key'
+  | 'google_service_account'
   | 'http_header'
   | 'http_token'
   | 'password'
@@ -69,7 +70,16 @@ export type CredentialPayload =
       password: string;
       username: string;
     }
-  | { curl: string; kind: 'tt_web' }
+  | {
+      cookie?: string;
+      curl: string;
+      kind: 'tt_web';
+      user_agent?: string;
+    }
+  | {
+      kind: 'google_service_account';
+      service_account_json: string;
+    }
   | { kind: 'password'; password: string }
   | {
       kind: 'ssh_key';
@@ -128,6 +138,12 @@ export function buildCredentialPayload(
   if (kind === 'tt_web') {
     return { curl: textValue(values, 'curl'), kind };
   }
+  if (kind === 'google_service_account') {
+    return {
+      kind,
+      service_account_json: textValue(values, 'service_account_json'),
+    };
+  }
   return {
     kind,
     passphrase: textValue(values, 'passphrase'),
@@ -139,12 +155,15 @@ export function buildCredentialPayload(
 
 export interface CredentialView {
   binding_count: number;
+  failed_binding_count: number;
   code: string;
   created_at: number | string;
   created_by: number | string;
   expires_at: number | string;
   id: number | string;
   kind: CredentialKind;
+  last_error: string;
+  last_used_at: number | string;
   name: string;
   not_before: number | string;
   profile: string;
@@ -158,6 +177,8 @@ export interface CredentialView {
 export interface CredentialQuery extends PageQuery {
   code_prefix?: string;
   created_by?: number | string;
+  expiring_within_days?: number;
+  has_recent_failure?: boolean;
   kind?: CredentialKind;
   name_prefix?: string;
   profile?: string;
@@ -165,7 +186,7 @@ export interface CredentialQuery extends PageQuery {
 }
 
 export interface CredentialCreateWrite {
-  code: string;
+  code?: string;
   expires_at?: number | string;
   kind: CredentialKind;
   name: string;

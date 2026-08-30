@@ -45,6 +45,7 @@ import { SystemUserApi } from '#/api/system/user';
 import { CredentialSelect } from '#/components/credential';
 import { DicSelect } from '#/components/dictionary';
 import { BusinessImport } from '#/components/import-export';
+import { ReferenceSelect } from '#/components/management';
 import { Times } from '#/times';
 
 import { platformOptions, useColumns, useGridFormSchema } from './data';
@@ -75,11 +76,15 @@ const subjectModalOpen = ref(false);
 const subjectSaving = ref(false);
 const editingSubjectId = ref<number>();
 const subjectForm = reactive<DeveloperSubjectWrite>(emptySubjectForm());
+const subjectQuickName = ref('');
+const subjectQuickSaving = ref(false);
 const subjectSmallBusinessAppliedAt = ref<Dayjs>();
 const certifierModalOpen = ref(false);
 const certifierSaving = ref(false);
 const editingCertifierId = ref<number>();
 const certifierForm = reactive<DeveloperCertifierWrite>(emptyCertifierForm());
+const certifierQuickName = ref('');
+const certifierQuickSaving = ref(false);
 const deviceModalOpen = ref(false);
 const deviceSaving = ref(false);
 const editingDeviceId = ref<number>();
@@ -243,6 +248,48 @@ async function loadCertifiers() {
   certifiers.value = await DeveloperAccountApi.certifiers();
 }
 
+async function createSubjectQuick(complete: (value?: number) => void) {
+  const name = subjectQuickName.value.trim();
+  if (!name) {
+    message.warning('请输入主体名称');
+    return;
+  }
+  subjectQuickSaving.value = true;
+  try {
+    const saved = await DeveloperAccountApi.createSubject({
+      ...emptySubjectForm(),
+      subject_name_cn: name,
+    });
+    await loadSubjects();
+    complete(saved.id);
+    subjectQuickName.value = '';
+    message.success('主体已创建并选中');
+  } finally {
+    subjectQuickSaving.value = false;
+  }
+}
+
+async function createCertifierQuick(complete: (value?: number) => void) {
+  const name = certifierQuickName.value.trim();
+  if (!name) {
+    message.warning('请输入认证人姓名');
+    return;
+  }
+  certifierQuickSaving.value = true;
+  try {
+    const saved = await DeveloperAccountApi.createCertifier({
+      ...emptyCertifierForm(),
+      name,
+    });
+    await loadCertifiers();
+    complete(saved.id);
+    certifierQuickName.value = '';
+    message.success('认证人已创建并选中');
+  } finally {
+    certifierQuickSaving.value = false;
+  }
+}
+
 async function openEdit(
   row: { id: number | string },
   tab: 'account' | 'apps' | 'certifier' | 'devices' = 'account',
@@ -359,12 +406,6 @@ function maskPhone(value: string | undefined) {
   const phone = value?.trim() ?? '';
   if (phone.length <= 7) return phone || '-';
   return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
-}
-
-function openCertifierCreate() {
-  editingCertifierId.value = undefined;
-  Object.assign(certifierForm, emptyCertifierForm());
-  certifierModalOpen.value = true;
 }
 
 async function openCertifierEdit(target?: DeveloperAccountListItem) {
@@ -716,30 +757,74 @@ async function loadAccessUserOptions() {
                 />
               </FormItem>
               <FormItem label="关联主体">
-                <Select
-                  v-model:value="form.subject_id"
+                <ReferenceSelect
+                  v-model="form.subject_id"
                   :options="
                     subjects.map((item) => ({
                       label: item.subject_name_cn,
                       value: item.id,
                     }))
                   "
-                  allow-clear
-                  placeholder="先维护主体，再关联开发者账号"
-                />
+                  manage-path="/developer-account/subjects"
+                  placeholder="选择主体"
+                  show-maintenance
+                  @refresh="loadSubjects"
+                >
+                  <template #maintenance="{ complete }">
+                    <Form layout="vertical">
+                      <FormItem label="中文主体" required>
+                        <Input
+                          v-model:value="subjectQuickName"
+                          placeholder="例如：示例科技有限公司"
+                          @press-enter="createSubjectQuick(complete)"
+                        />
+                      </FormItem>
+                    </Form>
+                    <Button
+                      block
+                      :loading="subjectQuickSaving"
+                      type="primary"
+                      @click="createSubjectQuick(complete)"
+                    >
+                      新增并选择
+                    </Button>
+                  </template>
+                </ReferenceSelect>
               </FormItem>
               <FormItem label="关联认证人">
-                <Select
-                  v-model:value="form.certifier_id"
+                <ReferenceSelect
+                  v-model="form.certifier_id"
                   :options="
                     certifiers.map((item) => ({
                       label: `${item.name}${item.phone ? `（${item.phone}）` : ''}`,
                       value: item.id,
                     }))
                   "
-                  allow-clear
-                  placeholder="先维护认证人，再关联开发者账号"
-                />
+                  manage-path="/developer-account/certifiers"
+                  placeholder="选择认证人"
+                  show-maintenance
+                  @refresh="loadCertifiers"
+                >
+                  <template #maintenance="{ complete }">
+                    <Form layout="vertical">
+                      <FormItem label="认证人姓名" required>
+                        <Input
+                          v-model:value="certifierQuickName"
+                          placeholder="输入姓名"
+                          @press-enter="createCertifierQuick(complete)"
+                        />
+                      </FormItem>
+                    </Form>
+                    <Button
+                      block
+                      :loading="certifierQuickSaving"
+                      type="primary"
+                      @click="createCertifierQuick(complete)"
+                    >
+                      新增并选择
+                    </Button>
+                  </template>
+                </ReferenceSelect>
               </FormItem>
               <FormItem label="账户状态">
                 <DicSelect
@@ -820,20 +905,41 @@ async function loadAccessUserOptions() {
           <TabPane key="certifier" tab="认证人">
             <div class="mb-4 flex items-end gap-3">
               <FormItem class="mb-0 flex-1" label="关联认证人">
-                <Select
-                  v-model:value="form.certifier_id"
+                <ReferenceSelect
+                  v-model="form.certifier_id"
                   :options="
                     certifiers.map((item) => ({
                       label: `${item.name}${item.phone ? `（${maskPhone(item.phone)}）` : ''}`,
                       value: item.id,
                     }))
                   "
-                  allow-clear
+                  manage-path="/developer-account/certifiers"
                   placeholder="选择认证人"
-                />
+                  show-maintenance
+                  @refresh="loadCertifiers"
+                >
+                  <template #maintenance="{ complete }">
+                    <Form layout="vertical">
+                      <FormItem label="认证人姓名" required>
+                        <Input
+                          v-model:value="certifierQuickName"
+                          placeholder="输入姓名"
+                          @press-enter="createCertifierQuick(complete)"
+                        />
+                      </FormItem>
+                    </Form>
+                    <Button
+                      block
+                      :loading="certifierQuickSaving"
+                      type="primary"
+                      @click="createCertifierQuick(complete)"
+                    >
+                      新增并选择
+                    </Button>
+                  </template>
+                </ReferenceSelect>
               </FormItem>
               <Space>
-                <Button @click="openCertifierCreate">新增认证人</Button>
                 <Button
                   :disabled="!form.certifier_id"
                   type="primary"

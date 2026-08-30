@@ -1,13 +1,12 @@
 <script lang="ts" setup>
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
-import type { CredentialView } from '#/api/credential';
 import type {
   ServerWrite,
   SoftwareInstallation,
   SoftwareServer,
 } from '#/api/software';
 
-import { nextTick, onMounted, reactive, ref } from 'vue';
+import { nextTick, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
@@ -26,14 +25,13 @@ import {
 } from 'antdv-next';
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
-import { CredentialApi } from '#/api/credential';
 import { SoftwareApi } from '#/api/software';
+import { CredentialSelect } from '#/components/credential';
 
 import { useColumns, useGridFormSchema, useInstallationColumns } from './data';
 
 const saving = ref(false);
 const open = ref(false);
-const credentials = ref<CredentialView[]>([]);
 const editing = ref<SoftwareServer>();
 const distributionServer = ref<SoftwareServer>();
 const distributionLoading = ref(false);
@@ -93,16 +91,6 @@ const [InstallationGrid, installationGridApi] =
       },
     } as VxeTableGridOptions<SoftwareInstallation>,
   });
-
-async function loadCredentials() {
-  const page = await CredentialApi.list({
-    kind: 'ssh_key',
-    page: 1,
-    size: 200,
-    state: 'active',
-  });
-  credentials.value = page.items;
-}
 
 function edit(row?: SoftwareServer) {
   editing.value = row;
@@ -188,8 +176,6 @@ async function showInstallations(row: SoftwareServer) {
     distributionLoading.value = false;
   }
 }
-
-onMounted(loadCredentials);
 </script>
 
 <template>
@@ -297,15 +283,10 @@ onMounted(loadCredentials);
           </FormItem>
         </div>
         <FormItem v-if="form.access_kind === 'ssh'" label="SSH 凭证" required>
-          <Select
-            v-model:value="form.credential_code"
-            show-search
-            :options="
-              credentials.map((item) => ({
-                label: `${item.name} (${item.code})`,
-                value: item.code,
-              }))
-            "
+          <CredentialSelect
+            v-model="form.credential_code"
+            kind="ssh_key"
+            placeholder="选择 active SSH 凭证"
           />
         </FormItem>
         <FormItem v-else label="执行身份">

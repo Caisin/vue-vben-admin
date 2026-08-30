@@ -51,6 +51,7 @@ function fieldComponent(
   field: CredentialFieldSpec,
   profile: CredentialProfileSpec,
 ) {
+  if (field.name === 'service_account_json') return 'JsonFileInput';
   if (field.name === 'header_name' && profile.allowed_headers.length > 0)
     return 'Select';
   if (field.name === 'scheme') return 'Select';
@@ -64,6 +65,7 @@ function fieldSchema(
   profile: CredentialProfileSpec,
 ): VbenFormSchema {
   const component = fieldComponent(field, profile);
+  const isLongText = component === 'Textarea' || component === 'JsonFileInput';
   const selectOptions =
     field.name === 'scheme'
       ? ['Bearer', 'Basic'].map((value) => ({ label: value, value }))
@@ -75,10 +77,10 @@ function fieldSchema(
       class: 'w-full',
       maxlength: field.max_length,
       options: component === 'Select' ? selectOptions : undefined,
-      rows: component === 'Textarea' ? 6 : undefined,
+      rows: isLongText ? 10 : undefined,
     },
     fieldName: `payload_${field.name}`,
-    formItemClass: component === 'Textarea' ? 'md:col-span-2' : 'col-span-1',
+    formItemClass: isLongText ? 'md:col-span-2' : 'col-span-1',
     help: '创建必须填写当前类型完整材料，空值不会继承其它 profile。',
     label: field.label,
     rules: field.required ? 'required' : undefined,
@@ -89,13 +91,16 @@ function formSchema(profilePair?: unknown): VbenFormSchema[] {
   const profile = selectedSpec(profilePair);
   const editingMetadata = Boolean(editing.value);
   return [
-    {
-      component: 'Input',
-      componentProps: { class: 'w-full', disabled: editingMetadata },
-      fieldName: 'code',
-      label: '凭证编码',
-      rules: 'required',
-    },
+    ...(editingMetadata
+      ? [
+          {
+            component: 'Input',
+            componentProps: { class: 'w-full', disabled: true },
+            fieldName: 'code',
+            label: '凭证编码',
+          } satisfies VbenFormSchema,
+        ]
+      : []),
     {
       component: 'Input',
       componentProps: { class: 'w-full' },
@@ -116,10 +121,11 @@ function formSchema(profilePair?: unknown): VbenFormSchema[] {
       rules: 'selectRequired',
     },
     {
-      component: 'InputNumber',
-      componentProps: { class: 'w-full' },
+      component: 'DatePicker',
+      componentProps: { class: 'w-full', showTime: true, valueFormat: 'X' },
       fieldName: 'expires_at',
-      label: '过期 Unix 秒',
+      help: '不填写表示永不过期。',
+      label: '过期时间',
     },
     ...(profile?.fields.map((field) => fieldSchema(field, profile)) ?? []),
     {
@@ -159,6 +165,7 @@ const [Modal, modalApi] = useVbenModal<{
     if (!valid) return;
     const values = await formApi.getValues();
     modalApi.lock();
+    let succeeded = false;
     try {
       if (editing.value) {
         await CredentialApi.update(editing.value.code, {
@@ -171,7 +178,6 @@ const [Modal, modalApi] = useVbenModal<{
           string,
         ];
         await CredentialApi.create({
-          code: String(values.code ?? '').trim(),
           expires_at: values.expires_at as number | string | undefined,
           kind,
           name: String(values.name ?? '').trim(),
@@ -181,11 +187,12 @@ const [Modal, modalApi] = useVbenModal<{
         });
       }
       message.success('凭证已保存');
+      succeeded = true;
       modalApi.close();
       emit('success');
     } finally {
       modalApi.unlock();
-      await formApi.reset();
+      if (succeeded) await formApi.reset();
     }
   },
   async onOpenChange(open) {

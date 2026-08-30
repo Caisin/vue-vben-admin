@@ -306,6 +306,7 @@ export function useKnowledgeTargetOptions({
     operatorLoading,
     operatorOptions,
     prepare,
+    refreshOperators: () => loadOperators(),
     searchOperators,
     selectTreeNode,
     treeLoading,
