@@ -100,6 +100,7 @@ const [Drawer, drawerApi] = useVbenDrawer<{
     const payload: CredentialPayload = buildCredentialPayload(
       credential.value.kind,
       values,
+      credential.value.profile,
     );
     drawerApi.lock();
     let succeeded = false;

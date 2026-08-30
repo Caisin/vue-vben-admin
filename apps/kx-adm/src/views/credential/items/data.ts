@@ -9,17 +9,11 @@ import type {
 
 import { Times } from '#/times';
 
-export const kindOptions: { label: string; value: CredentialKind }[] = [
-  { label: 'Access Key', value: 'access_key' },
-  { label: '账号密码', value: 'username_password' },
-  { label: '密码', value: 'password' },
-  { label: 'HTTP Token/JWT', value: 'http_token' },
-  { label: 'HTTP Header', value: 'http_header' },
-  { label: 'SSH Key', value: 'ssh_key' },
-  { label: 'TikTok Web', value: 'tt_web' },
-  { label: 'Firebase 服务账号', value: 'google_service_account' },
-  { label: '参数 JSON 机密', value: 'json_secret' },
-];
+export {
+  credentialKindTabs,
+  kindLabel,
+  kindOptions,
+} from './credential-kind-options';
 
 export const stateOptions: {
   color: string;
@@ -56,10 +50,6 @@ const summaryFieldLabels: Record<string, string> = {
   json: 'JSON 机密',
 };
 
-export function kindLabel(kind?: CredentialKind) {
-  return kindOptions.find((item) => item.value === kind)?.label ?? kind ?? '-';
-}
-
 export function stateLabel(state?: CredentialState) {
   return (
     stateOptions.find((item) => item.value === state)?.label ?? state ?? '-'
@@ -95,22 +85,25 @@ export function expiryInfo(
   return { color: 'success', days, label: `${days} 天后过期` } as const;
 }
 
-export function profileOptions(
-  profiles: CredentialProfileSpec[],
-  kind?: CredentialKind,
-) {
-  return profiles
-    .filter((item) => !kind || item.kind === kind)
-    .map((item) => ({
-      // 未选择类型时保留类型前缀，避免不同类型下的同名 Profile 产生歧义。
-      label: kind ? item.label : `${kindLabel(item.kind)} / ${item.label}`,
-      value: `${item.kind}:${item.profile}`,
-    }));
+export function profileOptions(profiles: CredentialProfileSpec[]) {
+  return profiles.map((item) => ({
+    label: item.label,
+    value: `${item.kind}:${item.profile}`,
+  }));
 }
 
-export function useFormSchema(
-  profiles: CredentialProfileSpec[] = [],
-): VbenFormSchema[] {
+export function profileLabel(
+  profiles: CredentialProfileSpec[],
+  kind: CredentialKind,
+  profile: string,
+) {
+  return (
+    profiles.find((item) => item.kind === kind && item.profile === profile)
+      ?.label ?? profile
+  );
+}
+
+export function useFormSchema(): VbenFormSchema[] {
   return [
     {
       component: 'Input',
@@ -123,36 +116,6 @@ export function useFormSchema(
       componentProps: { placeholder: '例如：生产环境' },
       fieldName: 'name_prefix',
       label: '名称前缀',
-    },
-    {
-      component: 'Select',
-      componentProps: { allowClear: true, options: kindOptions },
-      fieldName: 'kind',
-      label: '类型',
-    },
-    {
-      component: 'Select',
-      componentProps: {
-        allowClear: true,
-        options: profileOptions(profiles),
-        placeholder: '可选，按 Profile 筛选',
-        showSearch: true,
-      },
-      dependencies: {
-        resolve: ({ values }) => ({
-          componentProps: {
-            allowClear: true,
-            options: profileOptions(profiles, values.kind),
-            placeholder: values.kind
-              ? '可选，筛选该类型下的 Profile'
-              : '可选，按 Profile 筛选',
-            showSearch: true,
-          },
-        }),
-        triggerFields: ['kind'],
-      },
-      fieldName: 'profile_pair',
-      label: 'Profile',
     },
     {
       component: 'Select',
@@ -185,7 +148,13 @@ export function useColumns(): VxeTableGridColumns<CredentialView> {
     },
     { field: 'code', minWidth: 180, sortable: true, title: '编码' },
     { field: 'kind', slots: { default: 'kind' }, title: '类型', width: 140 },
-    { field: 'profile', minWidth: 120, sortable: true, title: 'Profile' },
+    {
+      field: 'profile',
+      minWidth: 160,
+      slots: { default: 'profile' },
+      sortable: true,
+      title: '用途',
+    },
     { field: 'state', slots: { default: 'state' }, title: '状态', width: 110 },
     {
       field: 'summary',

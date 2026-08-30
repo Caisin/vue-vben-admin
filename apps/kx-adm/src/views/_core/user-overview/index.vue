@@ -3,10 +3,8 @@ import type { AccountBinding } from '#/api/core/account-binding';
 import type { AuthUser, DingTalkLoginApp } from '#/api/core/auth';
 
 import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
 
 import { Page, useVbenModal } from '@vben/common-ui';
-import { LOGIN_PATH } from '@vben/constants';
 import { Link2, RotateCw, X } from '@vben/icons';
 
 import {
@@ -16,6 +14,7 @@ import {
   DescriptionsItem,
   Empty,
   message,
+  Modal,
   Popconfirm,
   Select,
   Skeleton,
@@ -27,18 +26,15 @@ import {
 
 import { AccountBindingApi, AuthApi, DingTalkApi } from '#/api';
 import { displayValue } from '#/management';
-import { useAuthStore } from '#/store';
 import { Times } from '#/times';
 
-import AccountMergeConflictModal from './modules/account-merge-conflict.vue';
+import { parseDingtalkBindingRedirect } from './dingtalk-binding-redirect';
 import TotpSecurity from './modules/totp-security.vue';
 import WechatBindingModal from './modules/wechat-binding.vue';
 
 defineOptions({ name: 'UserOverview' });
 
 const loading = ref(false);
-const router = useRouter();
-const authStore = useAuthStore();
 const loadFailed = ref(false);
 const user = ref<AuthUser>();
 const bindings = ref<AccountBinding[]>([]);
@@ -47,9 +43,6 @@ const dingtalkApps = ref<DingTalkLoginApp[]>([]);
 const selectedDingtalkAppKey = ref<string>();
 const [WechatBinding, wechatBindingApi] = useVbenModal({
   connectedComponent: WechatBindingModal,
-});
-const [AccountMergeConflict, accountMergeConflictApi] = useVbenModal({
-  connectedComponent: AccountMergeConflictModal,
 });
 
 const contact = computed(() => {
@@ -73,26 +66,33 @@ function currentRedirectUrl() {
   const url = new URL(window.location.href);
   url.searchParams.delete('bind_success');
   url.searchParams.delete('bind_result');
+  url.searchParams.delete('bind_challenge_id');
   url.searchParams.delete('merge_challenge_id');
   return url.toString();
 }
 
-async function switchToDingtalk(appKey?: string) {
-  const redirect = new URL(window.location.href);
-  redirect.search = '';
-  redirect.hash = `#${LOGIN_PATH}`;
-  await authStore.logout(false);
-  window.location.href = DingTalkApi.loginUrl(appKey, redirect.toString());
-}
-
-async function onMergeSubmitted(merge: { task_run_id?: number | string }) {
-  message.success('账号合并任务已创建');
-  if (merge.task_run_id) {
-    await router.push({
-      path: '/system/tasks',
-      query: { run_id: String(merge.task_run_id) },
-    });
-  }
+function confirmDingtalkTransfer(challengeId: string) {
+  Modal.confirm({
+    cancelText: '取消',
+    centered: true,
+    content:
+      '确认后，该钉钉登录方式将从原账号解绑并绑定到当前账号。原账号的其它登录方式和业务数据不会改变。',
+    okText: '确认解绑并绑定',
+    title: '该钉钉已绑定其他账号',
+    width: 460,
+    async onCancel() {
+      await AccountBindingApi.cancel_dingtalk_transfer(challengeId);
+      message.info('已取消绑定');
+    },
+    async onOk() {
+      await AccountBindingApi.confirm_dingtalk_transfer({
+        challenge_id: challengeId,
+        confirmed: true,
+      });
+      message.success('钉钉绑定成功');
+      await loadBindings();
+    },
+  });
 }
 
 async function loadBindings() {
@@ -148,58 +148,32 @@ async function loadUser() {
 }
 
 onMounted(async () => {
-  const currentUrl = new URL(window.location.href);
-  const bindResult = currentUrl.searchParams.get('bind_result');
-  const challengeId = currentUrl.searchParams.get('merge_challenge_id');
-  const bindSuccess = currentUrl.searchParams.get('bind_success');
-  if (bindResult === 'conflict' && challengeId) {
-    currentUrl.searchParams.delete('bind_result');
-    currentUrl.searchParams.delete('merge_challenge_id');
+  const redirect = parseDingtalkBindingRedirect(window.location.href);
+  if (redirect.cleanUrl !== window.location.href) {
     window.history.replaceState(
       window.history.state,
       document.title,
-      currentUrl.toString(),
-    );
-    accountMergeConflictApi
-      .setData({
-        appKey: selectedDingtalkAppKey.value,
-        challengeId,
-      })
-      .open();
-  } else if (bindResult !== null) {
-    message[bindResult === 'success' ? 'success' : 'error'](
-      bindResult === 'success' ? '钉钉绑定成功' : '钉钉绑定失败',
-    );
-    currentUrl.searchParams.delete('bind_result');
-    currentUrl.searchParams.delete('merge_challenge_id');
-    window.history.replaceState(
-      window.history.state,
-      document.title,
-      currentUrl.toString(),
-    );
-  } else if (bindSuccess !== null) {
-    message[bindSuccess === 'true' ? 'success' : 'error'](
-      bindSuccess === 'true' ? '钉钉绑定成功' : '钉钉绑定失败',
-    );
-    currentUrl.searchParams.delete('bind_success');
-    window.history.replaceState(
-      window.history.state,
-      document.title,
-      currentUrl.toString(),
+      redirect.cleanUrl,
     );
   }
   await loadUser();
+  if (redirect.bindResult === 'conflict' && redirect.challengeId) {
+    confirmDingtalkTransfer(redirect.challengeId);
+  } else if (redirect.bindResult !== null) {
+    message[redirect.bindResult === 'success' ? 'success' : 'error'](
+      redirect.bindResult === 'success' ? '钉钉绑定成功' : '钉钉绑定失败',
+    );
+  } else if (redirect.legacySuccess !== null) {
+    message[redirect.legacySuccess === 'true' ? 'success' : 'error'](
+      redirect.legacySuccess === 'true' ? '钉钉绑定成功' : '钉钉绑定失败',
+    );
+  }
 });
 </script>
 
 <template>
   <Page title="我的信息" content-class="user-overview-content">
     <WechatBinding @success="loadBindings" />
-    <AccountMergeConflict
-      @abandon="message.info('已暂不处理账号冲突')"
-      @submitted="onMergeSubmitted"
-      @switch-dingtalk="switchToDingtalk"
-    />
     <Skeleton v-if="loading && !user" active :paragraph="{ rows: 8 }" />
 
     <Empty v-else-if="loadFailed && !user" description="用户信息加载失败">

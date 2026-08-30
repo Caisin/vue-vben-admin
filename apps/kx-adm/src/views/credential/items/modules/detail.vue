@@ -1,5 +1,9 @@
 <script lang="ts" setup>
-import type { CredentialBindingView, CredentialView } from '#/api/credential';
+import type {
+  CredentialBindingView,
+  CredentialProfileSpec,
+  CredentialView,
+} from '#/api/credential';
 
 import { computed, ref } from 'vue';
 
@@ -25,6 +29,7 @@ import { Times } from '#/times';
 import {
   expiryInfo,
   kindLabel,
+  profileLabel,
   stateLabel,
   stateOptions,
   summaryText,
@@ -39,6 +44,7 @@ const emit = defineEmits<{
 }>();
 
 const credential = ref<CredentialView>();
+const profiles = ref<CredentialProfileSpec[]>([]);
 const activeTab = ref('overview');
 const bindings = ref<CredentialBindingView[]>([]);
 const bindingsLoaded = ref(false);
@@ -67,17 +73,23 @@ const stateColor = computed(
     stateOptions.find((item) => item.value === credential.value?.state)?.color,
 );
 
-const [Drawer, drawerApi] = useVbenDrawer<CredentialView>({
+const [Drawer, drawerApi] = useVbenDrawer<{
+  item: CredentialView;
+  profiles: CredentialProfileSpec[];
+}>({
   onOpenChange(open) {
     if (!open) {
       credential.value = undefined;
+      profiles.value = [];
       activeTab.value = 'overview';
       bindings.value = [];
       bindingsLoaded.value = false;
       bindingFilter.value = 'all';
       return;
     }
-    credential.value = drawerApi.getData();
+    const data = drawerApi.getData();
+    credential.value = data?.item;
+    profiles.value = data?.profiles ?? [];
   },
 });
 
@@ -142,7 +154,10 @@ function closeAndEmit(
         <TabPane key="overview" tab="概览">
           <Descriptions bordered :column="1" size="small">
             <DescriptionsItem label="类型">
-              {{ kindLabel(credential.kind) }} / {{ credential.profile }}
+              {{ kindLabel(credential.kind) }}
+            </DescriptionsItem>
+            <DescriptionsItem label="用途">
+              {{ profileLabel(profiles, credential.kind, credential.profile) }}
             </DescriptionsItem>
             <DescriptionsItem label="字段摘要">
               {{ summaryText(credential) }}

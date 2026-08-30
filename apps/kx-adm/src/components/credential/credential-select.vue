@@ -114,17 +114,49 @@ const quickKind = computed(
   () => props.createKind ?? props.kind ?? props.kinds[0],
 );
 
+function defaultProfile(kind: CredentialKind) {
+  if (kind === 'tiktok') return 'mini_app';
+  if (kind === 'wechat_merchant') return 'merchant_private_key';
+  if (['dingtalk', 'douyin', 'kuaishou', 'wechat'].includes(kind)) return 'app';
+  if (kind === 'tt_web') return 'tt_web';
+  return 'generic';
+}
+
+const quickProfile = computed(() =>
+  quickKind.value
+    ? (props.profile ?? defaultProfile(quickKind.value))
+    : undefined,
+);
+
+const quickPayloadType = computed(() => {
+  const kind = quickKind.value;
+  const profile = quickProfile.value;
+  if (
+    kind === 'access_key' ||
+    (['dingtalk', 'douyin', 'kuaishou', 'wechat'].includes(kind ?? '') &&
+      profile === 'app') ||
+    (kind === 'tiktok' && profile === 'mini_app')
+  )
+    return 'access_key';
+  if (
+    kind === 'password' ||
+    ['dingtalk', 'douyin', 'wechat', 'wechat_merchant'].includes(kind ?? '')
+  )
+    return 'password';
+  return kind;
+});
+
 function quickPayload(kind: CredentialKind): CredentialPayload | undefined {
-  if (kind === 'access_key') {
+  if (quickPayloadType.value === 'access_key') {
     return {
       access_key_id: quickForm.accessKeyId,
-      kind,
+      kind: 'access_key',
       secret_access_key: quickForm.secretAccessKey,
       session_token: '',
     };
   }
-  if (kind === 'password') {
-    return { kind, password: quickForm.password };
+  if (quickPayloadType.value === 'password') {
+    return { kind: 'password', password: quickForm.password };
   }
   if (kind === 'username_password') {
     return {
@@ -178,7 +210,7 @@ async function createCredential() {
   if (!kind) return;
   quickCreating.value = true;
   try {
-    const profile = props.profile ?? (kind === 'tt_web' ? 'tt_web' : 'generic');
+    const profile = quickProfile.value ?? defaultProfile(kind);
     const payload = quickPayload(kind);
     if (!payload) throw new Error('当前凭证类型请前往完整维护页面新增');
     const created = await CredentialApi.create({
@@ -251,7 +283,7 @@ defineExpose({ reload: loadCredentials });
         <FormItem label="凭证名称" required>
           <Input v-model:value="quickForm.name" />
         </FormItem>
-        <template v-if="quickKind === 'access_key'">
+        <template v-if="quickPayloadType === 'access_key'">
           <FormItem label="AppID / AppKey" required>
             <Input v-model:value="quickForm.accessKeyId" />
           </FormItem>
@@ -259,7 +291,11 @@ defineExpose({ reload: loadCredentials });
             <InputPassword v-model:value="quickForm.secretAccessKey" />
           </FormItem>
         </template>
-        <FormItem v-else-if="quickKind === 'password'" label="密码" required>
+        <FormItem
+          v-else-if="quickPayloadType === 'password'"
+          label="密钥"
+          required
+        >
           <InputPassword v-model:value="quickForm.password" />
         </FormItem>
         <template v-else-if="quickKind === 'username_password'">

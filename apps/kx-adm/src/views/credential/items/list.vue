@@ -23,6 +23,8 @@ import {
   Segmented,
   Select,
   Space,
+  TabPane,
+  Tabs,
   Tag,
 } from 'antdv-next';
 
@@ -33,8 +35,10 @@ import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
 
 import {
+  credentialKindTabs,
   expiryInfo,
   kindLabel,
+  profileLabel,
   stateLabel,
   stateOptions,
   summaryText,
@@ -50,6 +54,7 @@ import CredentialReveal from './modules/reveal.vue';
 import StatusModal from './modules/status.vue';
 
 const profiles = ref<CredentialProfileSpec[]>([]);
+const activeKind = ref<'all' | CredentialKind>('all');
 const route = useRoute();
 const userStore = useUserStore();
 const isAdmin = computed(() => userStore.userInfo?.roles?.includes('admin'));
@@ -125,15 +130,6 @@ const [DetailDrawerComp, detailDrawerApi] = useVbenDrawer({
 
 const [Grid, gridApi] = useVbenVxeGrid<CredentialView>({
   formOptions: {
-    handleValuesChange(values, changedFields) {
-      if (!changedFields.includes('kind')) return;
-      const selectedKind = values.kind as CredentialKind | undefined;
-      const profilePair = String(values.profile_pair ?? '');
-      const [profileKind] = profilePair.split(':');
-      if (profilePair && selectedKind && profileKind !== selectedKind) {
-        void gridApi.formApi.setFieldValue('profile_pair', undefined);
-      }
-    },
     schema: useFormSchema(),
     submitOnChange: false,
   },
@@ -145,14 +141,10 @@ const [Grid, gridApi] = useVbenVxeGrid<CredentialView>({
       ajax: {
         query: async (params, formValues) => {
           const { page } = params;
-          const [profileKind, profile] = String(
-            formValues.profile_pair ?? '',
-          ).split(':');
-          const selectedKind = formValues.kind as CredentialKind | undefined;
           const result = await CredentialApi.list({
             code_prefix:
               String(formValues.code_prefix ?? '').trim() || undefined,
-            kind: selectedKind || (profileKind as CredentialKind) || undefined,
+            kind: activeKind.value === 'all' ? undefined : activeKind.value,
             name_prefix:
               String(formValues.name_prefix ?? '').trim() || undefined,
             created_by: ownerQueryUid.value,
@@ -160,10 +152,6 @@ const [Grid, gridApi] = useVbenVxeGrid<CredentialView>({
               formValues.risk === 'expiring' ? 7 : undefined,
             has_recent_failure: formValues.risk === 'failed' ? true : undefined,
             page: page.currentPage,
-            profile:
-              profile && (!selectedKind || selectedKind === profileKind)
-                ? profile
-                : undefined,
             size: page.pageSize,
             state: formValues.state as CredentialState | undefined,
             ...vxeSortParams(params, ['code', 'name', 'updated_at']),
@@ -187,7 +175,6 @@ const [Grid, gridApi] = useVbenVxeGrid<CredentialView>({
 onMounted(async () => {
   const credentialTypes = await CredentialApi.types();
   profiles.value = credentialTypes.profiles;
-  await gridApi.formApi.updateSchema(useFormSchema(profiles.value));
   if (route.query.action === 'create') {
     const kind = String(route.query.kind ?? '');
     const profile = String(route.query.profile ?? '');
@@ -209,7 +196,7 @@ function openEdit(row: CredentialView) {
 }
 
 function openDetail(row: CredentialView) {
-  detailDrawerApi.setData(row).open();
+  detailDrawerApi.setData({ item: row, profiles: profiles.value }).open();
 }
 
 function openReplace(row: CredentialView) {
@@ -252,6 +239,17 @@ function retire(row: CredentialView) {
       @retire="retire"
       @status="toggleState"
     />
+    <Tabs
+      v-model:active-key="activeKind"
+      class="credential-kind-tabs"
+      @change="() => gridApi.query()"
+    >
+      <TabPane
+        v-for="tab in credentialKindTabs"
+        :key="tab.value"
+        :tab="tab.label"
+      />
+    </Tabs>
     <Grid class="management-grid" table-title="凭证中心">
       <template #name="{ row }">
         <Button class="px-0" type="link" @click.stop="openDetail(row)">
@@ -260,6 +258,9 @@ function retire(row: CredentialView) {
       </template>
       <template #kind="{ row }">
         <Tag color="processing">{{ kindLabel(row.kind) }}</Tag>
+      </template>
+      <template #profile="{ row }">
+        {{ profileLabel(profiles, row.kind, row.profile) }}
       </template>
       <template #state="{ row }">
         <Tag :color="stateOptions.find((i) => i.value === row.state)?.color">

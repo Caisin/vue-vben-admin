@@ -149,19 +149,19 @@ onMounted(loadApps);
       <FormItem label="Webhook 凭证" required>
         <CredentialSelect
           v-model="customForm.webhookCredentialCode"
-          create-kind="password"
-          kind="password"
+          create-kind="dingtalk"
+          kind="dingtalk"
           placeholder="选择 access_token 凭证"
-          profile="generic"
+          profile="webhook_access_token"
         />
       </FormItem>
       <FormItem label="加签密钥凭证">
         <CredentialSelect
           v-model="customForm.secretCredentialCode"
-          create-kind="password"
-          kind="password"
+          create-kind="dingtalk"
+          kind="dingtalk"
           placeholder="选择 SEC 加签密钥凭证"
-          profile="generic"
+          profile="webhook_sign_secret"
         />
       </FormItem>
       <FormItem label="关键字">

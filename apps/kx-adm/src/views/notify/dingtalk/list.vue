@@ -703,10 +703,10 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
             </template>
             <CredentialSelect
               v-model="customForm.webhook_credential_code"
-              create-kind="password"
-              kind="password"
+              create-kind="dingtalk"
+              kind="dingtalk"
               placeholder="选择 access_token 凭证"
-              profile="generic"
+              profile="webhook_access_token"
             />
           </FormItem>
           <FormItem>
@@ -718,10 +718,10 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
             </template>
             <CredentialSelect
               v-model="customForm.secret_credential_code"
-              create-kind="password"
-              kind="password"
+              create-kind="dingtalk"
+              kind="dingtalk"
               placeholder="选择加签密钥凭证"
-              profile="generic"
+              profile="webhook_sign_secret"
             />
           </FormItem>
           <FormItem>

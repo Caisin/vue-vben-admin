@@ -4,14 +4,20 @@ import { requestClient } from '#/api/request';
 
 export type CredentialKind =
   | 'access_key'
+  | 'dingtalk'
+  | 'douyin'
   | 'google_service_account'
   | 'http_header'
   | 'http_token'
   | 'json_secret'
+  | 'kuaishou'
   | 'password'
   | 'ssh_key'
+  | 'tiktok'
   | 'tt_web'
-  | 'username_password';
+  | 'username_password'
+  | 'wechat'
+  | 'wechat_merchant';
 export type CredentialState = 'active' | 'disabled' | 'retired';
 export type CredentialFieldType = 'password' | 'select' | 'text' | 'textarea';
 
@@ -100,11 +106,17 @@ function textValue(values: CredentialPayloadFormValues, field: string) {
 export function buildCredentialPayload(
   kind: CredentialKind,
   values: CredentialPayloadFormValues,
+  profile = '',
 ): CredentialPayload {
-  if (kind === 'access_key') {
+  if (
+    kind === 'access_key' ||
+    (['dingtalk', 'douyin', 'kuaishou', 'wechat'].includes(kind) &&
+      profile === 'app') ||
+    (kind === 'tiktok' && profile === 'mini_app')
+  ) {
     return {
       access_key_id: textValue(values, 'access_key_id'),
-      kind,
+      kind: 'access_key',
       secret_access_key: textValue(values, 'secret_access_key'),
       session_token: textValue(values, 'session_token'),
     };
@@ -119,6 +131,9 @@ export function buildCredentialPayload(
   }
   if (kind === 'password') {
     return { kind, password: textValue(values, 'password') };
+  }
+  if (['dingtalk', 'douyin', 'wechat', 'wechat_merchant'].includes(kind)) {
+    return { kind: 'password', password: textValue(values, 'password') };
   }
   if (kind === 'http_token') {
     return {
@@ -149,13 +164,16 @@ export function buildCredentialPayload(
   if (kind === 'json_secret') {
     return { json: textValue(values, 'json'), kind };
   }
-  return {
-    kind,
-    passphrase: textValue(values, 'passphrase'),
-    private_key: textValue(values, 'private_key'),
-    public_key: textValue(values, 'public_key'),
-    username: textValue(values, 'username'),
-  };
+  if (kind === 'ssh_key') {
+    return {
+      kind,
+      passphrase: textValue(values, 'passphrase'),
+      private_key: textValue(values, 'private_key'),
+      public_key: textValue(values, 'public_key'),
+      username: textValue(values, 'username'),
+    };
+  }
+  throw new Error(`不支持的凭证类型与用途组合: ${kind}/${profile}`);
 }
 
 export interface CredentialView {

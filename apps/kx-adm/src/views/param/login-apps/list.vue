@@ -110,8 +110,8 @@ const [DingtalkForm, dingtalkFormApi] = useVbenForm({
     {
       component: 'CredentialSelect',
       componentProps: {
-        createKind: 'access_key',
-        kind: 'access_key',
+        createKind: 'dingtalk',
+        kind: 'dingtalk',
         profile: 'app',
         placeholder: '选择 AppKey / AppSecret 应用凭证',
       },
@@ -166,8 +166,8 @@ const [WechatForm, wechatFormApi] = useVbenForm({
     {
       component: 'CredentialSelect',
       componentProps: {
-        createKind: 'access_key',
-        kind: 'access_key',
+        createKind: 'wechat',
+        kind: 'wechat',
         profile: 'app',
         placeholder: '选择 AppID / AppSecret 应用凭证',
       },
@@ -179,9 +179,9 @@ const [WechatForm, wechatFormApi] = useVbenForm({
     {
       component: 'CredentialSelect',
       componentProps: {
-        createKind: 'password',
-        kind: 'password',
-        profile: 'generic',
+        createKind: 'wechat',
+        kind: 'wechat',
+        profile: 'callback_token',
         placeholder: '选择回调 Token 凭证',
       },
       fieldName: 'token_credential_code',
@@ -191,9 +191,9 @@ const [WechatForm, wechatFormApi] = useVbenForm({
     {
       component: 'CredentialSelect',
       componentProps: {
-        createKind: 'password',
-        kind: 'password',
-        profile: 'generic',
+        createKind: 'wechat',
+        kind: 'wechat',
+        profile: 'message_aes_key',
         placeholder: '选择消息加解密密钥凭证',
       },
       fieldName: 'msg_aes_key_credential_code',

@@ -126,7 +126,7 @@ function formSchema(profilePair?: unknown): VbenFormSchema[] {
       },
       fieldName: 'profile_pair',
       formItemClass: 'md:col-span-2',
-      label: '凭证类型 / Profile',
+      label: '凭证类型',
       rules: 'selectRequired',
     },
     {
@@ -191,7 +191,7 @@ const [Modal, modalApi] = useVbenModal<{
           expires_at: values.expires_at as number | string | undefined,
           kind,
           name: String(values.name ?? '').trim(),
-          payload: buildCredentialPayload(kind, values),
+          payload: buildCredentialPayload(kind, values, profile),
           profile,
           remark: String(values.remark ?? '').trim(),
         });
@@ -242,7 +242,7 @@ const title = computed(() => (editing.value ? '编辑凭证元数据' : '新增�
       {{
         editing
           ? '编辑不会加载或修改密钥材料。'
-          : `请选择类型后填写完整材料；Profile 由后端 registry 固定，例如 ${kindLabel('access_key')}。`
+          : `请选择业务类型后填写完整材料，例如 ${kindLabel('dingtalk')}。`
       }}
     </p>
   </Modal>
