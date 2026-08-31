@@ -3,7 +3,11 @@ import type { TaskRun } from '#/api/task';
 
 import { plaintextRequestClient, requestClient } from '#/api/request';
 
-export type InvoiceParseState = 'failed' | 'needs_review' | 'parsed';
+export type InvoiceParseState =
+  | 'failed'
+  | 'needs_review'
+  | 'parsed'
+  | 'processing';
 export type InvoiceExportScope = 'filtered' | 'selected';
 export type InvoiceExportState =
   | 'cancelled'
@@ -72,6 +76,7 @@ export interface InvoiceUploadView {
   other_user_count: number | string;
   parse_state: InvoiceParseState;
   same_user_duplicate: boolean;
+  task_run?: null | TaskRun;
   upload_id: number | string;
   used_by_other_users: boolean;
 }

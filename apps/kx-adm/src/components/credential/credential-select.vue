@@ -25,7 +25,10 @@ import {
   Tooltip,
 } from 'antdv-next';
 
-import { CredentialApi } from '#/api/credential';
+import {
+  CredentialApi,
+  normalizeDingtalkRobotCredentialInput,
+} from '#/api/credential';
 
 import { credentialSelectOptions } from './credential-select-options';
 import JsonFileInput from './json-file-input.vue';
@@ -63,7 +66,10 @@ const credentials = ref<CredentialView[]>([]);
 const quickForm = reactive({
   accessKeyId: '',
   accessToken: '',
+  baseUrl: '',
   cookie: '',
+  headerName: '',
+  headerValue: '',
   keyword: '',
   name: '',
   passphrase: '',
@@ -72,6 +78,8 @@ const quickForm = reactive({
   serviceAccountJson: '',
   secret: '',
   secretAccessKey: '',
+  scheme: '',
+  token: '',
   userAgent: '',
   username: '',
 });
@@ -119,6 +127,8 @@ const quickKind = computed(
 );
 
 function defaultProfile(kind: CredentialKind) {
+  if (kind === 'http_token') return 'bearer';
+  if (kind === 'http_header') return 'custom_x_header';
   if (kind === 'tiktok') return 'mini_app';
   if (kind === 'wechat_merchant') return 'merchant_private_key';
   if (['dingtalk', 'douyin', 'kuaishou', 'wechat'].includes(kind)) return 'app';
@@ -166,11 +176,32 @@ function quickPayload(kind: CredentialKind): CredentialPayload | undefined {
     return { kind: 'password', password: quickForm.password };
   }
   if (quickPayloadType.value === 'dingtalk_robot') {
+    const robotInput = normalizeDingtalkRobotCredentialInput(
+      quickForm.accessToken,
+      quickForm.keyword,
+    );
     return {
-      access_token: quickForm.accessToken,
+      access_token: robotInput.accessToken,
       kind: 'dingtalk_robot',
-      keyword: quickForm.keyword,
+      keyword: robotInput.keyword,
       secret: quickForm.secret,
+    };
+  }
+  if (kind === 'http_token') {
+    return {
+      base_url: quickForm.baseUrl,
+      header_name: quickForm.headerName || 'Authorization',
+      kind,
+      scheme: quickForm.scheme || 'Bearer',
+      token: quickForm.token,
+    };
+  }
+  if (kind === 'http_header') {
+    return {
+      base_url: quickForm.baseUrl,
+      header_name: quickForm.headerName || 'x-goog-api-key',
+      kind,
+      value: quickForm.headerValue,
     };
   }
   if (kind === 'username_password') {
@@ -208,7 +239,10 @@ function openQuickCreate() {
   Object.assign(quickForm, {
     accessKeyId: '',
     accessToken: '',
+    baseUrl: '',
     cookie: '',
+    headerName: quickKind.value === 'http_header' ? 'x-goog-api-key' : '',
+    headerValue: '',
     keyword: '',
     name: '',
     passphrase: '',
@@ -217,6 +251,8 @@ function openQuickCreate() {
     serviceAccountJson: '',
     secret: '',
     secretAccessKey: '',
+    scheme: quickKind.value === 'http_token' ? 'Bearer' : '',
+    token: '',
     userAgent: '',
     username: '',
   });
@@ -318,6 +354,37 @@ defineExpose({ reload: loadCredentials });
         >
           <InputPassword v-model:value="quickForm.password" />
         </FormItem>
+        <template v-else-if="quickKind === 'http_token'">
+          <FormItem label="Base URL">
+            <Input v-model:value="quickForm.baseUrl" />
+          </FormItem>
+          <FormItem label="Header 名" required>
+            <Input
+              v-model:value="quickForm.headerName"
+              placeholder="默认 Authorization"
+            />
+          </FormItem>
+          <FormItem label="认证方案">
+            <Input v-model:value="quickForm.scheme" placeholder="默认 Bearer" />
+          </FormItem>
+          <FormItem label="Token" required>
+            <TextArea v-model:value="quickForm.token" :rows="4" />
+          </FormItem>
+        </template>
+        <template v-else-if="quickKind === 'http_header'">
+          <FormItem label="Base URL">
+            <Input v-model:value="quickForm.baseUrl" />
+          </FormItem>
+          <FormItem label="Header 名" required>
+            <Input
+              v-model:value="quickForm.headerName"
+              placeholder="默认 x-goog-api-key"
+            />
+          </FormItem>
+          <FormItem label="Header 值" required>
+            <TextArea v-model:value="quickForm.headerValue" :rows="4" />
+          </FormItem>
+        </template>
         <template v-else-if="quickPayloadType === 'dingtalk_robot'">
           <FormItem label="Access Token 或 Webhook 地址" required>
             <TextArea

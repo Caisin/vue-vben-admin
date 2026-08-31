@@ -13,12 +13,13 @@ describe('钉钉机器人 Webhook 配置解析', () => {
     );
   });
 
-  it('丢弃 secret、timestamp 和 sign 等非 token 参数', () => {
+  it('保留可选关键字参数并丢弃 secret、timestamp 和 sign', () => {
     const result = parseDingtalkWebhookConfig(
-      'https://oapi.dingtalk.com/robot/send?access_token=token&secret=SECabc&timestamp=1&sign=temporary',
+      'https://oapi.dingtalk.com/robot/send?access_token=token&keyword=%E5%91%A8%E6%8A%A5&secret=SECabc&timestamp=1&sign=temporary',
     );
+    expect(result.keyword).toBe('周报');
     expect(result.webhookUrl).toBe(
-      'https://oapi.dingtalk.com/robot/send?access_token=token',
+      'https://oapi.dingtalk.com/robot/send?access_token=token&keyword=%E5%91%A8%E6%8A%A5',
     );
   });
 

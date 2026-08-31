@@ -1,5 +1,6 @@
 export interface DingtalkWebhookConfig {
   accessToken: string;
+  keyword?: string;
   webhookUrl: string;
 }
 
@@ -25,10 +26,16 @@ export function parseDingtalkWebhookConfig(
   const accessToken = webhook.searchParams.get('access_token')?.trim() ?? '';
   if (!accessToken) throw new Error('Webhook 缺少 access_token');
 
+  const keyword =
+    webhook.searchParams.get('keyword')?.trim() ||
+    webhook.searchParams.get('keywords')?.trim() ||
+    undefined;
   const normalized = new URL(`https://${WEBHOOK_HOST}${WEBHOOK_PATH}`);
   normalized.searchParams.set('access_token', accessToken);
+  if (keyword) normalized.searchParams.set('keyword', keyword);
   return {
     accessToken,
+    keyword,
     webhookUrl: normalized.toString(),
   };
 }

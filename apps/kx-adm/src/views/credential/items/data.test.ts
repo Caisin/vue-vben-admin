@@ -3,6 +3,8 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { normalizeDingtalkRobotCredentialInput } from '#/api/credential/dingtalk-robot';
+
 import { credentialKindTabs } from './credential-kind-options';
 import { profileLabel } from './data';
 
@@ -45,5 +47,25 @@ describe('凭证中心类型分类', () => {
         'custom_robot',
       ),
     ).toBe('钉钉自定义机器人');
+  });
+});
+
+describe('钉钉自定义机器人凭证输入', () => {
+  it('从 Webhook 地址提取 access_token 和可选关键字', () => {
+    const result = normalizeDingtalkRobotCredentialInput(
+      'https://oapi.dingtalk.com/robot/send?access_token=abc123&keyword=%E5%91%A8%E6%8A%A5',
+    );
+    expect(result).toEqual({ accessToken: 'abc123', keyword: '周报' });
+  });
+
+  it('单独填写关键字时优先使用显式字段', () => {
+    const result = normalizeDingtalkRobotCredentialInput(
+      'https://oapi.dingtalk.com/robot/send?access_token=abc123&keyword=url',
+      ' 表单关键字 ',
+    );
+    expect(result).toEqual({
+      accessToken: 'abc123',
+      keyword: '表单关键字',
+    });
   });
 });

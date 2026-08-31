@@ -2,6 +2,10 @@ import type { Page, PageQuery } from '#/api/request';
 
 import { requestClient } from '#/api/request';
 
+import { normalizeDingtalkRobotCredentialInput } from './dingtalk-robot';
+
+export { normalizeDingtalkRobotCredentialInput } from './dingtalk-robot';
+
 export type CredentialKind =
   | 'access_key'
   | 'dingtalk'
@@ -139,10 +143,14 @@ export function buildCredentialPayload(
     return { kind, password: textValue(values, 'password') };
   }
   if (kind === 'dingtalk' && profile === 'custom_robot') {
+    const robotInput = normalizeDingtalkRobotCredentialInput(
+      textValue(values, 'access_token'),
+      textValue(values, 'keyword'),
+    );
     return {
-      access_token: textValue(values, 'access_token'),
+      access_token: robotInput.accessToken,
       kind: 'dingtalk_robot',
-      keyword: textValue(values, 'keyword'),
+      keyword: robotInput.keyword,
       secret: textValue(values, 'secret'),
     };
   }

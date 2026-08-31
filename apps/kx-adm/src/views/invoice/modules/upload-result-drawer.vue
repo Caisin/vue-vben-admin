@@ -1,7 +1,9 @@
 <script lang="ts" setup>
 import type { InvoiceUploadView } from '#/api/invoice';
 
-import { Card, Drawer, Empty, Space, Tag } from 'antdv-next';
+import { useRouter } from 'vue-router';
+
+import { Button, Card, Drawer, Empty, Space, Tag } from 'antdv-next';
 
 import { uploadRiskText } from '../data';
 
@@ -11,17 +13,25 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
+const router = useRouter();
 
 function parseStateColor(state: InvoiceUploadView['parse_state']) {
+  if (state === 'processing') return 'processing';
   if (state === 'failed') return 'error';
   if (state === 'needs_review') return 'warning';
   return 'success';
 }
 
 function parseStateLabel(state: InvoiceUploadView['parse_state']) {
+  if (state === 'processing') return '识别中';
   if (state === 'failed') return '解析失败';
   if (state === 'needs_review') return '需复核';
   return '已解析';
+}
+
+async function openTaskDetail(taskId?: number | string) {
+  if (!taskId) return;
+  await router.push(`/system/tasks?run_id=${taskId}`);
 }
 </script>
 
@@ -56,6 +66,14 @@ function parseStateLabel(state: InvoiceUploadView['parse_state']) {
           </Tag>
           <Tag>上传 #{{ item.upload_id }}</Tag>
           <Tag>发票 {{ item.invoices.length }} 张</Tag>
+          <Button
+            v-if="item.task_run?.id"
+            size="small"
+            type="link"
+            @click="openTaskDetail(item.task_run.id)"
+          >
+            查看任务详情
+          </Button>
         </Space>
       </Card>
     </div>

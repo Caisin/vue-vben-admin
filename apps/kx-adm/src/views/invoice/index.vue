@@ -282,7 +282,7 @@ function downloadBlob(blob: Blob, fileName: string) {
       <Space>
         <input
           ref="uploadInputRef"
-          accept=".pdf,.ofd,.xml"
+          accept=".pdf,.ofd,.xml,.jpg,.jpeg,.png,.bmp,.webp,.tiff"
           class="hidden-input"
           multiple
           type="file"
