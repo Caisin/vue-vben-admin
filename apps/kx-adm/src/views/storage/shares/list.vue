@@ -266,12 +266,6 @@ function disablePastDate(current: Dayjs) {
     content-class="management-content"
     title="文件分享"
   >
-    <FilePicker
-      ref="filePickerRef"
-      :max_count="1"
-      @confirm="handleFileSelected"
-    />
-
     <CreateModal title="新增文件分享">
       <div class="share-form">
         <div class="form-field">
@@ -320,6 +314,12 @@ function disablePastDate(current: Dayjs) {
         </div>
       </div>
     </ExpiryModal>
+
+    <FilePicker
+      ref="filePickerRef"
+      :max_count="1"
+      @confirm="handleFileSelected"
+    />
 
     <Grid class="management-grid" table-title="文件分享">
       <Dropdown
