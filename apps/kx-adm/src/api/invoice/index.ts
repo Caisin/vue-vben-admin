@@ -31,6 +31,12 @@ export interface InvoiceListQuery extends PageQuery {
   uploaded_range?: [number | string, number | string];
 }
 
+export interface InvoiceFilterOptions {
+  buyer_names: string[];
+  invoice_types: string[];
+  seller_names: string[];
+}
+
 export interface InvoiceLineItemView {
   amount: string;
   amount_tax: string;
@@ -199,6 +205,8 @@ export const InvoiceApi = {
     requestClient.get<InvoiceExportView>(`/invoice/exports/${id}`),
   fileContent: (id: number | string) =>
     plaintextRequestClient.download<Blob>(`/invoice/files/${id}/content`),
+  filterOptions: () =>
+    requestClient.get<InvoiceFilterOptions>('/invoice/filter-options'),
   list: (params?: InvoiceListQuery) =>
     requestClient.get<Page<InvoiceItemView>>('/invoice/items', { params }),
   statistics: (params?: InvoiceListQuery) =>

@@ -116,6 +116,7 @@ describe('发票管理页面数据工具', () => {
     expect(columns.map((item) => item?.field)).toEqual(
       expect.arrayContaining([
         'invoice_no',
+        'invoice_type',
         'amount_tax',
         'seller_name',
         'buyer_name',
@@ -127,6 +128,9 @@ describe('发票管理页面数据工具', () => {
     expect(columns.map((item) => item?.field)).not.toContain('uid');
     expect((useColumns(true) ?? []).map((item) => item?.field)).toContain(
       'uid',
+    );
+    expect(columns.find((item) => item?.field === 'invoice_no')?.width).toBe(
+      220,
     );
     expect(
       (useColumns(false, false) ?? []).some(
@@ -156,5 +160,26 @@ describe('发票管理页面数据工具', () => {
     expect(invoiceTypeLabel('vat-general')).toBe('增值税普通发票');
     expect(invoiceTypeLabel('vat-special')).toBe('增值税专用发票');
     expect(invoiceTypeLabel('unknown')).toBe('未识别类型');
+  });
+
+  it('购销方和票种使用当前可见数据下拉选项', () => {
+    const schema = useFormSchema(false, {
+      buyer_names: ['测试购买方'],
+      invoice_types: ['vat-general'],
+      seller_names: ['测试销售方'],
+    });
+    const seller = schema.find((item) => item.fieldName === 'seller_name');
+    const buyer = schema.find((item) => item.fieldName === 'buyer_name');
+    const type = schema.find((item) => item.fieldName === 'invoice_type');
+    expect(seller?.component).toBe('Select');
+    expect(buyer?.component).toBe('Select');
+    expect(type?.component).toBe('Select');
+    expect(seller?.componentProps).toMatchObject({
+      options: [{ label: '测试销售方', value: '测试销售方' }],
+      showSearch: true,
+    });
+    expect(type?.componentProps).toMatchObject({
+      options: [{ label: '增值税普通发票', value: 'vat-general' }],
+    });
   });
 });

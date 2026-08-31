@@ -3,6 +3,7 @@ import type { VxeTableGridColumns } from '#/adapter/vxe-table';
 import type {
   InvoiceExportCreateWrite,
   InvoiceExportScope,
+  InvoiceFilterOptions,
   InvoiceItemView,
   InvoiceLineItemView,
   InvoiceListQuery,
@@ -46,12 +47,21 @@ const invoiceTypeLabels: Record<string, string> = {
   'vat-special': '增值税专用发票',
 };
 
+const emptyInvoiceFilterOptions: InvoiceFilterOptions = {
+  buyer_names: [],
+  invoice_types: [],
+  seller_names: [],
+};
+
 export function invoiceTypeLabel(value?: string) {
   if (!value || value === 'unknown') return '未识别类型';
   return invoiceTypeLabels[value] ?? value;
 }
 
-export function useFormSchema(canAdmin = false): VbenFormSchema[] {
+export function useFormSchema(
+  canAdmin = false,
+  filterOptions: InvoiceFilterOptions = emptyInvoiceFilterOptions,
+): VbenFormSchema[] {
   const schema: VbenFormSchema[] = [
     {
       component: 'Input',
@@ -73,27 +83,46 @@ export function useFormSchema(canAdmin = false): VbenFormSchema[] {
       componentProps: {
         class: 'w-full',
         min: 0,
+        placeholder: '价税合计精确金额',
         precision: 2,
         stringMode: true,
       },
       fieldName: 'amount_tax',
-      label: '价税合计',
+      label: '金额',
     },
     {
-      component: 'Input',
-      componentProps: { allowClear: true },
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        optionFilterProp: 'label',
+        options: textOptions(filterOptions.seller_names),
+        showSearch: true,
+      },
       fieldName: 'seller_name',
       label: '销售方',
     },
     {
-      component: 'Input',
-      componentProps: { allowClear: true },
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        optionFilterProp: 'label',
+        options: textOptions(filterOptions.buyer_names),
+        showSearch: true,
+      },
       fieldName: 'buyer_name',
       label: '购买方',
     },
     {
-      component: 'Input',
-      componentProps: { allowClear: true },
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        optionFilterProp: 'label',
+        options: filterOptions.invoice_types.map((value) => ({
+          label: invoiceTypeLabel(value),
+          value,
+        })),
+        showSearch: true,
+      },
       fieldName: 'invoice_type',
       label: '发票类型',
     },
@@ -130,6 +159,10 @@ export function useFormSchema(canAdmin = false): VbenFormSchema[] {
   return schema;
 }
 
+function textOptions(values: string[]) {
+  return values.map((value) => ({ label: value, value }));
+}
+
 export function useColumns(
   canAdmin = false,
   canExport = true,
@@ -138,9 +171,16 @@ export function useColumns(
     {
       field: 'invoice_no',
       fixed: 'left',
-      minWidth: 170,
+      showOverflow: false,
       slots: { default: 'invoiceNo' },
       title: '发票号',
+      width: 220,
+    },
+    {
+      field: 'invoice_type',
+      formatter: ({ row }) => invoiceTypeLabel(row.invoice_type),
+      minWidth: 140,
+      title: '发票类型',
     },
     {
       field: 'amount_tax',

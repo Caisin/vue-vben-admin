@@ -4,6 +4,7 @@ import type {
   InvoiceExportDispatchView,
   InvoiceExportScope,
   InvoiceExportView,
+  InvoiceFilterOptions,
   InvoiceImportDispatchView,
   InvoiceImportView,
   InvoiceItemView,
@@ -39,7 +40,6 @@ import {
   cleanInvoiceQuery,
   createExportPayload,
   invoiceSortFields,
-  invoiceTypeLabel,
   useColumns,
   useFormSchema,
 } from './data';
@@ -62,6 +62,11 @@ const uploading = ref(false);
 const exportLoading = ref<InvoiceExportScope>();
 const selectedRows = ref<InvoiceItemView[]>([]);
 const currentFilter = ref<InvoiceListQuery>({});
+const filterOptions = ref<InvoiceFilterOptions>({
+  buyer_names: [],
+  invoice_types: [],
+  seller_names: [],
+});
 const activeImport = ref<InvoiceImportView>();
 const uploadResultOpen = ref(false);
 let importAbortController: AbortController | undefined;
@@ -137,6 +142,11 @@ const [Grid, gridApi] = useVbenVxeGrid<InvoiceItemView>({
 const selectedCount = computed(() => selectedRows.value.length);
 
 onMounted(async () => {
+  filterOptions.value = await InvoiceApi.filterOptions();
+  await gridApi.formApi.updateSchema(
+    useFormSchema(canAdminInvoice.value, filterOptions.value),
+  );
+
   const importValue = Array.isArray(route.query.import_id)
     ? route.query.import_id[0]
     : route.query.import_id;
@@ -467,7 +477,6 @@ function downloadBlob(blob: Blob, fileName: string) {
         <a class="invoice-link" @click="openDetail(row)">
           {{ row.invoice_no || `发票 #${row.invoice_id}` }}
         </a>
-        <div class="muted">{{ invoiceTypeLabel(row.invoice_type) }}</div>
       </template>
       <template #financeState="{ row }">
         <Tag :color="row.submitted_to_finance ? 'success' : 'warning'">
@@ -573,14 +582,10 @@ function downloadBlob(blob: Blob, fileName: string) {
 }
 
 .invoice-link {
+  display: inline-block;
+  max-width: 100%;
   font-weight: 600;
-}
-
-.muted {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
 }
 
 .hidden-input {
