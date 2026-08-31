@@ -173,14 +173,26 @@ export const InvoiceApi = {
   update: (id: number | string, data: InvoiceUpdateWrite) =>
     requestClient.put<InvoiceItemView>(`/invoice/items/${id}`, data),
   uploadFiles: async (files: File[]) => {
-    const results = await Promise.all(
-      files.map((file) =>
-        plaintextRequestClient.upload<InvoiceUploadView[]>('/invoice/files', {
-          file,
-        }),
-      ),
+    const results: Array<InvoiceUploadView[] | undefined> = Array.from({
+      length: files.length,
+    });
+    let cursor = 0;
+    const uploadNext = async () => {
+      while (cursor < files.length) {
+        const index = cursor;
+        cursor += 1;
+        const file = files[index];
+        if (file) {
+          results[index] = await plaintextRequestClient.upload<
+            InvoiceUploadView[]
+          >('/invoice/files', { file });
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(files.length, 3) }, () => uploadNext()),
     );
-    return results.flat();
+    return results.flatMap((result) => result ?? []);
   },
   createExport: (data: InvoiceExportCreateWrite) =>
     requestClient.post<InvoiceExportDispatchView>('/invoice/exports', data),

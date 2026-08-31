@@ -15,6 +15,7 @@ import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
+import { IconifyIcon } from '@vben/icons';
 
 import {
   Button,
@@ -53,6 +54,7 @@ const canExportInvoice = computed(() => hasAccessByCodes(['invoice:export']));
 const canUpdateInvoice = computed(() => hasAccessByCodes(['invoice:update']));
 const canUploadInvoice = computed(() => hasAccessByCodes(['invoice:upload']));
 const uploadInputRef = ref<HTMLInputElement>();
+const uploadFolderInputRef = ref<HTMLInputElement>();
 const uploading = ref(false);
 const exportLoading = ref<InvoiceExportScope>();
 const selectedRows = ref<InvoiceItemView[]>([]);
@@ -162,6 +164,10 @@ async function refreshStatistics(filter = currentFilter.value) {
 
 function triggerUpload() {
   uploadInputRef.value?.click();
+}
+
+function triggerUploadFolder() {
+  uploadFolderInputRef.value?.click();
 }
 
 async function onFilesPicked(event: Event) {
@@ -288,13 +294,35 @@ function downloadBlob(blob: Blob, fileName: string) {
           type="file"
           @change="onFilesPicked"
         />
+        <input
+          ref="uploadFolderInputRef"
+          accept=".pdf,.ofd,.xml,.jpg,.jpeg,.png,.bmp,.webp,.tiff"
+          class="hidden-input"
+          multiple
+          type="file"
+          webkitdirectory
+          @change="onFilesPicked"
+        />
         <Button
           v-if="canUploadInvoice"
           :loading="uploading"
           type="primary"
           @click="triggerUpload"
         >
+          <template #icon>
+            <IconifyIcon icon="lucide:file-up" />
+          </template>
           上传发票文件
+        </Button>
+        <Button
+          v-if="canUploadInvoice"
+          :loading="uploading"
+          @click="triggerUploadFolder"
+        >
+          <template #icon>
+            <IconifyIcon icon="lucide:folder-up" />
+          </template>
+          上传文件夹
         </Button>
         <Button v-if="canExportInvoice" @click="exportHistoryOpen = true">
           导出任务
