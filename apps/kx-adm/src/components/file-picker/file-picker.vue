@@ -212,7 +212,7 @@ const [Modal, modalApi] = useVbenModal({
   centered: false,
   class: 'w-[min(1120px,calc(100vw-20px))]',
   contentClass: 'p-0',
-  destroyOnClose: false,
+  destroyOnClose: true,
   async onConfirm() {
     if (selected.value.size === 0) {
       message.warning('请选择文件');
