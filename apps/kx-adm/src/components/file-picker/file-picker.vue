@@ -42,10 +42,12 @@ import {
   acceptsStoredFile,
   normalizeAccept,
 } from './file-type';
+import { filesFromDataTransfer } from './internal/dropped-files';
 import {
   fileKindOptions,
   filePickerColumns,
   formatFileSize,
+  supportsDirectUpload,
   uploadModeOptions,
 } from './internal/file-picker-options';
 import { useDirectUpload } from './internal/use-direct-upload';
@@ -61,7 +63,9 @@ const emit = defineEmits<{
 
 const files = ref<UploadFile[]>([]);
 const groups = ref<Awaited<ReturnType<typeof StorageGroupApi.list>>>([]);
-const storage_options = ref<Array<{ label: string; value: string }>>([]);
+const storage_options = ref<
+  Array<{ label: string; storage_type?: string; value: string }>
+>([]);
 const selected = ref(new Map<string, UploadFile>());
 const active_group_id = ref<FileId>();
 const active_storage_code = ref<string>();
@@ -69,6 +73,7 @@ const active_upload_mode = ref<'direct' | 'serve'>('direct');
 const active_file_kind = ref<'all' | UploadFileKind>('all');
 const name_prefix = ref('');
 const loading = ref(false);
+const drag_active = ref(false);
 const preview_urls = ref(new Map<string, string>());
 const page = ref(1);
 const page_size = ref(20);
@@ -85,6 +90,21 @@ const useArticleAdapter = computed(() => Boolean(adapter.value));
 const upload_accept = computed(() => normalizeAccept(props.accept).join(','));
 const selected_count = computed(() => selected.value.size);
 const selection_limit = computed(() => (props.multiple ? props.max_count : 1));
+const active_storage_type = computed(
+  () =>
+    storage_options.value.find(
+      (option) => option.value === active_storage_code.value,
+    )?.storage_type,
+);
+const direct_upload_supported = computed(
+  () =>
+    !useArticleAdapter.value && supportsDirectUpload(active_storage_type.value),
+);
+const available_upload_mode_options = computed(() =>
+  direct_upload_supported.value
+    ? uploadModeOptions
+    : uploadModeOptions.filter((option) => option.value === 'serve'),
+);
 
 function selectable(record: UploadFile) {
   return (
@@ -400,6 +420,7 @@ async function initialize() {
       ? await adapter.value.storageOptions()
       : (configs?.items ?? []).map((item) => ({
           label: item.storage_name,
+          storage_type: item.storage_type,
           value: item.code,
         }));
     active_storage_code.value =
@@ -407,7 +428,7 @@ async function initialize() {
     active_group_id.value = useArticleAdapter.value
       ? undefined
       : props.group_id;
-    active_upload_mode.value = useArticleAdapter.value ? 'serve' : 'direct';
+    syncUploadMode();
 
     const detailApi = adapter.value?.detail ?? StorageFileApi.detail;
     const initial = await Promise.allSettled(
@@ -439,8 +460,13 @@ async function changeGroup(groupId?: FileId) {
 }
 
 async function changeStorage() {
+  syncUploadMode();
   page.value = 1;
   await loadFiles();
+}
+
+function syncUploadMode() {
+  active_upload_mode.value = direct_upload_supported.value ? 'direct' : 'serve';
 }
 
 async function changeFileKind() {
@@ -521,37 +547,67 @@ const directUpload = useDirectUpload({
   reload: loadFiles,
 });
 
+async function uploadServerFile(file: File) {
+  const storageCode = active_storage_code.value;
+  const upload = adapter.value?.upload;
+  if (!storageCode && !upload) throw new Error('请选择 storage');
+  if (!acceptsBrowserFile(file, props.accept)) {
+    throw new Error('文件类型不符合当前选择限制');
+  }
+  const result = upload
+    ? await upload(file)
+    : await StorageFileApi.upload(storageCode ?? '', file);
+  await addUploadedResults(result);
+  message.success('上传成功');
+  await loadFiles();
+  return result;
+}
+
 const serverUploadRequest: NonNullable<UploadProps['customRequest']> = async (
   options,
 ) => {
-  const storageCode = active_storage_code.value;
-  const upload = adapter.value?.upload;
-  if ((!storageCode && !upload) || typeof options.file === 'string') {
+  if (typeof options.file === 'string') {
     options.onError?.(new Error('请选择 storage'));
-    return;
-  }
-  const file = options.file as File;
-  if (!acceptsBrowserFile(file, props.accept)) {
-    const error = new Error('文件类型不符合当前选择限制');
-    message.warning(error.message);
-    options.onError?.(error);
     return;
   }
 
   try {
-    const result = upload
-      ? await upload(file)
-      : await StorageFileApi.upload(storageCode ?? '', file);
-    await addUploadedResults(result);
+    const result = await uploadServerFile(options.file as File);
     options.onSuccess?.(result);
-    message.success('上传成功');
-    await loadFiles();
   } catch (error) {
     options.onError?.(
       error instanceof Error ? error : new Error(String(error)),
     );
   }
 };
+
+async function uploadServerFiles(files: File[]) {
+  for (const file of files) {
+    await uploadServerFile(file);
+  }
+}
+
+async function dropFiles(event: DragEvent) {
+  drag_active.value = false;
+  if (!active_storage_code.value || !event.dataTransfer) {
+    message.warning('请选择 storage');
+    return;
+  }
+  const files = await filesFromDataTransfer(event.dataTransfer);
+  if (files.length === 0) {
+    message.warning('没有可上传的文件');
+    return;
+  }
+  try {
+    const upload =
+      direct_upload_supported.value && active_upload_mode.value === 'direct'
+        ? directUpload.uploadFiles
+        : uploadServerFiles;
+    await upload(files);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error));
+  }
+}
 
 function open() {
   modalApi.open();
@@ -636,7 +692,8 @@ defineExpose<FilePickerExpose>({ close, open });
             v-if="!useArticleAdapter"
             v-model:value="active_upload_mode"
             class="upload-mode-select"
-            :options="uploadModeOptions"
+            :disabled="available_upload_mode_options.length === 1"
+            :options="available_upload_mode_options"
             placeholder="上传方式"
           />
           <Button :disabled="!active_storage_code" @click="openConvertUrl">
@@ -646,7 +703,7 @@ defineExpose<FilePickerExpose>({ close, open });
             URL 转存
           </Button>
           <template
-            v-if="!useArticleAdapter && active_upload_mode === 'direct'"
+            v-if="direct_upload_supported && active_upload_mode === 'direct'"
           >
             <Upload
               :accept="upload_accept || undefined"
@@ -708,6 +765,21 @@ defineExpose<FilePickerExpose>({ close, open });
             size="small"
             status="active"
           />
+        </div>
+
+        <div
+          class="file-drop-zone"
+          :class="{
+            'is-active': drag_active,
+            'is-disabled': !active_storage_code,
+          }"
+          @dragenter.prevent="drag_active = true"
+          @dragleave.prevent="drag_active = false"
+          @dragover.prevent
+          @drop.prevent="dropFiles"
+        >
+          <IconifyIcon class="size-4" icon="lucide:cloud-upload" />
+          <span>拖拽文件或文件夹上传</span>
         </div>
 
         <Grid>

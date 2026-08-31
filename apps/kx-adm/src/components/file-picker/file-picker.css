@@ -63,6 +63,38 @@
   padding: 0 12px 8px;
 }
 
+.file-drop-zone {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  margin: 0 12px 8px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+  border: 1px dashed hsl(var(--border));
+  border-radius: 6px;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.file-drop-zone > * {
+  pointer-events: none;
+}
+
+.file-drop-zone.is-active {
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 8%);
+  border-color: hsl(var(--primary));
+}
+
+.file-drop-zone.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .file-picker-thumb {
   display: flex;
   align-items: center;

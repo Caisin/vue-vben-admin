@@ -163,6 +163,24 @@ export function useDirectUpload(options: DirectUploadOptions) {
     });
   }
 
+  async function uploadFile(file: File, onProgress: (percent: number) => void) {
+    if (!acceptsBrowserFile(file, options.accept())) {
+      throw new Error('文件类型不符合当前选择限制');
+    }
+    begin(file);
+    try {
+      const result = await uploadWithPresignedUrl(file, onProgress);
+      await options.addUploaded([result]);
+      finish();
+      message.success('本地直传成功');
+      await options.reload();
+      return result;
+    } catch (error) {
+      finish();
+      throw error;
+    }
+  }
+
   const request: NonNullable<UploadProps['customRequest']> = async (
     requestOptions,
   ) => {
@@ -170,34 +188,29 @@ export function useDirectUpload(options: DirectUploadOptions) {
       requestOptions.onError?.(new Error('请选择文件'));
       return;
     }
-    const file = requestOptions.file as File;
-    if (!acceptsBrowserFile(file, options.accept())) {
-      const error = new Error('文件类型不符合当前选择限制');
-      message.warning(error.message);
-      requestOptions.onError?.(error);
-      return;
-    }
     try {
-      begin(file);
-      const result = await uploadWithPresignedUrl(file, (value) => {
+      const result = await uploadFile(requestOptions.file as File, (value) => {
         current_percent.value = Math.min(Math.max(value, 0), 100);
         requestOptions.onProgress?.({ percent: value });
       });
-      await options.addUploaded([result]);
       requestOptions.onSuccess?.(result);
-      finish();
-      message.success('本地直传成功');
-      await options.reload();
     } catch (error) {
       const normalized =
         error instanceof Error ? error : new Error(String(error));
       message.error(
         `${normalized.message}；不支持直传的 storage 请切换服务端上传`,
       );
-      finish();
       requestOptions.onError?.(normalized);
     }
   };
+
+  async function uploadFiles(files: File[]) {
+    for (const file of files) {
+      await uploadFile(file, (value) => {
+        current_percent.value = Math.min(Math.max(value, 0), 100);
+      });
+    }
+  }
 
   return {
     current_name,
@@ -206,6 +219,7 @@ export function useDirectUpload(options: DirectUploadOptions) {
     percent,
     request,
     total,
+    uploadFiles,
     visible,
   };
 }

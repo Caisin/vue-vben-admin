@@ -6,6 +6,16 @@ export const uploadModeOptions = [
   { label: '服务端上传', value: 'serve' },
 ];
 
+const DIRECT_UPLOAD_STORAGE_TYPES = new Set(['ali', 'cos', 's3', 'tos']);
+
+export function supportsDirectUpload(storageType?: string) {
+  return DIRECT_UPLOAD_STORAGE_TYPES.has(
+    String(storageType ?? '')
+      .trim()
+      .toLowerCase(),
+  );
+}
+
 export const fileKindOptions: Array<{
   label: string;
   value: 'all' | UploadFileKind;
