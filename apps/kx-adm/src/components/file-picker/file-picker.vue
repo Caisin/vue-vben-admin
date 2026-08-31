@@ -571,44 +571,6 @@ defineExpose<FilePickerExpose>({ close, open });
 </script>
 
 <template>
-  <RenameModal title="编辑文件名">
-    <div class="px-1 py-2">
-      <Input
-        v-model:value="rename_value"
-        ::maxlength="255"
-        placeholder="文件名"
-      />
-    </div>
-  </RenameModal>
-
-  <GroupModal title="创建分组">
-    <div class="grid gap-3 px-1 py-2 sm:grid-cols-2">
-      <Input
-        v-model:value="group_name"
-        ::maxlength="80"
-        placeholder="分组名称"
-      />
-      <Input
-        v-model:value="group_code"
-        ::maxlength="80"
-        placeholder="分组编码"
-      />
-    </div>
-  </GroupModal>
-
-  <ConvertModal title="URL 转存文件">
-    <div class="grid gap-2 px-1 py-2">
-      <Input
-        v-model:value="convert_url"
-        placeholder="请输入 http 或 https 文件 URL"
-      />
-      <div class="text-xs text-muted-foreground">
-        系统会将远程 URL 下载并存入当前 storage，业务字段仍保存稳定文件
-        ID，不保存临时访问地址。
-      </div>
-    </div>
-  </ConvertModal>
-
   <Modal title="选择文件">
     <div class="file-picker-layout">
       <aside class="file-picker-sidebar">
@@ -815,6 +777,44 @@ defineExpose<FilePickerExpose>({ close, open });
       </section>
     </div>
   </Modal>
+
+  <RenameModal title="编辑文件名">
+    <div class="px-1 py-2">
+      <Input
+        v-model:value="rename_value"
+        ::maxlength="255"
+        placeholder="文件名"
+      />
+    </div>
+  </RenameModal>
+
+  <GroupModal title="创建分组">
+    <div class="grid gap-3 px-1 py-2 sm:grid-cols-2">
+      <Input
+        v-model:value="group_name"
+        ::maxlength="80"
+        placeholder="分组名称"
+      />
+      <Input
+        v-model:value="group_code"
+        ::maxlength="80"
+        placeholder="分组编码"
+      />
+    </div>
+  </GroupModal>
+
+  <ConvertModal title="URL 转存文件">
+    <div class="grid gap-2 px-1 py-2">
+      <Input
+        v-model:value="convert_url"
+        placeholder="请输入 http 或 https 文件 URL"
+      />
+      <div class="text-xs text-muted-foreground">
+        系统会将远程 URL 下载并存入当前 storage，业务字段仍保存稳定文件
+        ID，不保存临时访问地址。
+      </div>
+    </div>
+  </ConvertModal>
 </template>
 
 <style src="./file-picker.css" scoped></style>
