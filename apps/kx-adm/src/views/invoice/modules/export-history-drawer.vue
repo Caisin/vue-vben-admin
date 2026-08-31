@@ -4,7 +4,7 @@ import type {
   InvoiceExportView,
 } from '#/api/invoice';
 
-import { ref, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 
 import { Button, Drawer, Empty, message, Space, Table, Tag } from 'antdv-next';
 
@@ -24,6 +24,7 @@ const emit = defineEmits<{
 
 const rows = ref<InvoiceExportDispatchView[]>([]);
 const loading = ref(false);
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
 watch(
   () => props.exports,
@@ -33,6 +34,10 @@ watch(
   { immediate: true },
 );
 
+watch([() => props.open, rows], () => scheduleRefresh(), { deep: true });
+
+onBeforeUnmount(() => clearRefreshTimer());
+
 function stateColor(state: InvoiceExportView['state']) {
   if (state === 'succeeded') return 'success';
   if (state === 'failed') return 'error';
@@ -40,7 +45,27 @@ function stateColor(state: InvoiceExportView['state']) {
   return 'default';
 }
 
-async function refreshAll() {
+function clearRefreshTimer() {
+  if (refreshTimer !== undefined) clearTimeout(refreshTimer);
+  refreshTimer = undefined;
+}
+
+function scheduleRefresh() {
+  clearRefreshTimer();
+  if (
+    !props.open ||
+    !rows.value.some((item) =>
+      ['pending', 'running'].includes(item.export.state),
+    )
+  ) {
+    return;
+  }
+  refreshTimer = setTimeout(() => void refreshAll(false), 1000);
+}
+
+async function refreshAll(notify = true) {
+  if (loading.value) return;
+  clearRefreshTimer();
   loading.value = true;
   try {
     rows.value = await Promise.all(
@@ -50,9 +75,10 @@ async function refreshAll() {
       })),
     );
     emit('refresh', rows.value);
-    message.success('导出任务状态已刷新');
+    if (notify) message.success('导出任务状态已刷新');
   } finally {
     loading.value = false;
+    scheduleRefresh();
   }
 }
 </script>
@@ -65,7 +91,7 @@ async function refreshAll() {
     @close="emit('update:open', false)"
   >
     <template #extra>
-      <Button size="small" @click="refreshAll">刷新状态</Button>
+      <Button size="small" @click="refreshAll()">刷新状态</Button>
     </template>
     <Empty v-if="rows.length === 0" description="暂无导出任务" />
     <Table
@@ -104,7 +130,7 @@ async function refreshAll() {
         </template>
         <Space v-else-if="column.dataIndex === 'operation'">
           <Button
-            :disabled="(record as InvoiceExportView).state !== 'succeeded'"
+            :disabled="!(record as InvoiceExportView).output_file_id"
             size="small"
             type="link"
             @click="emit('download', record as InvoiceExportView)"
