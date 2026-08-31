@@ -1,6 +1,6 @@
 import type { Page, PageQuery } from '#/api/request';
 
-import { apiURL, requestClient } from '#/api/request';
+import { apiURL, plaintextRequestClient, requestClient } from '#/api/request';
 
 import { resolveFileAccessUrl as resolveAccessUrl } from './file-url';
 
@@ -84,7 +84,7 @@ function requiresAuthenticatedDownload(url: string) {
 
 async function authenticatedFileUrl(fileId: number | string, url: string) {
   if (!requiresAuthenticatedDownload(url)) return url;
-  const blob = await requestClient.download<Blob>(
+  const blob = await plaintextRequestClient.download<Blob>(
     `/storage/file/content/${fileId}`,
   );
   return URL.createObjectURL(blob);
@@ -116,7 +116,7 @@ export const StorageFileApi = {
   rename: (id: number | string, data: RenameFileWrite) =>
     requestClient.put<UploadFile>(`/storage/file/${id}/name`, data),
   upload: async (code: string, file: File) => {
-    const result = await requestClient.upload<FileUploadView[]>(
+    const result = await plaintextRequestClient.upload<FileUploadView[]>(
       `/storage/file/upload/${code}`,
       { file },
     );

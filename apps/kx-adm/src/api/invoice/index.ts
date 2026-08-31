@@ -19,6 +19,7 @@ export type InvoiceExportState =
   | 'succeeded';
 
 export interface InvoiceListQuery extends PageQuery {
+  amount_tax?: string;
   buyer_name?: string;
   invoice_date_range?: [string, string];
   invoice_no?: string;
@@ -91,6 +92,7 @@ export type InvoiceImportItemState =
   | 'succeeded';
 
 export interface InvoiceImportItemView {
+  can_download: boolean;
   error_message: string;
   file_name: string;
   id: number | string;
@@ -207,6 +209,10 @@ export const InvoiceApi = {
     requestClient.put<InvoiceItemView>(`/invoice/items/${id}`, data),
   importDetail: (id: number | string) =>
     requestClient.get<InvoiceImportView>(`/invoice/imports/${id}`),
+  importItemContent: (importId: number | string, itemId: number | string) =>
+    plaintextRequestClient.download<Blob>(
+      `/invoice/imports/${importId}/items/${itemId}/content`,
+    ),
   uploadFiles: (files: File[]) => {
     const formData = new FormData();
     for (const file of files) formData.append('files', file, file.name);

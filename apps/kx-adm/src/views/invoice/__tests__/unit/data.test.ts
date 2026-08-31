@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cleanInvoiceQuery,
   createExportPayload,
+  invoiceTypeLabel,
   uploadRiskText,
   useColumns,
   useFormSchema,
@@ -44,6 +45,7 @@ function invoice(partial: Partial<InvoiceItemView>): InvoiceItemView {
 describe('发票管理页面数据工具', () => {
   it('查询表单按后端契约清理空值并编码日期范围', () => {
     const query = cleanInvoiceQuery({
+      amount_tax: '113.00',
       buyer_name: ' 买方 ',
       invoice_date_range: [dayjs('2026-08-01'), dayjs('2026-08-31')],
       keyword: '  发票 ',
@@ -56,6 +58,7 @@ describe('发票管理页面数据工具', () => {
     });
 
     expect(query).toMatchObject({
+      amount_tax: '113.00',
       buyer_name: '买方',
       invoice_date_range: ['2026-08-01', '2026-08-31'],
       keyword: '发票',
@@ -101,6 +104,9 @@ describe('发票管理页面数据工具', () => {
 
   it('首屏提供上传、重复、财务和导出所需字段', () => {
     expect(useFormSchema().map((item) => item.fieldName)).toContain('keyword');
+    expect(useFormSchema().map((item) => item.fieldName)).toContain(
+      'amount_tax',
+    );
     expect(useFormSchema().map((item) => item.fieldName)).not.toContain('uid');
     expect(useFormSchema(true).map((item) => item.fieldName)).toContain('uid');
     expect(useFormSchema().map((item) => item.fieldName)).toContain(
@@ -144,5 +150,11 @@ describe('发票管理页面数据工具', () => {
         used_by_other_users: false,
       }),
     ).toBe('未发现重复');
+  });
+
+  it('票种编码转换为用户可读名称', () => {
+    expect(invoiceTypeLabel('vat-general')).toBe('增值税普通发票');
+    expect(invoiceTypeLabel('vat-special')).toBe('增值税专用发票');
+    expect(invoiceTypeLabel('unknown')).toBe('未识别类型');
   });
 });

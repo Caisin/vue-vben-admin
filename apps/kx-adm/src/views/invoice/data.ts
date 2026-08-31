@@ -14,6 +14,7 @@ import dayjs from 'dayjs';
 import { Times } from '#/times';
 
 export interface InvoiceSearchValues {
+  amount_tax?: number | string;
   buyer_name?: string;
   invoice_date_range?: [dayjs.Dayjs, dayjs.Dayjs];
   invoice_no?: string;
@@ -36,6 +37,20 @@ export const submittedOptions = [
   { label: '未提交财务', value: false },
 ];
 
+const invoiceTypeLabels: Record<string, string> = {
+  flight: '航空运输电子客票',
+  nontax: '非税票据',
+  ticket: '运输票据',
+  train: '铁路电子客票',
+  'vat-general': '增值税普通发票',
+  'vat-special': '增值税专用发票',
+};
+
+export function invoiceTypeLabel(value?: string) {
+  if (!value || value === 'unknown') return '未识别类型';
+  return invoiceTypeLabels[value] ?? value;
+}
+
 export function useFormSchema(canAdmin = false): VbenFormSchema[] {
   const schema: VbenFormSchema[] = [
     {
@@ -52,6 +67,17 @@ export function useFormSchema(canAdmin = false): VbenFormSchema[] {
       componentProps: { allowClear: true },
       fieldName: 'invoice_no',
       label: '发票号',
+    },
+    {
+      component: 'InputNumber',
+      componentProps: {
+        class: 'w-full',
+        min: 0,
+        precision: 2,
+        stringMode: true,
+      },
+      fieldName: 'amount_tax',
+      label: '价税合计',
     },
     {
       component: 'Input',
@@ -187,6 +213,7 @@ export function cleanInvoiceQuery(
   values: Partial<InvoiceSearchValues>,
 ): InvoiceListQuery {
   return {
+    amount_tax: cleanString(values.amount_tax),
     buyer_name: cleanString(values.buyer_name),
     invoice_date_range: dateRange(values.invoice_date_range),
     invoice_no: cleanString(values.invoice_no),

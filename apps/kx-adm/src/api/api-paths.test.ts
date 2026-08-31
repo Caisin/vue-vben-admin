@@ -24,7 +24,8 @@ const plaintextPathPatterns = [
   /^\/invoice\/exports\/.+\/content$/,
   /^\/invoice\/files(?:\/.+\/content)?$/,
   /^\/invoice\/imports\/.+\/events$/,
-  /^\/storage\/file\/(?:content\/.+|upload\/local_private)$/,
+  /^\/invoice\/imports\/.+\/items\/.+\/content$/,
+  /^\/storage\/file\/(?:content\/.+|upload\/.+)$/,
 ];
 
 function collectApiFiles(dir: string): string[] {

@@ -39,6 +39,7 @@ import {
   cleanInvoiceQuery,
   createExportPayload,
   invoiceSortFields,
+  invoiceTypeLabel,
   useColumns,
   useFormSchema,
 } from './data';
@@ -466,7 +467,7 @@ function downloadBlob(blob: Blob, fileName: string) {
         <a class="invoice-link" @click="openDetail(row)">
           {{ row.invoice_no || `发票 #${row.invoice_id}` }}
         </a>
-        <div class="muted">{{ row.invoice_type || '未识别类型' }}</div>
+        <div class="muted">{{ invoiceTypeLabel(row.invoice_type) }}</div>
       </template>
       <template #financeState="{ row }">
         <Tag :color="row.submitted_to_finance ? 'success' : 'warning'">
@@ -576,6 +577,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 }
 
 .muted {
+  display: block;
   margin-top: 2px;
   font-size: 12px;
   color: hsl(var(--muted-foreground));

@@ -1,14 +1,19 @@
 <script lang="ts" setup>
 import type {
   InvoiceImportItemState,
+  InvoiceImportItemView,
   InvoiceImportView,
   InvoiceUploadView,
 } from '#/api/invoice';
 
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { IconifyIcon } from '@vben/icons';
+
 import { Button, Card, Drawer, Empty, Progress, Space, Tag } from 'antdv-next';
+
+import { InvoiceApi } from '#/api/invoice';
 
 import { uploadRiskText } from '../data';
 
@@ -19,6 +24,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 const router = useRouter();
+const downloading = ref<string>();
 
 const progressPercent = computed(() => {
   const total = Number(props.batch?.total ?? 0);
@@ -60,6 +66,22 @@ function parseStateLabel(state: InvoiceUploadView['parse_state']) {
 async function openTaskDetail(taskId?: number | string) {
   if (!taskId) return;
   await router.push(`/system/tasks?run_id=${taskId}`);
+}
+
+async function downloadFailedFile(item: InvoiceImportItemView) {
+  if (!props.batch || !item.can_download) return;
+  downloading.value = String(item.id);
+  try {
+    const blob = await InvoiceApi.importItemContent(props.batch.id, item.id);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = item.file_name;
+    link.click();
+    URL.revokeObjectURL(url);
+  } finally {
+    downloading.value = undefined;
+  }
 }
 </script>
 
@@ -137,6 +159,18 @@ async function openTaskDetail(taskId?: number | string) {
           <Tag>上传 #{{ item.upload.upload_id }}</Tag>
           <Tag>发票 {{ item.upload.invoices.length }} 张</Tag>
         </Space>
+        <Button
+          v-if="item.can_download"
+          :loading="downloading === String(item.id)"
+          class="download-button"
+          size="small"
+          @click="downloadFailedFile(item)"
+        >
+          <template #icon>
+            <IconifyIcon icon="lucide:download" />
+          </template>
+          下载原文件
+        </Button>
       </Card>
     </div>
   </Drawer>
@@ -173,5 +207,9 @@ async function openTaskDetail(taskId?: number | string) {
   margin: 0;
   color: hsl(var(--destructive));
   overflow-wrap: anywhere;
+}
+
+.download-button {
+  margin-top: 10px;
 }
 </style>

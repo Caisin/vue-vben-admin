@@ -18,6 +18,8 @@ import {
 import { InvoiceApi } from '#/api/invoice';
 import { Times } from '#/times';
 
+import { invoiceTypeLabel } from '../data';
+
 const props = defineProps<{
   canAdmin?: boolean;
   canUpdate?: boolean;
@@ -90,7 +92,7 @@ async function loadDuplicateUsers() {
             {{ invoice.invoice_no }}
           </DescriptionsItem>
           <DescriptionsItem label="发票类型">
-            {{ invoice.invoice_type || '-' }}
+            {{ invoiceTypeLabel(invoice.invoice_type) }}
           </DescriptionsItem>
           <DescriptionsItem label="开票日期">
             {{ invoice.invoice_date || '-' }}
