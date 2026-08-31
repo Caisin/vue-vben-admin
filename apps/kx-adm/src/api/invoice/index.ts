@@ -1,6 +1,8 @@
 import type { Page, PageQuery } from '#/api/request';
 import type { TaskRun } from '#/api/task';
 
+import JSONBigInt from 'json-bigint';
+
 import { plaintextRequestClient, requestClient } from '#/api/request';
 
 export type InvoiceParseState =
@@ -79,6 +81,37 @@ export interface InvoiceUploadView {
   task_run?: null | TaskRun;
   upload_id: number | string;
   used_by_other_users: boolean;
+}
+
+export type InvoiceImportItemState =
+  | 'cancelled'
+  | 'failed'
+  | 'pending'
+  | 'running'
+  | 'succeeded';
+
+export interface InvoiceImportItemView {
+  error_message: string;
+  file_name: string;
+  id: number | string;
+  state: InvoiceImportItemState;
+  upload?: InvoiceUploadView | null;
+}
+
+export interface InvoiceImportView {
+  failed: number | string;
+  id: number | string;
+  items: InvoiceImportItemView[];
+  running: number | string;
+  succeeded: number | string;
+  task_run?: null | TaskRun;
+  total: number | string;
+}
+
+export interface InvoiceImportDispatchView {
+  import_id: number | string;
+  task_run: TaskRun;
+  total: number | string;
 }
 
 export interface InvoiceStatisticsView {
@@ -172,27 +205,53 @@ export const InvoiceApi = {
     }),
   update: (id: number | string, data: InvoiceUpdateWrite) =>
     requestClient.put<InvoiceItemView>(`/invoice/items/${id}`, data),
-  uploadFiles: async (files: File[]) => {
-    const results: Array<InvoiceUploadView[] | undefined> = Array.from({
-      length: files.length,
-    });
-    let cursor = 0;
-    const uploadNext = async () => {
-      while (cursor < files.length) {
-        const index = cursor;
-        cursor += 1;
-        const file = files[index];
-        if (file) {
-          results[index] = await plaintextRequestClient.upload<
-            InvoiceUploadView[]
-          >('/invoice/files', { file });
-        }
-      }
-    };
-    await Promise.all(
-      Array.from({ length: Math.min(files.length, 3) }, () => uploadNext()),
+  importDetail: (id: number | string) =>
+    requestClient.get<InvoiceImportView>(`/invoice/imports/${id}`),
+  uploadFiles: (files: File[]) => {
+    const formData = new FormData();
+    for (const file of files) formData.append('files', file, file.name);
+    return plaintextRequestClient.post<InvoiceImportDispatchView>(
+      '/invoice/files',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
-    return results.flatMap((result) => result ?? []);
+  },
+  watchImport: async (
+    id: number | string,
+    onProgress: (run: TaskRun) => void,
+    signal?: AbortSignal,
+  ) => {
+    let buffer = '';
+    const json = JSONBigInt({ storeAsString: true, strict: true });
+    await plaintextRequestClient.requestSSE(
+      `/invoice/imports/${id}/events`,
+      undefined,
+      {
+        onMessage(chunk) {
+          buffer = `${buffer}${chunk}`.replaceAll('\r\n', '\n');
+          let boundary = buffer.indexOf('\n\n');
+          while (boundary >= 0) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const event = frame
+              .split('\n')
+              .find((line) => line.startsWith('event:'))
+              ?.slice(6)
+              .trim();
+            const data = frame
+              .split('\n')
+              .filter((line) => line.startsWith('data:'))
+              .map((line) => line.slice(5).trimStart())
+              .join('\n');
+            if (event === 'progress' && data) {
+              onProgress(json.parse(data) as TaskRun);
+            }
+            boundary = buffer.indexOf('\n\n');
+          }
+        },
+        signal,
+      },
+    );
   },
   createExport: (data: InvoiceExportCreateWrite) =>
     requestClient.post<InvoiceExportDispatchView>('/invoice/exports', data),

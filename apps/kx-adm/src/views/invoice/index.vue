@@ -4,13 +4,14 @@ import type {
   InvoiceExportDispatchView,
   InvoiceExportScope,
   InvoiceExportView,
+  InvoiceImportDispatchView,
+  InvoiceImportView,
   InvoiceItemView,
   InvoiceListQuery,
   InvoiceStatisticsView,
-  InvoiceUploadView,
 } from '#/api/invoice';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -31,6 +32,7 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { InvoiceApi } from '#/api/invoice';
+import { requestErrorMessage } from '#/request-errors';
 import { vxeSortParams } from '#/vxe-sort';
 
 import {
@@ -59,8 +61,9 @@ const uploading = ref(false);
 const exportLoading = ref<InvoiceExportScope>();
 const selectedRows = ref<InvoiceItemView[]>([]);
 const currentFilter = ref<InvoiceListQuery>({});
-const uploadResults = ref<InvoiceUploadView[]>([]);
+const activeImport = ref<InvoiceImportView>();
 const uploadResultOpen = ref(false);
+let importAbortController: AbortController | undefined;
 const detailOpen = ref(false);
 const editOpen = ref(false);
 const exportHistoryOpen = ref(false);
@@ -133,22 +136,42 @@ const [Grid, gridApi] = useVbenVxeGrid<InvoiceItemView>({
 const selectedCount = computed(() => selectedRows.value.length);
 
 onMounted(async () => {
+  const importValue = Array.isArray(route.query.import_id)
+    ? route.query.import_id[0]
+    : route.query.import_id;
+  const importId = Number(importValue);
+  if (Number.isInteger(importId) && importId > 0) {
+    const detail = await InvoiceApi.importDetail(importId);
+    activeImport.value = detail;
+    uploadResultOpen.value = true;
+    if (detail.task_run && !isTerminalTask(detail.task_run.status)) {
+      void monitorImport({
+        import_id: detail.id,
+        task_run: detail.task_run,
+        total: detail.total,
+      });
+    }
+  }
+
   const queryValue = Array.isArray(route.query.export_id)
     ? route.query.export_id[0]
     : route.query.export_id;
   const exportId = Number(queryValue);
-  if (!Number.isInteger(exportId) || exportId <= 0) return;
-  const detail = await InvoiceApi.exportDetail(exportId);
-  exportRuns.value = [
-    {
-      duplicate: false,
-      export: detail,
-      message: '',
-      task_run: null,
-    },
-  ];
-  exportHistoryOpen.value = true;
+  if (Number.isInteger(exportId) && exportId > 0) {
+    const detail = await InvoiceApi.exportDetail(exportId);
+    exportRuns.value = [
+      {
+        duplicate: false,
+        export: detail,
+        message: '',
+        task_run: null,
+      },
+    ];
+    exportHistoryOpen.value = true;
+  }
 });
+
+onBeforeUnmount(() => importAbortController?.abort());
 
 function updateSelectedRows() {
   const grid = gridApi.grid as CheckboxGrid | undefined;
@@ -177,13 +200,75 @@ async function onFilesPicked(event: Event) {
   if (files.length === 0) return;
   uploading.value = true;
   try {
-    uploadResults.value = await InvoiceApi.uploadFiles(files);
+    const dispatch = await InvoiceApi.uploadFiles(files);
+    activeImport.value = {
+      failed: dispatch.task_run.failed_count,
+      id: dispatch.import_id,
+      items: [],
+      running: dispatch.task_run.running_count,
+      succeeded: dispatch.task_run.succeeded_count,
+      task_run: dispatch.task_run,
+      total: dispatch.total,
+    };
     uploadResultOpen.value = true;
-    message.success(`已上传并解析 ${files.length} 个文件`);
-    await gridApi.query();
+    message.info(`已提交 ${files.length} 个文件，正在后台解析`);
+    await monitorImport(dispatch);
   } finally {
     uploading.value = false;
   }
+}
+
+async function monitorImport(dispatch: InvoiceImportDispatchView) {
+  importAbortController?.abort();
+  const controller = new AbortController();
+  importAbortController = controller;
+  try {
+    await InvoiceApi.watchImport(
+      dispatch.import_id,
+      (run) => {
+        if (!activeImport.value) return;
+        activeImport.value = {
+          ...activeImport.value,
+          failed: run.failed_count,
+          running: run.running_count,
+          succeeded: run.succeeded_count,
+          task_run: run,
+          total: run.total_count ?? activeImport.value.total,
+        };
+      },
+      controller.signal,
+    );
+    const result = await InvoiceApi.importDetail(dispatch.import_id);
+    activeImport.value = result;
+    const total = Number(result.total);
+    const succeeded = Number(result.succeeded);
+    const failed = Number(result.failed);
+    if (failed > 0) {
+      message.warning(
+        `批次完成：共 ${total} 个，成功 ${succeeded} 个，失败 ${failed} 个`,
+      );
+    } else {
+      message.success(`已解析 ${succeeded} 个文件`);
+    }
+    if (succeeded > 0) await gridApi.query();
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      message.error(requestErrorMessage(error, '导入进度连接中断'));
+      activeImport.value = await InvoiceApi.importDetail(dispatch.import_id);
+    }
+  } finally {
+    if (importAbortController === controller) importAbortController = undefined;
+  }
+}
+
+function isTerminalTask(status: string) {
+  return [
+    'cancelled',
+    'failed',
+    'partially_succeeded',
+    'skipped',
+    'succeeded',
+  ].includes(status);
 }
 
 async function openDetail(row: InvoiceItemView) {
@@ -439,10 +524,7 @@ function downloadBlob(blob: Blob, fileName: string) {
       :invoice="activeInvoice"
       @saved="onSaved"
     />
-    <UploadResultDrawer
-      v-model:open="uploadResultOpen"
-      :results="uploadResults"
-    />
+    <UploadResultDrawer v-model:open="uploadResultOpen" :batch="activeImport" />
     <ExportHistoryDrawer
       v-model:open="exportHistoryOpen"
       :exports="exportRuns"

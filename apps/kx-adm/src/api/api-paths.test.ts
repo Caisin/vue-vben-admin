@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 const apiRoot = dirname(fileURLToPath(import.meta.url));
 const requestCallPattern =
-  /(requestClient|encryptedRequestClient|plaintextRequestClient)\.(?:get|post|put|delete|patch|upload|download)(?:<[\s\S]*?>)?\(\s*([`'"])([\s\S]*?)\2/g;
+  /(requestClient|encryptedRequestClient|plaintextRequestClient)\.(?:get|post|put|delete|patch|upload|download|requestSSE)(?:<[\s\S]*?>)?\(\s*([`'"])([\s\S]*?)\2/g;
 
 const preSessionEncryptedPaths = new Set([
   '/auth/dt/apps',
@@ -21,6 +21,9 @@ const plaintextPathPatterns = [
   /^\/import-export\/exports\/.+\/runs\/.+\/file$/,
   /^\/import-export\/imports\/.+\/(?:runs|template)$/,
   /^\/import-export\/runs\/.+\/files\/(?:errors|input|result|\$\{kind\})$/,
+  /^\/invoice\/exports\/.+\/content$/,
+  /^\/invoice\/files(?:\/.+\/content)?$/,
+  /^\/invoice\/imports\/.+\/events$/,
   /^\/storage\/file\/(?:content\/.+|upload\/local_private)$/,
 ];
 
