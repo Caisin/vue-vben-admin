@@ -3,7 +3,7 @@ import type { MenuProps } from 'antdv-next';
 import type { Dayjs } from 'dayjs';
 
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
-import type { FileShareView } from '#/api/storage';
+import type { FileShareAccessView, FileShareView } from '#/api/storage';
 import type {
   FilePickerExpose,
   SelectedStorageFile,
@@ -17,11 +17,17 @@ import { Copy, Plus } from '@vben/icons';
 import {
   Button,
   DatePicker,
+  Drawer,
   Dropdown,
+  Input,
+  InputNumber,
   message,
   Modal,
+  Pagination,
   Segmented,
   Space,
+  Switch,
+  Table,
   Tag,
   Tooltip,
 } from 'antdv-next';
@@ -39,13 +45,35 @@ import ContentModal from './modules/modal.vue';
 
 type ExpiryPreset = 7 | 15 | 30 | 'custom';
 
-const shareSortFields = ['created_at', 'expires_at', 'file_name', 'id'];
+const shareSortFields = [
+  'created_at',
+  'download_count',
+  'expires_at',
+  'file_name',
+  'id',
+  'view_count',
+];
 const filePickerRef = ref<FilePickerExpose>();
-const selectedFile = ref<SelectedStorageFile>();
+const selectedFiles = ref<SelectedStorageFile[]>([]);
+const createTitle = ref('');
 const createPreset = ref<ExpiryPreset>(15);
 const createExpiry = ref<Dayjs>();
+const createDownloadStart = ref<Dayjs>();
+const createImmediate = ref(true);
+const createUnlimited = ref(true);
+const createDownloadLimit = ref(10);
 const editingShare = ref<FileShareView>();
 const editingExpiry = ref<Dayjs>();
+const policyStart = ref<Dayjs>();
+const policyImmediate = ref(true);
+const policyUnlimited = ref(true);
+const policyLimit = ref(10);
+const accessOpen = ref(false);
+const accessLoading = ref(false);
+const accessShare = ref<FileShareView>();
+const accessRows = ref<FileShareAccessView[]>([]);
+const accessPage = ref(1);
+const accessTotal = ref(0);
 
 const expiryOptions = [
   { label: '+7 天', value: 7 },
@@ -55,7 +83,12 @@ const expiryOptions = [
 ];
 
 const selectedFileName = computed(() =>
-  selectedFile.value ? displayFileName(selectedFile.value.file) : '',
+  selectedFiles.value.length > 0
+    ? `${selectedFiles.value.length} 个文件：${selectedFiles.value
+        .slice(0, 3)
+        .map((item) => displayFileName(item.file))
+        .join('、')}${selectedFiles.value.length > 3 ? '…' : ''}`
+    : '',
 );
 
 const contextMenuItems: MenuProps['items'] = [
@@ -72,9 +105,9 @@ const [CreateModal, createModalApi] = useVbenModal({
   class: 'w-[min(560px,calc(100vw-20px))]',
   connectedComponent: ContentModal,
   destroyOnClose: true,
+  title: '新增文件分享',
   async onConfirm() {
-    const file = selectedFile.value?.file;
-    if (!file) {
+    if (selectedFiles.value.length === 0) {
       message.warning('请选择或上传文件');
       return;
     }
@@ -83,12 +116,30 @@ const [CreateModal, createModalApi] = useVbenModal({
       message.warning('请选择未来的过期时间');
       return;
     }
+    const downloadStartAt = createImmediate.value
+      ? 0
+      : createDownloadStart.value?.unix();
+    if (
+      downloadStartAt === undefined ||
+      downloadStartAt < 0 ||
+      (downloadStartAt > 0 && downloadStartAt >= expiresAt)
+    ) {
+      message.warning('开始下载时间必须早于过期时间');
+      return;
+    }
+    const downloadLimit = createUnlimited.value ? 0 : createDownloadLimit.value;
+    if (downloadLimit < 1 && !createUnlimited.value) {
+      message.warning('下载次数必须大于 0');
+      return;
+    }
     createModalApi.lock();
     try {
       await StorageFileShareApi.create({
         expires_at: expiresAt,
-        file_id: file.file_id,
-        file_name: displayFileName(file),
+        file_ids: selectedFiles.value.map((item) => item.file.file_id),
+        file_name: createTitle.value.trim() || undefined,
+        download_start_at: downloadStartAt,
+        download_limit: downloadLimit,
       });
       message.success('分享链接已创建');
       createModalApi.close();
@@ -99,10 +150,48 @@ const [CreateModal, createModalApi] = useVbenModal({
   },
 });
 
+const [PolicyModal, policyModalApi] = useVbenModal({
+  class: 'w-[min(520px,calc(100vw-20px))]',
+  connectedComponent: ContentModal,
+  destroyOnClose: true,
+  title: '下载策略',
+  async onConfirm() {
+    const share = editingShare.value;
+    if (!share) return;
+    const startAt = policyImmediate.value ? 0 : policyStart.value?.unix();
+    if (
+      startAt === undefined ||
+      startAt < 0 ||
+      (startAt > 0 && startAt >= Number(share.expires_at))
+    ) {
+      message.warning('开始下载时间必须早于过期时间');
+      return;
+    }
+    const limit = policyUnlimited.value ? 0 : policyLimit.value;
+    if (limit > 0 && limit < Number(share.download_count)) {
+      message.warning('总下载次数不能小于已下载次数');
+      return;
+    }
+    policyModalApi.lock();
+    try {
+      await StorageFileShareApi.setDownloadPolicy(share.id, {
+        download_limit: limit,
+        download_start_at: startAt,
+      });
+      message.success('下载策略已更新');
+      policyModalApi.close();
+      await gridApi.query();
+    } finally {
+      policyModalApi.lock(false);
+    }
+  },
+});
+
 const [ExpiryModal, expiryModalApi] = useVbenModal({
   class: 'w-[min(480px,calc(100vw-20px))]',
   connectedComponent: ContentModal,
   destroyOnClose: true,
+  title: '修改过期时间',
   async onConfirm() {
     const share = editingShare.value;
     const expiresAt = editingExpiry.value?.unix();
@@ -166,9 +255,14 @@ function selectedExpiry() {
 }
 
 function openCreate() {
-  selectedFile.value = undefined;
+  selectedFiles.value = [];
+  createTitle.value = '';
   createPreset.value = 15;
   createExpiry.value = dayjs().add(15, 'day');
+  createImmediate.value = true;
+  createDownloadStart.value = dayjs();
+  createUnlimited.value = true;
+  createDownloadLimit.value = 10;
   createModalApi.open();
 }
 
@@ -177,7 +271,47 @@ function openFilePicker() {
 }
 
 function handleFileSelected(files: SelectedStorageFile[]) {
-  selectedFile.value = files[0];
+  selectedFiles.value = files;
+}
+
+function openPolicy(row: FileShareView) {
+  editingShare.value = row;
+  policyImmediate.value = Number(row.download_start_at) === 0;
+  policyStart.value = policyImmediate.value
+    ? dayjs()
+    : dayjs.unix(Number(row.download_start_at));
+  policyUnlimited.value = Number(row.download_limit) === 0;
+  policyLimit.value = policyUnlimited.value ? 10 : Number(row.download_limit);
+  policyModalApi.open();
+}
+
+async function addDownloads(row: FileShareView, count: number) {
+  await StorageFileShareApi.addDownloads(row.id, count);
+  message.success(`已增加 ${count} 次下载额度`);
+  await gridApi.query();
+}
+
+async function openAccess(row: FileShareView) {
+  accessShare.value = row;
+  accessOpen.value = true;
+  await loadAccess(1);
+}
+
+async function loadAccess(page: number) {
+  const share = accessShare.value;
+  if (!share) return;
+  accessPage.value = page;
+  accessLoading.value = true;
+  try {
+    const result = await StorageFileShareApi.access(share.id, {
+      page,
+      size: 50,
+    });
+    accessRows.value = result.items;
+    accessTotal.value = Number(result.total);
+  } finally {
+    accessLoading.value = false;
+  }
 }
 
 function openExpiry(row: FileShareView) {
@@ -266,10 +400,18 @@ function disablePastDate(current: Dayjs) {
     content-class="management-content"
     title="文件分享"
   >
-    <CreateModal title="新增文件分享">
+    <CreateModal>
       <div class="share-form">
         <div class="form-field">
-          <span class="field-label">文件</span>
+          <span class="field-label">分享标题</span>
+          <Input
+            v-model:value="createTitle"
+            :maxlength="255"
+            placeholder="单文件默认使用文件名，多文件默认使用文件数量"
+          />
+        </div>
+        <div class="form-field">
+          <span class="field-label">文件（可多选）</span>
           <div class="file-selection">
             <Button type="primary" ghost @click="openFilePicker">
               选择 / 上传文件
@@ -293,10 +435,38 @@ function disablePastDate(current: Dayjs) {
             show-time
           />
         </div>
+        <div class="two-fields">
+          <div class="form-field">
+            <span class="field-label">立即允许下载</span>
+            <Switch v-model:checked="createImmediate" />
+          </div>
+          <div class="form-field">
+            <span class="field-label">不限下载次数</span>
+            <Switch v-model:checked="createUnlimited" />
+          </div>
+        </div>
+        <div v-if="!createImmediate" class="form-field">
+          <span class="field-label">开始下载时间</span>
+          <DatePicker
+            v-model:value="createDownloadStart"
+            class="w-full"
+            :disabled-date="disablePastDate"
+            format="YYYY-MM-DD HH:mm"
+            show-time
+          />
+        </div>
+        <div v-if="!createUnlimited" class="form-field">
+          <span class="field-label">总下载次数</span>
+          <InputNumber
+            v-model:value="createDownloadLimit"
+            class="w-full"
+            :min="1"
+          />
+        </div>
       </div>
     </CreateModal>
 
-    <ExpiryModal title="修改过期时间">
+    <ExpiryModal>
       <div class="share-form">
         <div class="form-field">
           <span class="field-label">文件</span>
@@ -315,9 +485,93 @@ function disablePastDate(current: Dayjs) {
       </div>
     </ExpiryModal>
 
+    <PolicyModal>
+      <div class="share-form">
+        <div class="form-field">
+          <span class="field-label">分享</span>
+          <span>{{ editingShare?.file_name }}</span>
+        </div>
+        <div class="two-fields">
+          <div class="form-field">
+            <span class="field-label">立即允许下载</span>
+            <Switch v-model:checked="policyImmediate" />
+          </div>
+          <div class="form-field">
+            <span class="field-label">不限下载次数</span>
+            <Switch v-model:checked="policyUnlimited" />
+          </div>
+        </div>
+        <div v-if="!policyImmediate" class="form-field">
+          <span class="field-label">开始下载时间</span>
+          <DatePicker
+            v-model:value="policyStart"
+            class="w-full"
+            format="YYYY-MM-DD HH:mm"
+            show-time
+          />
+        </div>
+        <div v-if="!policyUnlimited" class="form-field">
+          <span class="field-label">总下载次数</span>
+          <InputNumber
+            v-model:value="policyLimit"
+            class="w-full"
+            :min="Number(editingShare?.download_count || 1)"
+          />
+        </div>
+      </div>
+    </PolicyModal>
+
+    <Drawer
+      v-model:open="accessOpen"
+      size="large"
+      :title="`访问明细 · ${accessShare?.file_name || ''}`"
+    >
+      <Table
+        :columns="[
+          { title: 'IP', dataIndex: 'client_ip', width: 180 },
+          { title: '查看', dataIndex: 'view_count', width: 80 },
+          { title: '下载', dataIndex: 'download_count', width: 80 },
+          { title: '最近查看', dataIndex: 'last_viewed_at' },
+          { title: '最近下载', dataIndex: 'last_downloaded_at' },
+        ]"
+        :data-source="accessRows"
+        :loading="accessLoading"
+        :pagination="false"
+        row-key="client_ip"
+        size="small"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'last_viewed_at'">
+            {{
+              Number(record.last_viewed_at) > 0
+                ? Times.formatUnix(record.last_viewed_at)
+                : '-'
+            }}
+          </template>
+          <template v-else-if="column.dataIndex === 'last_downloaded_at'">
+            {{
+              Number(record.last_downloaded_at) > 0
+                ? Times.formatUnix(record.last_downloaded_at)
+                : '-'
+            }}
+          </template>
+        </template>
+      </Table>
+      <Pagination
+        v-if="accessTotal > 50"
+        v-model:current="accessPage"
+        class="mt-4 text-right"
+        :page-size="50"
+        :show-size-changer="false"
+        :total="accessTotal"
+        @change="loadAccess"
+      />
+    </Drawer>
+
     <FilePicker
       ref="filePickerRef"
-      :max_count="1"
+      :max_count="100"
+      multiple
       @confirm="handleFileSelected"
     />
 
@@ -343,9 +597,11 @@ function disablePastDate(current: Dayjs) {
           target="_blank"
         >
           {{ row.file_name }}
+          <small>{{ row.file_count }} 个文件</small>
         </a>
         <span v-else class="block min-w-0 truncate" :title="row.file_name">
           {{ row.file_name }}
+          <small>{{ row.file_count }} 个文件</small>
         </span>
       </template>
 
@@ -353,6 +609,34 @@ function disablePastDate(current: Dayjs) {
         <Tag :color="shareStatus(row).color">
           {{ shareStatus(row).label }}
         </Tag>
+      </template>
+
+      <template #usageCell="{ row }">
+        <div class="usage-cell">
+          <Button type="link" class="px-0" @click.stop="openAccess(row)">
+            {{ row.view_count }} 查看
+          </Button>
+          <span>{{ row.download_count }} 下载</span>
+          <span> 剩余 {{ row.remaining_download_count ?? '不限' }} </span>
+          <template v-if="Number(row.download_limit) > 0">
+            <Button size="small" @click.stop="addDownloads(row, 10)">
+              +10
+            </Button>
+            <Button size="small" @click.stop="addDownloads(row, 100)">
+              +100
+            </Button>
+          </template>
+        </div>
+      </template>
+
+      <template #downloadPolicyCell="{ row }">
+        <Button class="px-0" type="link" @click.stop="openPolicy(row)">
+          {{
+            Number(row.download_start_at) === 0
+              ? '立即下载'
+              : Times.formatUnix(row.download_start_at)
+          }}
+        </Button>
       </template>
 
       <template #expiryCell="{ row }">
@@ -428,11 +712,22 @@ function disablePastDate(current: Dayjs) {
 
 .file-selection,
 .expiry-cell,
+.usage-cell,
 .url-cell {
   display: flex;
   gap: 8px;
   align-items: center;
   min-width: 0;
+}
+
+.two-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.usage-cell {
+  flex-wrap: wrap;
 }
 
 .selected-file,
@@ -443,9 +738,21 @@ function disablePastDate(current: Dayjs) {
   white-space: nowrap;
 }
 
+.management-grid small {
+  display: block;
+  font-size: 12px;
+  color: var(--vben-text-color-secondary);
+}
+
 .url-value {
   flex: 1;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .two-fields {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
