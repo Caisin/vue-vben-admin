@@ -25,6 +25,7 @@ export interface InvoiceListQuery extends PageQuery {
   invoice_no?: string;
   invoice_type?: string;
   keyword?: string;
+  original_file_name?: string;
   seller_name?: string;
   submitted_to_finance?: boolean;
   uid?: number | string;

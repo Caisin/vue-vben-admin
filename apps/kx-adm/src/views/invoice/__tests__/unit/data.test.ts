@@ -49,6 +49,7 @@ describe('发票管理页面数据工具', () => {
       buyer_name: ' 买方 ',
       invoice_date_range: [dayjs('2026-08-01'), dayjs('2026-08-31')],
       keyword: '  发票 ',
+      original_file_name: ' 百寻.ofd ',
       seller_name: '',
       submitted_to_finance: false,
       uploaded_range: [
@@ -62,6 +63,7 @@ describe('发票管理页面数据工具', () => {
       buyer_name: '买方',
       invoice_date_range: ['2026-08-01', '2026-08-31'],
       keyword: '发票',
+      original_file_name: '百寻.ofd',
       seller_name: undefined,
       submitted_to_finance: false,
     });

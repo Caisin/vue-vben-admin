@@ -21,6 +21,7 @@ export interface InvoiceSearchValues {
   invoice_no?: string;
   invoice_type?: string;
   keyword?: string;
+  original_file_name?: string;
   seller_name?: string;
   submitted_to_finance?: boolean;
   uid?: number | string;
@@ -77,6 +78,12 @@ export function useFormSchema(
       componentProps: { allowClear: true },
       fieldName: 'invoice_no',
       label: '发票号',
+    },
+    {
+      component: 'Input',
+      componentProps: { allowClear: true, placeholder: '原文件名包含' },
+      fieldName: 'original_file_name',
+      label: '原文件名',
     },
     {
       component: 'InputNumber',
@@ -259,6 +266,7 @@ export function cleanInvoiceQuery(
     invoice_no: cleanString(values.invoice_no),
     invoice_type: cleanString(values.invoice_type),
     keyword: cleanString(values.keyword),
+    original_file_name: cleanString(values.original_file_name),
     seller_name: cleanString(values.seller_name),
     submitted_to_finance:
       typeof values.submitted_to_finance === 'boolean'
