@@ -10,10 +10,19 @@ import type {
   ProviderGroup,
 } from '#/api/aigc-gateway';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { IconifyIcon } from '@vben/icons';
+import { useSortable } from '@vben/hooks';
+import { GripVertical, IconifyIcon } from '@vben/icons';
 
 import {
   Button,
@@ -36,10 +45,12 @@ import {
 } from 'antdv-next';
 
 import { AigcGatewayApi } from '#/api/aigc-gateway';
-import { CredentialApi } from '#/api/credential';
+import { CredentialSelect } from '#/components/credential';
+
+import Playground from './playground.vue';
 
 const loading = ref(false);
-const active = ref('providers');
+const active = ref('playground');
 const breakers = ref<GatewayBreaker[]>([]);
 const groups = ref<ProviderGroup[]>([]);
 const keys = ref<GatewayApiKey[]>([]);
@@ -47,7 +58,11 @@ const mediaJobs = ref<GatewayMediaJob[]>([]);
 const models = ref<ModelRoute[]>([]);
 const providers = ref<Provider[]>([]);
 const requests = ref<GatewayRequest[]>([]);
-const credentials = ref<{ label: string; value: string }[]>([]);
+const selectedGroupId = ref<number | string>();
+const providerTableRef = ref();
+const groupTableRef = ref();
+let providerSortable: null | { destroy: () => void } = null;
+let groupSortable: null | { destroy: () => void } = null;
 const overview = ref<GatewayOverview>({
   providers: 0,
   active_keys: 0,
@@ -78,13 +93,14 @@ const providerForm = reactive({
   enabled: true,
   fail_threshold: 3,
   open_duration_secs: 30,
-  breaker_statuses: '401,403,429',
+  breaker_statuses: [401, 403, 429] as number[],
 });
 const modelForm = reactive({
   provider_id: undefined as number | string | undefined,
   canonical_model: '',
   upstream_model: '',
-  aliases: '',
+  aliases: [] as string[],
+  capabilities: ['chat'] as string[],
   input_price: '0',
   output_price: '0',
   enabled: true,
@@ -101,21 +117,50 @@ const groupOptions = computed(() =>
 const providerOptions = computed(() =>
   providers.value.map((v) => ({ label: `${v.name} (${v.code})`, value: v.id })),
 );
+const visibleProviders = computed(() =>
+  selectedGroupId.value === undefined
+    ? []
+    : providers.value.filter((item) => item.group_id === selectedGroupId.value),
+);
 const modelOptions = computed(() =>
   [...new Set(models.value.map((v) => v.canonical_model))].map((v) => ({
     label: v,
     value: v,
   })),
 );
+const editingProviderProtocol = computed(
+  () =>
+    providers.value.find((item) => item.id === modelForm.provider_id)
+      ?.protocol ?? 'openai',
+);
 const strategyOptions = [
   { label: '优先级', value: 'priority' },
   { label: '轮询', value: 'round_robin' },
   { label: '加权随机', value: 'weighted_random' },
 ];
+const breakerStatusOptions = [401, 403, 408, 409, 429, 500, 502, 503, 504].map(
+  (value) => ({ label: `${value}`, value }),
+);
+const protocolOptions = [
+  { label: 'OpenAI-compatible', value: 'openai' },
+  { label: '火山引擎 · 即梦', value: 'volc_jimeng' },
+  { label: 'BytePlus · Jimeng', value: 'byteplus_jimeng' },
+];
+const jimengModelOptions = [
+  { label: '即梦 2.0 · 文生视频', value: 'jimeng_vgfm_t2v_l20' },
+  { label: '即梦 2.0 · 图生视频', value: 'jimeng_vgfm_i2v_l20' },
+  { label: '即梦 2.5 · 文生视频', value: 'jimeng_vgfm_t2v_l25' },
+  { label: '即梦 2.5 · 图生视频', value: 'jimeng_vgfm_i2v_l25' },
+];
+const capabilityOptions = [
+  { label: '对话', value: 'chat' },
+  { label: '生图', value: 'image' },
+  { label: '生视频', value: 'video' },
+];
 async function load() {
   loading.value = true;
   try {
-    const [o, g, p, m, k, r, b, j, c] = await Promise.all([
+    const [o, g, p, m, k, r, b, j] = await Promise.all([
       AigcGatewayApi.overview(),
       AigcGatewayApi.groups(),
       AigcGatewayApi.providers(),
@@ -124,7 +169,6 @@ async function load() {
       AigcGatewayApi.requests({ page: 1, size: 100 }),
       AigcGatewayApi.breakers(),
       AigcGatewayApi.mediaJobs(),
-      CredentialApi.all({ state: 'active' }),
     ]);
     overview.value = o;
     groups.value = g;
@@ -134,9 +178,13 @@ async function load() {
     requests.value = r.items;
     breakers.value = b;
     mediaJobs.value = j;
-    credentials.value = c
-      .filter((v) => ['http_header', 'http_token', 'password'].includes(v.kind))
-      .map((v) => ({ label: `${v.name} (${v.code})`, value: v.code }));
+    if (
+      selectedGroupId.value === undefined ||
+      !g.some((item) => item.id === selectedGroupId.value)
+    ) {
+      selectedGroupId.value = g[0]?.id;
+    }
+    await initSortables();
   } finally {
     loading.value = false;
   }
@@ -160,9 +208,9 @@ function openProvider(v?: Provider) {
   Object.assign(
     providerForm,
     v
-      ? { ...v, breaker_statuses: v.breaker_statuses.join(',') }
+      ? { ...v, breaker_statuses: [...v.breaker_statuses] }
       : {
-          group_id: groups.value[0]?.id,
+          group_id: selectedGroupId.value ?? groups.value[0]?.id,
           code: '',
           name: '',
           protocol: 'openai',
@@ -173,22 +221,47 @@ function openProvider(v?: Provider) {
           enabled: true,
           fail_threshold: 3,
           open_duration_secs: 30,
-          breaker_statuses: '401,403,429',
+          breaker_statuses: [401, 403, 429],
         },
   );
   modal.value = 'provider';
 }
+function selectProviderProtocol(value: string) {
+  providerForm.protocol = value;
+  providerForm.credential_code = '';
+  if (value === 'volc_jimeng') {
+    providerForm.base_url = 'https://visual.volcengineapi.com';
+  } else if (value === 'byteplus_jimeng') {
+    providerForm.base_url = 'https://visual.byteplusapi.com';
+  } else if (
+    providerForm.base_url.includes('visual.volcengineapi.com') ||
+    providerForm.base_url.includes('visual.byteplusapi.com')
+  ) {
+    providerForm.base_url = '';
+  }
+}
 function openModel(v?: ModelRoute) {
   editingId.value = v?.id;
+  const defaultProvider = providers.value[0];
+  const defaultCapabilities =
+    defaultProvider?.protocol === 'volc_jimeng' ||
+    defaultProvider?.protocol === 'byteplus_jimeng'
+      ? ['video']
+      : ['chat'];
   Object.assign(
     modelForm,
     v
-      ? { ...v, aliases: v.aliases.join(',') }
+      ? {
+          ...v,
+          aliases: [...v.aliases],
+          capabilities: [...(v.capabilities ?? ['chat'])],
+        }
       : {
-          provider_id: providers.value[0]?.id,
+          provider_id: defaultProvider?.id,
           canonical_model: '',
           upstream_model: '',
-          aliases: '',
+          aliases: [],
+          capabilities: defaultCapabilities,
           input_price: '0',
           output_price: '0',
           enabled: true,
@@ -207,6 +280,24 @@ function openKey() {
   issuedKey.value = '';
   modal.value = 'key';
 }
+function providerName(id: number | string) {
+  return providers.value.find((item) => item.id === id)?.name ?? `#${id}`;
+}
+function selectModelProvider(id: number | string) {
+  modelForm.provider_id = id;
+  const protocol = providers.value.find((item) => item.id === id)?.protocol;
+  if (protocol === 'volc_jimeng' || protocol === 'byteplus_jimeng') {
+    modelForm.capabilities = ['video'];
+  }
+}
+function selectJimengModel(value: string) {
+  modelForm.upstream_model = value;
+  if (!modelForm.canonical_model.trim()) modelForm.canonical_model = value;
+  modelForm.capabilities = ['video'];
+}
+function protocolLabel(value: string) {
+  return protocolOptions.find((item) => item.value === value)?.label ?? value;
+}
 async function save() {
   if (modal.value === 'group')
     await AigcGatewayApi.saveGroup({ ...groupForm }, editingId.value);
@@ -219,10 +310,7 @@ async function save() {
       {
         ...providerForm,
         group_id: providerForm.group_id,
-        breaker_statuses: providerForm.breaker_statuses
-          .split(',')
-          .map((value) => +value)
-          .filter((value) => Number.isFinite(value)),
+        breaker_statuses: providerForm.breaker_statuses,
       },
       editingId.value,
     );
@@ -236,10 +324,8 @@ async function save() {
       {
         ...modelForm,
         provider_id: modelForm.provider_id,
-        aliases: modelForm.aliases
-          .split(',')
-          .map((v) => v.trim())
-          .filter(Boolean),
+        aliases: modelForm.aliases,
+        capabilities: modelForm.capabilities,
       },
       editingId.value,
     );
@@ -256,14 +342,85 @@ async function save() {
   await load();
 }
 async function disableKey(v: GatewayApiKey) {
-  await AigcGatewayApi.disableKey(v.id);
-  await load();
+  Modal.confirm({
+    async onOk() {
+      await AigcGatewayApi.disableKey(v.id);
+      await load();
+    },
+    okText: '停用',
+    okType: 'danger',
+    title: `停用 API Key「${v.name}」？`,
+  });
 }
 async function resetBreaker(v: GatewayBreaker) {
-  await AigcGatewayApi.resetBreaker(v.id);
-  await load();
+  Modal.confirm({
+    async onOk() {
+      await AigcGatewayApi.resetBreaker(v.id);
+      await load();
+    },
+    okText: '恢复',
+    title: `恢复 ${v.provider_code} / ${v.canonical_model}？`,
+  });
 }
 onMounted(load);
+onUnmounted(() => {
+  providerSortable?.destroy();
+  groupSortable?.destroy();
+});
+watch([active, selectedGroupId], () => void initSortables());
+
+async function initSortables() {
+  await nextTick();
+  providerSortable?.destroy();
+  groupSortable?.destroy();
+  providerSortable = null;
+  groupSortable = null;
+  if (active.value === 'providers') {
+    const body = providerTableRef.value?.$el?.querySelector(
+      'tbody',
+    ) as HTMLElement | null;
+    if (body && selectedGroupId.value !== undefined) {
+      const { initializeSortable } = useSortable(body, {
+        handle: '.aigc-drag-handle',
+        async onEnd(event) {
+          if (event.oldIndex === undefined || event.newIndex === undefined)
+            return;
+          const rows = [...visibleProviders.value];
+          const [moved] = rows.splice(event.oldIndex, 1);
+          if (!moved) return;
+          rows.splice(event.newIndex, 0, moved);
+          await AigcGatewayApi.reorderProviders(
+            selectedGroupId.value as number | string,
+            rows.map((item) => item.id),
+          );
+          await load();
+        },
+      });
+      providerSortable = await initializeSortable();
+    }
+  }
+  if (active.value === 'groups') {
+    const body = groupTableRef.value?.$el?.querySelector(
+      'tbody',
+    ) as HTMLElement | null;
+    if (body) {
+      const { initializeSortable } = useSortable(body, {
+        handle: '.aigc-drag-handle',
+        async onEnd(event) {
+          if (event.oldIndex === undefined || event.newIndex === undefined)
+            return;
+          const rows = [...groups.value];
+          const [moved] = rows.splice(event.oldIndex, 1);
+          if (!moved) return;
+          rows.splice(event.newIndex, 0, moved);
+          await AigcGatewayApi.reorderGroups(rows.map((item) => item.id));
+          await load();
+        },
+      });
+      groupSortable = await initializeSortable();
+    }
+  }
+}
 </script>
 
 <template>
@@ -293,17 +450,28 @@ onMounted(load);
       </Card>
     </section>
     <Tabs v-model:active-key="active">
+      <TabPane key="playground" tab="体验测试">
+        <Playground :models="models" />
+      </TabPane>
       <TabPane key="providers" tab="Provider">
         <Space class="toolbar">
-          <Button @click="openGroup()">新建分组</Button><Button type="primary" @click="openProvider()">
+          <Select
+            v-model:value="selectedGroupId"
+            class="group-filter"
+            :options="groupOptions"
+            placeholder="选择 Provider 分组"
+          />
+          <Button type="primary" @click="openProvider()">
             新建 Provider
           </Button>
 </Space><Table
-          :data-source="providers"
+          ref="providerTableRef"
+          :data-source="visibleProviders"
           :pagination="false"
           row-key="id"
           size="small"
           :columns="[
+            { title: '', dataIndex: 'drag', width: 42 },
             { title: '名称', dataIndex: 'name' },
             { title: '编码', dataIndex: 'code' },
             { title: '协议', dataIndex: 'protocol' },
@@ -311,46 +479,63 @@ onMounted(load);
             { title: '优先级', dataIndex: 'priority' },
             { title: '权重', dataIndex: 'weight' },
             { title: '启用', dataIndex: 'enabled' },
-            { title: '操作', dataIndex: 'op' },
           ]"
         >
           <template #bodyCell="{ column, record }">
+            <GripVertical
+              v-if="column.dataIndex === 'drag'"
+              class="aigc-drag-handle size-4"
+            />
+            <Button
+              v-else-if="column.dataIndex === 'name'"
+              class="px-0"
+              type="link"
+              @click="openProvider(record)"
+            >
+              {{ record.name }}
+            </Button>
             <Tag
               v-if="column.dataIndex === 'enabled'"
               :color="record.enabled ? 'success' : 'default'"
             >
               {{ record.enabled ? '启用' : '停用' }}
-</Tag><Button
-              v-else-if="column.dataIndex === 'op'"
-              type="link"
-              @click="openProvider(record)"
-            >
-              编辑
-            </Button>
+            </Tag>
+            <span v-else-if="column.dataIndex === 'protocol'">
+              {{ protocolLabel(record.protocol) }}
+            </span>
           </template>
         </Table>
       </TabPane>
       <TabPane key="groups" tab="分组">
+        <Button class="toolbar" type="primary" @click="openGroup()">
+          新建分组
+        </Button>
         <Table
+          ref="groupTableRef"
           :data-source="groups"
           :pagination="false"
           row-key="id"
           size="small"
           :columns="[
+            { title: '', dataIndex: 'drag', width: 42 },
             { title: '名称', dataIndex: 'name' },
             { title: '编码', dataIndex: 'code' },
             { title: '策略', dataIndex: 'load_strategy' },
             { title: '优先级', dataIndex: 'priority' },
-            { title: '操作', dataIndex: 'op' },
           ]"
         >
           <template #bodyCell="{ column, record }">
+            <GripVertical
+              v-if="column.dataIndex === 'drag'"
+              class="aigc-drag-handle size-4"
+            />
             <Button
-              v-if="column.dataIndex === 'op'"
+              v-else-if="column.dataIndex === 'name'"
+              class="px-0"
               type="link"
               @click="openGroup(record)"
             >
-              编辑
+              {{ record.name }}
             </Button>
           </template>
         </Table>
@@ -367,19 +552,34 @@ onMounted(load);
             { title: '内部模型', dataIndex: 'canonical_model' },
             { title: '上游模型', dataIndex: 'upstream_model' },
             { title: 'Provider ID', dataIndex: 'provider_id' },
+            { title: '能力', dataIndex: 'capabilities' },
             { title: '输入/百万', dataIndex: 'input_price' },
             { title: '输出/百万', dataIndex: 'output_price' },
-            { title: '操作', dataIndex: 'op' },
           ]"
         >
           <template #bodyCell="{ column, record }">
             <Button
-              v-if="column.dataIndex === 'op'"
+              v-if="column.dataIndex === 'canonical_model'"
+              class="px-0"
               type="link"
               @click="openModel(record)"
             >
-              编辑
+              {{ record.canonical_model }}
             </Button>
+            <span v-else-if="column.dataIndex === 'provider_id'">
+              {{ providerName(record.provider_id) }}
+            </span>
+            <Space v-else-if="column.dataIndex === 'capabilities'" :size="4">
+              <Tag
+                v-for="capability in record.capabilities ?? ['chat']"
+                :key="capability"
+              >
+                {{
+                  capabilityOptions.find((item) => item.value === capability)
+                    ?.label ?? capability
+                }}
+              </Tag>
+            </Space>
           </template>
         </Table>
       </TabPane>
@@ -397,18 +597,17 @@ onMounted(load);
             { title: '用户', dataIndex: 'owner_uid' },
             { title: '状态', dataIndex: 'state' },
             { title: '最近使用', dataIndex: 'last_used_at' },
-            { title: '操作', dataIndex: 'op' },
           ]"
         >
           <template #bodyCell="{ column, record }">
             <Button
-              v-if="column.dataIndex === 'op'"
+              v-if="column.dataIndex === 'state'"
               :disabled="record.state !== 'active'"
               danger
               type="link"
               @click="disableKey(record)"
             >
-              停用
+              {{ record.state === 'active' ? '有效（点击停用）' : '已停用' }}
             </Button>
           </template>
         </Table>
@@ -448,16 +647,16 @@ onMounted(load);
             { title: '成功', dataIndex: 'success_count' },
             { title: '开放截止', dataIndex: 'open_until' },
             { title: '错误', dataIndex: 'last_error' },
-            { title: '操作', dataIndex: 'op' },
           ]"
         >
           <template #bodyCell="{ column, record }">
             <Button
-              v-if="column.dataIndex === 'op'"
+              v-if="column.dataIndex === 'provider_code'"
+              class="px-0"
               type="link"
               @click="resetBreaker(record)"
             >
-              恢复
+              {{ record.provider_code }}
             </Button>
           </template>
         </Table>
@@ -481,6 +680,7 @@ onMounted(load);
     </Tabs>
     <Modal
       :open="!!modal"
+      width="min(920px, calc(100vw - 32px))"
       :title="
         modal === 'group'
           ? 'Provider 分组'
@@ -493,117 +693,158 @@ onMounted(load);
       @cancel="modal = undefined"
       @ok="save"
     >
-      <Form layout="vertical">
+      <Form class="modal-form" layout="vertical">
         <template v-if="modal === 'group'">
-          <FormItem label="编码">
-            <Input v-model:value="groupForm.code" />
+          <div class="form-grid three">
+            <FormItem label="编码">
+              <Input v-model:value="groupForm.code" />
 </FormItem><FormItem label="名称">
-            <Input v-model:value="groupForm.name" />
+              <Input v-model:value="groupForm.name" />
 </FormItem><FormItem label="策略">
-            <Select
-              v-model:value="groupForm.load_strategy"
-              :options="strategyOptions"
-            />
+              <Select
+                v-model:value="groupForm.load_strategy"
+                :options="strategyOptions"
+              />
 </FormItem><FormItem label="优先级">
-            <InputNumber
-              v-model:value="groupForm.priority"
-              class="w-full"
-            />
+              <InputNumber
+                v-model:value="groupForm.priority"
+                class="w-full"
+              />
 </FormItem><FormItem label="启用">
-            <Switch v-model:checked="groupForm.enabled" />
-          </FormItem>
+              <Switch v-model:checked="groupForm.enabled" />
+            </FormItem>
+          </div>
         </template>
         <template v-else-if="modal === 'provider'">
-          <FormItem label="分组">
-            <Select
-              v-model:value="providerForm.group_id"
-              :options="groupOptions"
-            />
+          <div class="form-grid three">
+            <FormItem label="分组">
+              <Select
+                v-model:value="providerForm.group_id"
+                :options="groupOptions"
+              />
 </FormItem><FormItem label="编码">
-            <Input v-model:value="providerForm.code" />
+              <Input v-model:value="providerForm.code" />
 </FormItem><FormItem label="名称">
-            <Input v-model:value="providerForm.name" />
+              <Input v-model:value="providerForm.name" />
 </FormItem><FormItem label="协议">
-            <Select
-              v-model:value="providerForm.protocol"
-              :options="[{ label: 'OpenAI', value: 'openai' }]"
-            />
+              <Select
+                v-model:value="providerForm.protocol"
+                :options="protocolOptions"
+                @change="selectProviderProtocol"
+              />
 </FormItem><FormItem label="Base URL">
-            <Input v-model:value="providerForm.base_url" />
+              <Input v-model:value="providerForm.base_url" />
 </FormItem><FormItem label="授权凭证">
-            <Select
-              v-model:value="providerForm.credential_code"
-              show-search
-              :options="credentials"
-            />
-          </FormItem>
-          <div class="two">
-            <FormItem label="组内优先级">
-              <InputNumber v-model:value="providerForm.priority" />
-</FormItem><FormItem label="权重">
+              <CredentialSelect
+                v-model="providerForm.credential_code"
+                :kinds="
+                  providerForm.protocol === 'openai'
+                    ? ['http_header', 'http_token', 'password']
+                    : ['access_key']
+                "
+                :create-kind="
+                  providerForm.protocol === 'openai'
+                    ? 'http_token'
+                    : 'access_key'
+                "
+                placeholder="选择 Provider 授权凭证"
+              />
+            </FormItem>
+            <FormItem label="权重">
               <InputNumber
+                class="w-full"
                 v-model:value="providerForm.weight"
                 :min="1"
               />
 </FormItem><FormItem label="失败阈值">
               <InputNumber
+                class="w-full"
                 v-model:value="providerForm.fail_threshold"
                 :min="1"
               />
 </FormItem><FormItem label="熔断秒数">
               <InputNumber
+                class="w-full"
                 v-model:value="providerForm.open_duration_secs"
                 :min="1"
               />
             </FormItem>
-          </div>
-          <FormItem label="立即熔断状态码">
-            <Input v-model:value="providerForm.breaker_statuses" />
+            <FormItem label="立即熔断状态码">
+              <Select
+                v-model:value="providerForm.breaker_statuses"
+                mode="multiple"
+                :options="breakerStatusOptions"
+              />
 </FormItem><FormItem label="启用">
-            <Switch v-model:checked="providerForm.enabled" />
-          </FormItem>
+              <Switch v-model:checked="providerForm.enabled" />
+            </FormItem>
+          </div>
         </template>
         <template v-else-if="modal === 'model'">
-          <FormItem label="Provider">
-            <Select
-              v-model:value="modelForm.provider_id"
-              :options="providerOptions"
-            />
+          <div class="form-grid three">
+            <FormItem label="Provider">
+              <Select
+                v-model:value="modelForm.provider_id"
+                :options="providerOptions"
+                @change="selectModelProvider"
+              />
 </FormItem><FormItem label="内部模型 ID">
-            <Input v-model:value="modelForm.canonical_model" />
+              <Input v-model:value="modelForm.canonical_model" />
 </FormItem><FormItem label="上游模型 ID">
-            <Input v-model:value="modelForm.upstream_model" />
+              <Select
+                v-if="editingProviderProtocol !== 'openai'"
+                v-model:value="modelForm.upstream_model"
+                :options="jimengModelOptions"
+                @change="selectJimengModel"
+              />
+              <Input
+                v-else
+                v-model:value="modelForm.upstream_model"
+              />
 </FormItem><FormItem label="别名">
-            <Input v-model:value="modelForm.aliases" placeholder="逗号分隔" />
-          </FormItem>
-          <div class="two">
+              <Select
+                v-model:value="modelForm.aliases"
+                mode="tags"
+                placeholder="输入别名后回车"
+              />
+            </FormItem>
+            <FormItem label="模型能力">
+              <Select
+                v-model:value="modelForm.capabilities"
+                mode="multiple"
+                :disabled="editingProviderProtocol !== 'openai'"
+                :options="capabilityOptions"
+              />
+            </FormItem>
             <FormItem label="输入/百万 Token">
               <Input v-model:value="modelForm.input_price" />
 </FormItem><FormItem label="输出/百万 Token">
               <Input v-model:value="modelForm.output_price" />
             </FormItem>
+            <FormItem label="启用">
+              <Switch v-model:checked="modelForm.enabled" />
+            </FormItem>
           </div>
-          <FormItem label="启用">
-            <Switch v-model:checked="modelForm.enabled" />
-          </FormItem>
         </template>
         <template v-else>
-          <FormItem label="名称">
-            <Input v-model:value="keyForm.name" />
+          <div class="form-grid three">
+            <FormItem label="名称">
+              <Input v-model:value="keyForm.name" />
 </FormItem><FormItem label="关联用户 UID">
-            <InputNumber
-              v-model:value="keyForm.owner_uid"
-              class="w-full"
-            />
+              <InputNumber
+                v-model:value="keyForm.owner_uid"
+                class="w-full"
+              />
 </FormItem><FormItem label="允许模型">
-            <Select
-              v-model:value="keyForm.allowed_models"
-              mode="multiple"
-              :options="modelOptions"
-            />
+              <Select
+                v-model:value="keyForm.allowed_models"
+                mode="multiple"
+                :options="modelOptions"
+              />
 </FormItem><FormItem v-if="issuedKey" label="API Key">
-            <TextArea :value="issuedKey" readonly :rows="3" />
-          </FormItem>
+              <TextArea :value="issuedKey" readonly :rows="3" />
+            </FormItem>
+          </div>
         </template>
       </Form>
     </Modal>
@@ -634,10 +875,22 @@ onMounted(load);
   margin-bottom: 10px;
 }
 
-.two {
+.form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 0 16px;
+}
+
+.form-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.group-filter {
+  width: 240px;
+}
+
+.aigc-drag-handle {
+  color: var(--vben-text-color-secondary);
+  cursor: grab;
 }
 
 @media (max-width: 900px) {
@@ -645,7 +898,7 @@ onMounted(load);
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .two {
+  .form-grid.three {
     grid-template-columns: 1fr;
   }
 }

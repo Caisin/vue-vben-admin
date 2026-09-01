@@ -5,10 +5,20 @@ export interface AdminCurrentUserRole {
   role_id: string;
   role_name: string;
 }
+export interface BusinessContact {
+  company: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  title: string;
+  website: string;
+  wechat: string;
+}
 
 /** 认证服务当前用户原始响应；扩展字段兼容尚未提供完整信息的后端。 */
 export interface AdminCurrentUserResponse {
   avatar: string;
+  business_contact?: Partial<BusinessContact>;
   created_at?: number | string;
   dept_id?: number | string;
   dept_name?: null | string;
@@ -31,6 +41,7 @@ export interface AdminCurrentUserResponse {
 
 export interface AdminCurrentUser {
   avatar: string;
+  business_contact: BusinessContact;
   created_at: number | string;
   dept_id: number | string;
   dept_name: null | string;
@@ -66,6 +77,15 @@ export function normalizeAdminCurrentUser(
   const homePath = user.home_path ?? '';
   return {
     avatar: user.avatar,
+    business_contact: {
+      company: user.business_contact?.company ?? '',
+      contact_name: user.business_contact?.contact_name ?? '',
+      email: user.business_contact?.email ?? '',
+      phone: user.business_contact?.phone ?? '',
+      title: user.business_contact?.title ?? '',
+      website: user.business_contact?.website ?? '',
+      wechat: user.business_contact?.wechat ?? '',
+    },
     created_at: user.created_at ?? 0,
     dept_id: user.dept_id ?? 0,
     dept_name: user.dept_name ?? null,

@@ -1,4 +1,5 @@
 import type { Page, PageQuery } from '#/api/request';
+import type { BusinessContact } from '#/auth';
 
 import { apiURL, requestClient } from '#/api/request';
 
@@ -16,6 +17,9 @@ export interface FileShareView {
   remaining_download_count?: number | string;
   view_count: number | string;
   downloadable: boolean;
+  download_password?: string;
+  password_required: boolean;
+  business_contact?: BusinessContact;
   file_ext: string;
   file_id: number | string;
   file_count: number | string;
@@ -58,6 +62,8 @@ export interface FileShareCreateWrite {
   expires_at: number | string;
   file_ids: Array<number | string>;
   file_name?: string;
+  password_required: boolean;
+  show_business_contact: boolean;
 }
 
 function resolveShare(view: FileShareView): FileShareView {
@@ -95,8 +101,10 @@ export const StorageFileShareApi = {
   setDownloadPolicy: async (
     id: number | string,
     data: {
+      clear_password: boolean;
       download_limit: number | string;
       download_start_at: number | string;
+      reset_password: boolean;
     },
   ) =>
     resolveShare(

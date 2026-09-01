@@ -33,6 +33,7 @@ export interface ModelRoute {
   canonical_model: string;
   upstream_model: string;
   aliases: string[];
+  capabilities?: string[];
   input_price: string;
   output_price: string;
   enabled: boolean;
@@ -95,6 +96,10 @@ export interface GatewayMediaJob {
   error_message: string;
   created_at: number | string;
 }
+export interface MediaJobDispatch {
+  id: number | string;
+  task_run: { id: number | string; status: string };
+}
 export interface GatewayOverview {
   providers: number;
   active_keys: number;
@@ -117,11 +122,18 @@ export const AigcGatewayApi = {
     id
       ? requestClient.put<ProviderGroup>(`/aigc/admin/groups/${id}`, data)
       : requestClient.post<ProviderGroup>('/aigc/admin/groups', data),
+  reorderGroups: (ids: Array<number | string>) =>
+    requestClient.put('/aigc/admin/groups/order', { ids }),
   providers: () => requestClient.get<Provider[]>('/aigc/admin/providers'),
   saveProvider: (data: ProviderWrite, id?: number | string) =>
     id
       ? requestClient.put<Provider>(`/aigc/admin/providers/${id}`, data)
       : requestClient.post<Provider>('/aigc/admin/providers', data),
+  reorderProviders: (groupId: number | string, ids: Array<number | string>) =>
+    requestClient.put('/aigc/admin/providers/order', {
+      group_id: groupId,
+      ids,
+    }),
   models: () => requestClient.get<ModelRoute[]>('/aigc/admin/models'),
   saveModel: (data: ModelWrite, id?: number | string) =>
     id
@@ -143,4 +155,19 @@ export const AigcGatewayApi = {
     requestClient.post(`/aigc/admin/breakers/${id}/reset`),
   mediaJobs: () =>
     requestClient.get<GatewayMediaJob[]>('/aigc/admin/media/jobs'),
+  mediaJob: (id: number | string) =>
+    requestClient.get<GatewayMediaJob>(`/aigc/admin/media/jobs/${id}`),
+  playgroundChat: (data: {
+    input: unknown;
+    instructions: string;
+    model: string;
+    temperature?: number;
+  }) => requestClient.post<unknown>('/aigc/admin/playground/chat', data),
+  playgroundMedia: (data: {
+    media_type: 'image' | 'video';
+    model: string;
+    path: string;
+    request: Record<string, unknown>;
+  }) =>
+    requestClient.post<MediaJobDispatch>('/aigc/admin/playground/media', data),
 };

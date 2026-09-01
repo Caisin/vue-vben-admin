@@ -9,7 +9,7 @@ import type {
   SelectedStorageFile,
 } from '#/components/file-picker';
 
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Copy, Plus } from '@vben/icons';
@@ -34,6 +34,7 @@ import {
 import dayjs from 'dayjs';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
+import { AuthApi } from '#/api/core/auth';
 import { StorageFileShareApi } from '#/api/storage';
 import { FilePicker } from '#/components/file-picker';
 import { Times } from '#/times';
@@ -62,12 +63,16 @@ const createDownloadStart = ref<Dayjs>();
 const createImmediate = ref(true);
 const createUnlimited = ref(true);
 const createDownloadLimit = ref(10);
+const createPasswordRequired = ref(false);
+const createShowBusinessContact = ref(false);
+const businessContactAvailable = ref(false);
 const editingShare = ref<FileShareView>();
 const editingExpiry = ref<Dayjs>();
 const policyStart = ref<Dayjs>();
 const policyImmediate = ref(true);
 const policyUnlimited = ref(true);
 const policyLimit = ref(10);
+const policyPasswordAction = ref<'clear' | 'keep' | 'reset'>('keep');
 const accessOpen = ref(false);
 const accessLoading = ref(false);
 const accessShare = ref<FileShareView>();
@@ -134,16 +139,19 @@ const [CreateModal, createModalApi] = useVbenModal({
     }
     createModalApi.lock();
     try {
-      await StorageFileShareApi.create({
+      const created = await StorageFileShareApi.create({
         expires_at: expiresAt,
         file_ids: selectedFiles.value.map((item) => item.file.file_id),
         file_name: createTitle.value.trim() || undefined,
         download_start_at: downloadStartAt,
         download_limit: downloadLimit,
+        password_required: createPasswordRequired.value,
+        show_business_contact: createShowBusinessContact.value,
       });
       message.success('分享链接已创建');
       createModalApi.close();
       await gridApi.query();
+      showGeneratedPassword(created.download_password);
     } finally {
       createModalApi.lock(false);
     }
@@ -174,13 +182,16 @@ const [PolicyModal, policyModalApi] = useVbenModal({
     }
     policyModalApi.lock();
     try {
-      await StorageFileShareApi.setDownloadPolicy(share.id, {
+      const updated = await StorageFileShareApi.setDownloadPolicy(share.id, {
+        clear_password: policyPasswordAction.value === 'clear',
         download_limit: limit,
         download_start_at: startAt,
+        reset_password: policyPasswordAction.value === 'reset',
       });
       message.success('下载策略已更新');
       policyModalApi.close();
       await gridApi.query();
+      showGeneratedPassword(updated.download_password);
     } finally {
       policyModalApi.lock(false);
     }
@@ -254,7 +265,8 @@ function selectedExpiry() {
   return dayjs().add(createPreset.value, 'day').unix();
 }
 
-function openCreate() {
+async function openCreate() {
+  await loadBusinessContactAvailability();
   selectedFiles.value = [];
   createTitle.value = '';
   createPreset.value = 15;
@@ -263,6 +275,8 @@ function openCreate() {
   createDownloadStart.value = dayjs();
   createUnlimited.value = true;
   createDownloadLimit.value = 10;
+  createPasswordRequired.value = false;
+  createShowBusinessContact.value = false;
   createModalApi.open();
 }
 
@@ -282,6 +296,7 @@ function openPolicy(row: FileShareView) {
     : dayjs.unix(Number(row.download_start_at));
   policyUnlimited.value = Number(row.download_limit) === 0;
   policyLimit.value = policyUnlimited.value ? 10 : Number(row.download_limit);
+  policyPasswordAction.value = 'keep';
   policyModalApi.open();
 }
 
@@ -313,6 +328,33 @@ async function loadAccess(page: number) {
     accessLoading.value = false;
   }
 }
+
+function showGeneratedPassword(password?: string) {
+  if (!password) return;
+  void navigator.clipboard.writeText(password).catch(() => undefined);
+  Modal.info({
+    content: password,
+    okText: '关闭',
+    title: '下载密码（已复制，仅本次显示）',
+  });
+}
+
+function configureBusinessContact() {
+  window.open('/user-overview', '_blank', 'noopener,noreferrer');
+}
+
+async function loadBusinessContactAvailability() {
+  try {
+    const current = await AuthApi.currentUser();
+    businessContactAvailable.value = Object.values(
+      current.business_contact,
+    ).some((value) => value.trim().length > 0);
+  } catch {
+    businessContactAvailable.value = false;
+  }
+}
+
+onMounted(loadBusinessContactAvailability);
 
 function openExpiry(row: FileShareView) {
   editingShare.value = row;
@@ -444,6 +486,27 @@ function disablePastDate(current: Dayjs) {
             <span class="field-label">不限下载次数</span>
             <Switch v-model:checked="createUnlimited" />
           </div>
+          <div class="form-field">
+            <span class="field-label">下载密码</span>
+            <Switch v-model:checked="createPasswordRequired" />
+          </div>
+          <div class="form-field">
+            <span class="field-label">商务联系卡片</span>
+            <div class="inline-control">
+              <Switch
+                v-model:checked="createShowBusinessContact"
+                :disabled="!businessContactAvailable"
+              />
+              <Button
+                v-if="!businessContactAvailable"
+                size="small"
+                type="link"
+                @click="configureBusinessContact"
+              >
+                配置
+              </Button>
+            </div>
+          </div>
         </div>
         <div v-if="!createImmediate" class="form-field">
           <span class="field-label">开始下载时间</span>
@@ -516,6 +579,17 @@ function disablePastDate(current: Dayjs) {
             v-model:value="policyLimit"
             class="w-full"
             :min="Number(editingShare?.download_count || 1)"
+          />
+        </div>
+        <div class="form-field">
+          <span class="field-label">下载密码</span>
+          <Segmented
+            v-model:value="policyPasswordAction"
+            :options="[
+              { label: '保持不变', value: 'keep' },
+              { label: '重新生成', value: 'reset' },
+              { label: '清除密码', value: 'clear' },
+            ]"
           />
         </div>
       </div>
@@ -618,6 +692,8 @@ function disablePastDate(current: Dayjs) {
           </Button>
           <span>{{ row.download_count }} 下载</span>
           <span> 剩余 {{ row.remaining_download_count ?? '不限' }} </span>
+          <Button size="small" @click.stop="openPolicy(row)"> 编辑次数 </Button>
+          <Tag v-if="row.password_required" color="warning">有密码</Tag>
           <template v-if="Number(row.download_limit) > 0">
             <Button size="small" @click.stop="addDownloads(row, 10)">
               +10
@@ -726,8 +802,19 @@ function disablePastDate(current: Dayjs) {
   gap: 16px;
 }
 
+.two-fields :deep(.ant-switch) {
+  width: fit-content;
+  min-width: 44px;
+}
+
 .usage-cell {
   flex-wrap: wrap;
+}
+
+.inline-control {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .selected-file,

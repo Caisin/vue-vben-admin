@@ -1,4 +1,8 @@
-import type { AdminCurrentUser, AdminCurrentUserResponse } from '#/auth';
+import type {
+  AdminCurrentUser,
+  AdminCurrentUserResponse,
+  BusinessContact,
+} from '#/auth';
 
 import { apiURL, encryptedRequestClient, requestClient } from '#/api/request';
 import { normalizeAdminCurrentUser, toVbenUserInfo } from '#/auth';
@@ -141,6 +145,13 @@ export const AuthApi = {
   currentUser: async () =>
     normalizeAdminCurrentUser(
       await requestClient.get<AdminCurrentUserResponse>('/auth/user/user_info'),
+    ),
+  updateBusinessContact: async (data: BusinessContact) =>
+    normalizeAdminCurrentUser(
+      await requestClient.put<AdminCurrentUserResponse>(
+        '/auth/user/user_info/business-contact',
+        data,
+      ),
     ),
   userInfo: async () => toVbenUserInfo(await AuthApi.currentUser()),
   accessCodes: () => requestClient.get<string[]>('/auth/per/codes'),

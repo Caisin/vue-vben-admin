@@ -2,7 +2,7 @@
 import type { AccountBinding } from '#/api/core/account-binding';
 import type { AuthUser, DingTalkLoginApp } from '#/api/core/auth';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Link2, RotateCw, X } from '@vben/icons';
@@ -13,6 +13,9 @@ import {
   Descriptions,
   DescriptionsItem,
   Empty,
+  Form,
+  FormItem,
+  Input,
   message,
   Modal,
   Popconfirm,
@@ -41,6 +44,17 @@ const bindings = ref<AccountBinding[]>([]);
 const bindingLoading = ref(false);
 const dingtalkApps = ref<DingTalkLoginApp[]>([]);
 const selectedDingtalkAppKey = ref<string>();
+const businessOpen = ref(false);
+const businessSaving = ref(false);
+const businessForm = reactive({
+  company: '',
+  contact_name: '',
+  email: '',
+  phone: '',
+  title: '',
+  website: '',
+  wechat: '',
+});
 const [WechatBinding, wechatBindingApi] = useVbenModal({
   connectedComponent: WechatBindingModal,
 });
@@ -147,6 +161,22 @@ async function loadUser() {
   }
 }
 
+function openBusinessContact() {
+  Object.assign(businessForm, user.value?.business_contact);
+  businessOpen.value = true;
+}
+
+async function saveBusinessContact() {
+  businessSaving.value = true;
+  try {
+    user.value = await AuthApi.updateBusinessContact({ ...businessForm });
+    businessOpen.value = false;
+    message.success('商务联系卡片已保存');
+  } finally {
+    businessSaving.value = false;
+  }
+}
+
 onMounted(async () => {
   const redirect = parseDingtalkBindingRedirect(window.location.href);
   if (redirect.cleanUrl !== window.location.href) {
@@ -174,6 +204,41 @@ onMounted(async () => {
 <template>
   <Page title="我的信息" content-class="user-overview-content">
     <WechatBinding @success="loadBindings" />
+    <Modal
+      v-model:open="businessOpen"
+      title="商务联系卡片"
+      width="min(760px, calc(100vw - 32px))"
+      :confirm-loading="businessSaving"
+      @ok="saveBusinessContact"
+    >
+      <Form class="business-form" layout="vertical">
+        <FormItem label="公司">
+          <Input v-model:value="businessForm.company" :maxlength="255" />
+        </FormItem>
+        <FormItem label="联系人">
+          <Input v-model:value="businessForm.contact_name" :maxlength="255" />
+        </FormItem>
+        <FormItem label="职位">
+          <Input v-model:value="businessForm.title" :maxlength="255" />
+        </FormItem>
+        <FormItem label="联系电话">
+          <Input v-model:value="businessForm.phone" :maxlength="255" />
+        </FormItem>
+        <FormItem label="商务邮箱">
+          <Input v-model:value="businessForm.email" :maxlength="255" />
+        </FormItem>
+        <FormItem label="微信">
+          <Input v-model:value="businessForm.wechat" :maxlength="255" />
+        </FormItem>
+        <FormItem class="business-form-wide" label="网站">
+          <Input
+            v-model:value="businessForm.website"
+            :maxlength="255"
+            placeholder="https://"
+          />
+        </FormItem>
+      </Form>
+    </Modal>
     <Skeleton v-if="loading && !user" active :paragraph="{ rows: 8 }" />
 
     <Empty v-else-if="loadFailed && !user" description="用户信息加载失败">
@@ -236,6 +301,38 @@ onMounted(async () => {
               </Tag>
             </Space>
             <span v-else>-</span>
+          </DescriptionsItem>
+        </Descriptions>
+      </section>
+
+      <section class="overview-section">
+        <div class="section-title-row">
+          <div>
+            <h3>商务联系卡片</h3>
+            <p class="section-desc">
+              {{ user.business_contact.company || '未配置' }}
+            </p>
+          </div>
+          <Button size="small" @click="openBusinessContact">编辑</Button>
+        </div>
+        <Descriptions bordered :column="{ xs: 1, sm: 2, lg: 3 }" size="small">
+          <DescriptionsItem label="联系人">
+            {{ displayValue(user.business_contact.contact_name) }}
+          </DescriptionsItem>
+          <DescriptionsItem label="职位">
+            {{ displayValue(user.business_contact.title) }}
+          </DescriptionsItem>
+          <DescriptionsItem label="电话">
+            {{ displayValue(user.business_contact.phone) }}
+          </DescriptionsItem>
+          <DescriptionsItem label="邮箱">
+            {{ displayValue(user.business_contact.email) }}
+          </DescriptionsItem>
+          <DescriptionsItem label="微信">
+            {{ displayValue(user.business_contact.wechat) }}
+          </DescriptionsItem>
+          <DescriptionsItem label="网站">
+            {{ displayValue(user.business_contact.website) }}
           </DescriptionsItem>
         </Descriptions>
       </section>
@@ -411,6 +508,16 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.business-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 14px;
+}
+
+.business-form-wide {
+  grid-column: 1 / -1;
+}
+
 .binding-item {
   display: flex;
   gap: 12px;
@@ -465,6 +572,10 @@ code {
 
   .binding-item {
     align-items: flex-start;
+  }
+
+  .business-form {
+    grid-template-columns: 1fr;
   }
 }
 </style>
