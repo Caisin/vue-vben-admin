@@ -69,6 +69,13 @@ export type CredentialPayload =
       secret?: string;
     }
   | {
+      app_id: string;
+      app_secret: string;
+      callback_token?: string;
+      kind: 'wechat_app';
+      message_aes_key?: string;
+    }
+  | {
       base_url: string;
       header_name: string;
       kind: 'http_header';
@@ -120,8 +127,7 @@ export function buildCredentialPayload(
 ): CredentialPayload {
   if (
     kind === 'access_key' ||
-    (['dingtalk', 'douyin', 'kuaishou', 'wechat'].includes(kind) &&
-      profile === 'app') ||
+    (['dingtalk', 'douyin', 'kuaishou'].includes(kind) && profile === 'app') ||
     (kind === 'tiktok' && profile === 'mini_app')
   ) {
     return {
@@ -129,6 +135,15 @@ export function buildCredentialPayload(
       kind: 'access_key',
       secret_access_key: textValue(values, 'secret_access_key'),
       session_token: textValue(values, 'session_token'),
+    };
+  }
+  if (kind === 'wechat' && profile === 'app') {
+    return {
+      app_id: textValue(values, 'app_id'),
+      app_secret: textValue(values, 'app_secret'),
+      callback_token: textValue(values, 'callback_token'),
+      kind: 'wechat_app',
+      message_aes_key: textValue(values, 'message_aes_key'),
     };
   }
   if (kind === 'username_password') {

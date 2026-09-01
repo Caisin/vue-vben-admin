@@ -293,7 +293,7 @@ onMounted(async () => {
 
 function openDingtalkAppManagement() {
   const href = router.resolve({
-    path: '/param/login-apps',
+    path: '/param/dingtalk-apps',
     query: { tab: 'dingtalk' },
   }).href;
   window.open(href, '_blank', 'noopener,noreferrer');

@@ -37,6 +37,7 @@ interface Props {
   allowClear?: boolean;
   createKind?: CredentialKind;
   disabled?: boolean;
+  excludeCodes?: string[];
   kind?: CredentialKind;
   kinds?: CredentialKind[];
   managePath?: string;
@@ -49,6 +50,7 @@ const props = withDefaults(defineProps<Props>(), {
   allowClear: true,
   createKind: undefined,
   disabled: false,
+  excludeCodes: () => [],
   kind: undefined,
   kinds: () => [],
   managePath: '/credential/items',
@@ -66,11 +68,13 @@ const credentials = ref<CredentialView[]>([]);
 const quickForm = reactive({
   accessKeyId: '',
   accessToken: '',
+  callbackToken: '',
   baseUrl: '',
   cookie: '',
   headerName: '',
   headerValue: '',
   keyword: '',
+  messageAesKey: '',
   name: '',
   passphrase: '',
   password: '',
@@ -89,7 +93,14 @@ const allowedKinds = computed(() => {
   return [];
 });
 
-const options = computed(() => credentialSelectOptions(credentials.value));
+const options = computed(() => {
+  const excluded = new Set(props.excludeCodes.map(String));
+  return credentialSelectOptions(
+    credentials.value.filter(
+      (item) => item.code === modelValue.value || !excluded.has(item.code),
+    ),
+  );
+});
 
 async function loadCredentials() {
   loading.value = true;
@@ -156,11 +167,12 @@ const quickPayloadType = computed(() => {
   const profile = quickProfile.value;
   if (
     kind === 'access_key' ||
-    (['dingtalk', 'douyin', 'kuaishou', 'wechat'].includes(kind ?? '') &&
+    (['dingtalk', 'douyin', 'kuaishou'].includes(kind ?? '') &&
       profile === 'app') ||
     (kind === 'tiktok' && profile === 'mini_app')
   )
     return 'access_key';
+  if (kind === 'wechat' && profile === 'app') return 'wechat_app';
   if (
     kind === 'password' ||
     (['dingtalk', 'douyin', 'wechat', 'wechat_merchant'].includes(kind ?? '') &&
@@ -183,6 +195,15 @@ function quickPayload(kind: CredentialKind): CredentialPayload | undefined {
   }
   if (quickPayloadType.value === 'password') {
     return { kind: 'password', password: quickForm.password };
+  }
+  if (quickPayloadType.value === 'wechat_app') {
+    return {
+      app_id: quickForm.accessKeyId,
+      app_secret: quickForm.secretAccessKey,
+      callback_token: quickForm.callbackToken,
+      kind: 'wechat_app',
+      message_aes_key: quickForm.messageAesKey,
+    };
   }
   if (quickPayloadType.value === 'dingtalk_robot') {
     const robotInput = normalizeDingtalkRobotCredentialInput(
@@ -248,11 +269,13 @@ function openQuickCreate() {
   Object.assign(quickForm, {
     accessKeyId: '',
     accessToken: '',
+    callbackToken: '',
     baseUrl: '',
     cookie: '',
     headerName: quickKind.value === 'http_header' ? 'x-goog-api-key' : '',
     headerValue: '',
     keyword: '',
+    messageAesKey: '',
     name: '',
     passphrase: '',
     password: '',
@@ -354,6 +377,20 @@ defineExpose({ reload: loadCredentials });
           </FormItem>
           <FormItem :label="accessKeyLabels.secret" required>
             <InputPassword v-model:value="quickForm.secretAccessKey" />
+          </FormItem>
+        </template>
+        <template v-else-if="quickPayloadType === 'wechat_app'">
+          <FormItem label="AppID" required>
+            <Input v-model:value="quickForm.accessKeyId" />
+          </FormItem>
+          <FormItem label="AppSecret" required>
+            <InputPassword v-model:value="quickForm.secretAccessKey" />
+          </FormItem>
+          <FormItem label="回调 Token">
+            <InputPassword v-model:value="quickForm.callbackToken" />
+          </FormItem>
+          <FormItem label="消息 AES Key">
+            <InputPassword v-model:value="quickForm.messageAesKey" />
           </FormItem>
         </template>
         <FormItem

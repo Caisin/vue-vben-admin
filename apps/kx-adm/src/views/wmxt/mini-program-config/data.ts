@@ -8,7 +8,7 @@ export const configLinks = [
   {
     description:
       '维护微信小程序 app_id、app_key、app_secret、Token 与消息加解密密钥。',
-    path: '/param/login-apps',
+    path: '/param/wechat-apps',
     title: '微信小程序登录应用',
   },
   {

@@ -5,6 +5,11 @@ import type { Ref } from 'vue';
 import type { FileId } from '../types';
 
 import type { FileUploadView } from '#/api/storage';
+import type {
+  PresignedUploadCompleteWrite,
+  PresignedUploadPrepareView,
+  PresignedUploadPrepareWrite,
+} from '#/api/storage/file';
 
 import { computed, ref } from 'vue';
 
@@ -14,13 +19,23 @@ import { StorageFileApi } from '#/api/storage';
 
 import { acceptsBrowserFile } from '../file-type';
 import { md5File } from './md5';
-import { objectStorageErrorMessage, uploadErrorMessage } from './upload-error';
+import {
+  objectStorageErrorMessage,
+  objectStorageNetworkErrorMessage,
+  uploadErrorMessage,
+} from './upload-error';
 
 interface DirectUploadOptions {
   accept: () => string | string[] | undefined;
   active_group_id: Ref<FileId | undefined>;
   active_storage_code: Ref<string | undefined>;
   addUploaded: (files: FileUploadView[]) => Promise<void>;
+  presignComplete?: (
+    data: PresignedUploadCompleteWrite,
+  ) => Promise<FileUploadView>;
+  presignUpload?: (
+    data: PresignedUploadPrepareWrite,
+  ) => Promise<PresignedUploadPrepareView>;
   reload: () => Promise<void>;
 }
 
@@ -70,17 +85,19 @@ function putPresignedObject(
       } else {
         reject(
           new Error(
-            objectStorageErrorMessage(
-              xhr.status,
-              xhr.statusText,
-              xhr.responseText,
-            ),
+            xhr.status === 0
+              ? objectStorageNetworkErrorMessage(presigned.upload_url)
+              : objectStorageErrorMessage(
+                  xhr.status,
+                  xhr.statusText,
+                  xhr.responseText,
+                ),
           ),
         );
       }
     });
     xhr.addEventListener('error', () =>
-      reject(new Error('直传对象存储网络失败')),
+      reject(new Error(objectStorageNetworkErrorMessage(presigned.upload_url))),
     );
     xhr.addEventListener('abort', () =>
       reject(new Error('直传对象存储已取消')),
@@ -146,7 +163,15 @@ export function useDirectUpload(options: DirectUploadOptions) {
     onProgress(1);
     const md5Hash = await md5File(file);
     onProgress(5);
-    const presigned = await StorageFileApi.presignUpload(storageCode, {
+    const prepare =
+      options.presignUpload ??
+      ((data: PresignedUploadPrepareWrite) =>
+        StorageFileApi.presignUpload(storageCode, data));
+    const complete =
+      options.presignComplete ??
+      ((data: PresignedUploadCompleteWrite) =>
+        StorageFileApi.presignComplete(storageCode, data));
+    const presigned = await prepare({
       file_ext: fileExt,
       file_name: fileName,
       group_id: groupId,
@@ -161,7 +186,7 @@ export function useDirectUpload(options: DirectUploadOptions) {
     const etag = await putPresignedObject(presigned, file, (value) =>
       onProgress(5 + value * 0.9),
     );
-    return await StorageFileApi.presignComplete(storageCode, {
+    return await complete({
       etag,
       file_ext: fileExt,
       file_name: fileName,

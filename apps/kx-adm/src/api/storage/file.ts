@@ -74,7 +74,7 @@ export function resolveFileAccessUrl(url: string, baseURL = apiURL) {
   return resolveAccessUrl(url, baseURL);
 }
 
-function resolveFileUploadView(view: FileUploadView): FileUploadView {
+export function resolveFileUploadView(view: FileUploadView): FileUploadView {
   return { ...view, url: resolveAccessUrl(view.url, apiURL) };
 }
 
@@ -90,7 +90,7 @@ async function authenticatedFileUrl(fileId: number | string, url: string) {
   return URL.createObjectURL(blob);
 }
 
-async function resolveFileUploadViewUrl(
+export async function resolveFileUploadViewUrl(
   view: FileUploadView,
 ): Promise<FileUploadView> {
   return {
@@ -99,7 +99,7 @@ async function resolveFileUploadViewUrl(
   };
 }
 
-async function resolveFileAccessView(
+export async function resolveFileAccessView(
   view: FileAccessView,
 ): Promise<FileAccessView> {
   return {

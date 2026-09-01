@@ -110,6 +110,18 @@ export function filterPermissionGrantTree(
   return filtered;
 }
 
+export function filterGrantTreeByIds(
+  nodes: readonly PermissionGrantTreeNode[],
+  selectedIds: Iterable<number | string>,
+): PermissionGrantTreeNode[] {
+  const selected = new Set([...selectedIds].map(String));
+  return nodes.flatMap((node) => {
+    const children = filterGrantTreeByIds(node.children ?? [], selected);
+    if (!selected.has(node.id) && children.length === 0) return [];
+    return [{ ...node, children: children.length > 0 ? children : undefined }];
+  });
+}
+
 export function selectableGrantIds(nodes: readonly PermissionGrantTreeNode[]) {
   const ids = new Set<string>();
   for (const node of nodes) {

@@ -39,7 +39,7 @@ describe('systemMenuApi', () => {
         authCode: 'system',
         component: 'BasicLayout',
         id: '1',
-        meta: { title: 'system.title' },
+        meta: { title: '系统' },
         name: 'System',
         path: '/system',
         pid: '0',

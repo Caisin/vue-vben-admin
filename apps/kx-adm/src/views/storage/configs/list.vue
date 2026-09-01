@@ -14,7 +14,7 @@ import { useRouter } from 'vue-router';
 import { Page, useVbenDrawer, useVbenModal } from '@vben/common-ui';
 import { Copy, ExternalLink, Plus } from '@vben/icons';
 
-import { Alert, Button, message, Modal, Space, Tag } from 'antdv-next';
+import { Alert, Button, message, Modal, Select, Space, Tag } from 'antdv-next';
 
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -37,6 +37,9 @@ const editingRow = ref<StorageConfigView>();
 const storageTypes = ref<StorageTypeSpec[]>([]);
 const credentials = ref<CredentialView[]>([]);
 const currentStorageType = ref('fs');
+const fileShareStorageCode = ref('');
+const fileShareStorageOptions = ref<StorageConfigView[]>([]);
+const savingFileShareStorage = ref(false);
 
 const storageTypeOptions = computed(() =>
   storageTypes.value.map((item) => ({
@@ -402,6 +405,20 @@ async function openCredentialCenter() {
   await router.push('/credential/items');
 }
 
+async function saveFileShareStorage() {
+  if (!fileShareStorageCode.value) {
+    message.warning('请选择文件分享默认存储');
+    return;
+  }
+  savingFileShareStorage.value = true;
+  try {
+    await StorageConfigApi.setFileShareDefault(fileShareStorageCode.value);
+    message.success('文件分享默认存储已更新');
+  } finally {
+    savingFileShareStorage.value = false;
+  }
+}
+
 async function fetchAllActiveCredentials(specs: StorageCredentialSpec[]) {
   const uniqueSpecs = [
     ...new Map(specs.map((item) => [specKey(item), item])).values(),
@@ -423,7 +440,14 @@ async function fetchAllActiveCredentials(specs: StorageCredentialSpec[]) {
 }
 
 onMounted(async () => {
-  storageTypes.value = await StorageConfigApi.types();
+  const [types, configs, fileShareStorage] = await Promise.all([
+    StorageConfigApi.types(),
+    StorageConfigApi.list({ page: 1, size: 200 }),
+    StorageConfigApi.fileShareDefault(),
+  ]);
+  storageTypes.value = types;
+  fileShareStorageOptions.value = configs.items;
+  fileShareStorageCode.value = fileShareStorage.code;
   const specs = storageTypes.value.flatMap(
     (item) => item.credential_specs ?? [],
   );
@@ -510,6 +534,23 @@ onMounted(async () => {
       </template>
       <template #toolbar-tools>
         <Space wrap size="small">
+          <Select
+            v-model:value="fileShareStorageCode"
+            class="min-w-56"
+            :options="
+              fileShareStorageOptions.map((item) => ({
+                label: `${item.storage_name} (${item.code})`,
+                value: item.code,
+              }))
+            "
+            placeholder="文件分享默认存储"
+          />
+          <Button
+            :loading="savingFileShareStorage"
+            @click="saveFileShareStorage"
+          >
+            保存分享存储
+          </Button>
           <Button @click="openCredentialCenter">
             <ExternalLink class="size-4" />
             凭证中心

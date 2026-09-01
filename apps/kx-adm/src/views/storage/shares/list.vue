@@ -9,12 +9,9 @@ import type {
   FileShareView,
 } from '#/api/storage';
 import type { BusinessContact } from '#/auth';
-import type {
-  FilePickerExpose,
-  SelectedStorageFile,
-} from '#/components/file-picker';
+import type { SelectedStorageFile } from '#/components/file-picker';
 
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import {
@@ -56,13 +53,13 @@ import dayjs from 'dayjs';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { AuthApi } from '#/api/core/auth';
 import { StorageFileShareApi } from '#/api/storage';
-import { FilePicker } from '#/components/file-picker';
 import { Times } from '#/times';
 import { useVxeRowContextMenu } from '#/views/_shared/use-vxe-row-context-menu';
 import { vxeSortParams } from '#/vxe-sort';
 
 import { useColumns, useFormSchema } from './data';
 import ContentModal from './modules/modal.vue';
+import ShareUploadField from './modules/share-upload-field.vue';
 
 type ExpiryPreset = 7 | 15 | 30 | 'custom';
 
@@ -74,7 +71,7 @@ const shareSortFields = [
   'id',
   'view_count',
 ];
-const filePickerRef = ref<FilePickerExpose>();
+const shareUploadRef = ref<{ isRunning: () => boolean; reset: () => void }>();
 const selectedFiles = ref<SelectedStorageFile[]>([]);
 const createTitle = ref('');
 const createPreset = ref<ExpiryPreset>(15);
@@ -115,15 +112,6 @@ const expiryOptions = [
   { label: '自定义', value: 'custom' },
 ];
 
-const selectedFileName = computed(() =>
-  selectedFiles.value.length > 0
-    ? `${selectedFiles.value.length} 个文件：${selectedFiles.value
-        .slice(0, 3)
-        .map((item) => displayFileName(item.file))
-        .join('、')}${selectedFiles.value.length > 3 ? '…' : ''}`
-    : '',
-);
-
 const contextMenuItems: MenuProps['items'] = [
   { danger: true, key: 'delete', label: '删除分享' },
 ];
@@ -135,11 +123,15 @@ const rowContextMenu = useVxeRowContextMenu<FileShareView>(
 );
 
 const [CreateModal, createModalApi] = useVbenModal({
-  class: 'w-[min(560px,calc(100vw-20px))]',
+  class: 'w-[min(820px,calc(100vw-20px))]',
   connectedComponent: ContentModal,
   destroyOnClose: true,
   title: '新增文件分享',
   async onConfirm() {
+    if (shareUploadRef.value?.isRunning()) {
+      message.warning('文件仍在上传，请等待上传完成');
+      return;
+    }
     if (selectedFiles.value.length === 0) {
       message.warning('请选择或上传文件');
       return;
@@ -245,6 +237,7 @@ function selectedExpiry() {
 async function openCreate() {
   await loadBusinessContactAvailability();
   selectedFiles.value = [];
+  shareUploadRef.value?.reset();
   createTitle.value = '';
   createPreset.value = 15;
   createExpiry.value = dayjs().add(15, 'day');
@@ -256,10 +249,6 @@ async function openCreate() {
   createPassword.value = '';
   createShowBusinessContact.value = false;
   createModalApi.open();
-}
-
-function openFilePicker() {
-  filePickerRef.value?.open();
 }
 
 function handleFileSelected(files: SelectedStorageFile[]) {
@@ -488,7 +477,9 @@ async function loadBusinessContactAvailability() {
   }
 }
 
-onMounted(loadBusinessContactAvailability);
+onMounted(() => {
+  void loadBusinessContactAvailability();
+});
 
 async function copyShareText(row: FileShareView, password?: string) {
   const url = absoluteUrl(row.share_url);
@@ -678,15 +669,8 @@ function disablePastDate(current: Dayjs) {
           />
         </div>
         <div class="form-field">
-          <span class="field-label">文件（可多选）</span>
-          <div class="file-selection">
-            <Button type="primary" ghost @click="openFilePicker">
-              选择 / 上传文件
-            </Button>
-            <span class="selected-file" :title="selectedFileName">
-              {{ selectedFileName || '未选择' }}
-            </span>
-          </div>
+          <span class="field-label">分享文件</span>
+          <ShareUploadField ref="shareUploadRef" @change="handleFileSelected" />
         </div>
         <div class="form-field">
           <span class="field-label">有效期</span>
@@ -1131,13 +1115,6 @@ function disablePastDate(current: Dayjs) {
         </TabPane>
       </Tabs>
     </Drawer>
-
-    <FilePicker
-      ref="filePickerRef"
-      :max_count="100"
-      multiple
-      @confirm="handleFileSelected"
-    />
 
     <Grid class="management-grid" table-title="文件分享">
       <Dropdown

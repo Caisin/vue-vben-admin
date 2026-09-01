@@ -75,6 +75,16 @@ export function useFormSchema(
       rules: 'required',
     },
     {
+      component: 'InputPassword',
+      componentProps: {
+        allowClear: true,
+        placeholder: '留空则由服务端生成 12 位随机密码',
+      },
+      fieldName: 'password',
+      help: '仅新建用户时使用，创建成功后明文只展示一次。',
+      label: '初始密码',
+    },
+    {
       component: 'ApiTreeSelect',
       componentProps: {
         allowClear: true,
@@ -98,7 +108,7 @@ export function useFormSchema(
       componentProps: {
         allowClear: true,
         class: 'w-full',
-        mode: 'multiple',
+        multiple: true,
         optionFilterProp: 'label',
         treeData: [],
         placeholder: '请选择角色',

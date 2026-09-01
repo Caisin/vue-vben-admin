@@ -8,6 +8,8 @@ import { computed, nextTick, ref } from 'vue';
 
 import { useVbenDrawer } from '@vben/common-ui';
 
+import { message } from 'antdv-next';
+
 import { useVbenForm } from '#/adapter/form';
 import { ApiPermissionApi } from '#/api/system/api-permission';
 import { SystemMenuApi } from '#/api/system/menu';
@@ -15,6 +17,7 @@ import { SystemRoleApi } from '#/api/system/role';
 import { SystemUserApi } from '#/api/system/user';
 import { PermissionGrantTrees } from '#/components/permission-grant';
 import { $t } from '#/locales';
+import { requestErrorMessage } from '#/request-errors';
 
 import {
   homePageOptions,
@@ -35,10 +38,15 @@ const selectedApiIds = ref<string[]>([]);
 function resolveHomeOptions(values: Readonly<SystemUser>) {
   const effectiveIds = userEffectivePermissionIds(
     values.permissions ?? [],
-    values.roles ?? [],
+    normalizeRoleIds(values.roles),
     roles.value,
   );
   return homePageOptions(permissionMenus.value, effectiveIds);
+}
+
+function normalizeRoleIds(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value.map(String);
+  return value ? [String(value)] : [];
 }
 
 const [Form, formApi] = useVbenForm({
@@ -52,34 +60,40 @@ const loadingRoles = ref(false);
 const id = ref();
 const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
   async onConfirm() {
-    const { valid } = await formApi.validate();
-    if (!valid) return;
-    const values = await formApi.getValues();
-    const validHomeIds = homePageOptionValues(
-      resolveHomeOptions(values as SystemUser),
-    );
-    const payload = {
-      ...values,
-      apiIds: selectedApiIds.value,
-      deptId: values.deptId || 0,
-      homePermId:
-        values.homePermId && validHomeIds.has(String(values.homePermId))
-          ? String(values.homePermId)
-          : null,
-      permissions: selectedPermissionIds.value,
-    };
-    drawerApi.lock();
-    (id.value
-      ? SystemUserApi.update(id.value, payload)
-      : SystemUserApi.create(payload)
-    )
-      .then(() => {
-        emits('success');
-        drawerApi.close();
-      })
-      .catch(() => {
-        drawerApi.unlock();
-      });
+    try {
+      const { valid } = await formApi.validate();
+      if (!valid) {
+        message.warning('请检查用户必填信息');
+        return;
+      }
+      const values = await formApi.getValues();
+      const validHomeIds = homePageOptionValues(
+        resolveHomeOptions(values as SystemUser),
+      );
+      const payload = {
+        ...values,
+        apiIds: selectedApiIds.value,
+        deptId: values.deptId || 0,
+        homePermId:
+          values.homePermId && validHomeIds.has(String(values.homePermId))
+            ? String(values.homePermId)
+            : null,
+        permissions: selectedPermissionIds.value,
+        roles: normalizeRoleIds(values.roles),
+      };
+      drawerApi.lock();
+      const saved = await (id.value
+        ? SystemUserApi.update(id.value, payload)
+        : SystemUserApi.create(payload));
+      message.success(id.value ? '用户信息已保存' : '用户已创建');
+      drawerApi.close();
+      emits('success', saved);
+    } catch (error) {
+      drawerApi.unlock();
+      message.error(
+        requestErrorMessage(error, '保存用户失败，请检查表单后重试'),
+      );
+    }
   },
 
   async onOpenChange(isOpen) {
@@ -100,6 +114,18 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
       }
 
       await Promise.all([loadRoles(), loadPermissionGrants()]);
+      await formApi.updateSchema([
+        {
+          componentProps: {
+            allowClear: true,
+            disabled: Boolean(data?.id),
+            placeholder: data?.id
+              ? '请从用户操作菜单重置密码'
+              : '留空则由服务端生成 12 位随机密码',
+          },
+          fieldName: 'password',
+        },
+      ]);
       // Wait for Vue to flush DOM updates (form fields mounted)
       await nextTick();
       if (data) {

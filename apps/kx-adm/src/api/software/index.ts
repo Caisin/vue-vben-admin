@@ -162,6 +162,7 @@ export interface SoftwareInstallation {
   id: number | string;
   initial_revision?: null | string;
   initial_version?: null | string;
+  install_path: string;
   instance_key: string;
   last_error: string;
   observed_version: string;
@@ -180,6 +181,7 @@ export interface InstallationCreate {
   application_id: number | string;
   config_json?: Record<string, unknown>;
   instance_key: string;
+  install_root?: string;
   server_id: number | string;
 }
 

@@ -58,6 +58,9 @@ const avatar = computed(
   () => userStore.userInfo?.avatar ?? preferences.app.defaultAvatar,
 );
 const permissionRefreshing = ref(false);
+const canResolveLegacySystemImages = computed(() =>
+  userStore.userInfo?.roles?.includes('admin'),
+);
 const userMenus = computed(() => [
   {
     handler: () => router.push(USER_OVERVIEW_PATH),
@@ -189,7 +192,8 @@ onBeforeMount(() => {
 });
 
 onMounted(() => {
-  void loadPublicSystemSettings(true);
+  // 新设置已直接保存 data URL；仅管理员兼容解析历史 file_id，避免普通用户读取系统文件 API。
+  void loadPublicSystemSettings(canResolveLegacySystemImages.value);
   refreshInbox();
   inboxPollTimer = window.setInterval(refreshInbox, 30_000);
 });

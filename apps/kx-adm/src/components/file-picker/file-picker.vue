@@ -57,9 +57,11 @@ import { useDirectUpload } from './internal/use-direct-upload';
 const props = withDefaults(defineProps<FilePickerProps>(), {
   initial_file_ids: () => [],
   multiple: false,
+  storage_locked: false,
 });
 
 const emit = defineEmits<{
+  closed: [];
   confirm: [files: SelectedStorageFile[]];
 }>();
 
@@ -98,9 +100,8 @@ const active_storage_type = computed(
       (option) => option.value === active_storage_code.value,
     )?.storage_type,
 );
-const direct_upload_supported = computed(
-  () =>
-    !useArticleAdapter.value && supportsDirectUpload(active_storage_type.value),
+const direct_upload_supported = computed(() =>
+  supportsDirectUpload(active_storage_type.value),
 );
 const available_upload_mode_options = computed(() =>
   direct_upload_supported.value
@@ -151,7 +152,8 @@ const [RenameModal, renameModalApi] = useVbenModal({
     }
     renameModalApi.lock();
     try {
-      const updated = await StorageFileApi.rename(file.file_id, {
+      const rename = adapter.value?.rename ?? StorageFileApi.rename;
+      const updated = await rename(file.file_id, {
         file_name: fileName,
       });
       const key = fileKey(updated);
@@ -235,6 +237,9 @@ const [Modal, modalApi] = useVbenModal({
   class: 'w-[min(1120px,calc(100vw-20px))]',
   contentClass: 'p-0',
   destroyOnClose: true,
+  onClosed() {
+    emit('closed');
+  },
   async onConfirm() {
     if (selected.value.size === 0) {
       message.warning('请选择文件');
@@ -298,9 +303,8 @@ async function loadPreviewUrls(records: UploadFile[]) {
   );
   if (missing.length === 0) return;
   try {
-    const access = await StorageFileApi.urls(
-      missing.map((file) => file.file_id),
-    );
+    const urls = adapter.value?.urls ?? StorageFileApi.urls;
+    const access = await urls(missing.map((file) => file.file_id));
     const next = new Map(preview_urls.value);
     for (const item of access) next.set(String(item.file_id), item.url);
     preview_urls.value = next;
@@ -546,6 +550,8 @@ const directUpload = useDirectUpload({
   active_group_id,
   active_storage_code,
   addUploaded: addUploadedResults,
+  presignComplete: adapter.value?.presignComplete,
+  presignUpload: adapter.value?.presignUpload,
   reload: loadFiles,
 });
 
@@ -652,7 +658,7 @@ defineExpose<FilePickerExpose>({ close, open });
 <template>
   <Modal title="选择文件">
     <div class="file-picker-layout">
-      <aside class="file-picker-sidebar">
+      <aside v-if="!useArticleAdapter" class="file-picker-sidebar">
         <button
           v-if="!useArticleAdapter"
           class="file-picker-group"
@@ -690,13 +696,23 @@ defineExpose<FilePickerExpose>({ close, open });
       <section class="file-picker-main">
         <div class="file-picker-toolbar">
           <Select
-            v-if="!useArticleAdapter || storage_options.length > 0"
+            v-if="
+              !storage_locked &&
+              (!useArticleAdapter || storage_options.length > 0)
+            "
             v-model:value="active_storage_code"
             class="storage-select"
             :options="storage_options"
             placeholder="选择 storage"
             @change="changeStorage"
           />
+          <span
+            v-else-if="storage_options[0]"
+            class="storage-select truncate text-sm text-muted-foreground"
+            :title="storage_options[0].label"
+          >
+            {{ storage_options[0].label }}
+          </span>
           <Select
             v-model:value="active_file_kind"
             class="file-kind-select"

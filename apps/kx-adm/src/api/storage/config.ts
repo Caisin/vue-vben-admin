@@ -70,6 +70,12 @@ export interface StorageConfigCopyWrite {
   upload_dir?: string;
 }
 
+export interface StorageOptionView {
+  code: string;
+  storage_name: string;
+  storage_type: string;
+}
+
 export interface StorageConfigPageQuery extends PageQuery {
   code_prefix?: string;
   is_public?: boolean;
@@ -81,6 +87,12 @@ export const StorageConfigApi = {
   list: (params?: StorageConfigPageQuery) =>
     requestClient.get<Page<StorageConfigView>>('/storage/cfg', { params }),
   types: () => requestClient.get<StorageTypeSpec[]>('/storage/cfg/types'),
+  fileShareDefault: () =>
+    requestClient.get<StorageOptionView>('/storage/cfg/file-share-default'),
+  setFileShareDefault: (storage_code: string) =>
+    requestClient.put<StorageOptionView>('/storage/cfg/file-share-default', {
+      storage_code,
+    }),
   detail: (code: string) =>
     requestClient.get<StorageConfigView>(`/storage/cfg/${code}`),
   save: (code: string, data: StorageConfigWrite) =>

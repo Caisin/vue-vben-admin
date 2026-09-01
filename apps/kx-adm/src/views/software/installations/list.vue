@@ -71,6 +71,7 @@ const createForm = reactive({
   admin_credential_code: '',
   application_id: '',
   config_json: {},
+  install_root: '',
   instance_key: 'default',
   server_id: '',
 });
@@ -92,6 +93,7 @@ watch(
       !editingInstallation.value
     ) {
       createForm.admin_credential_code = '';
+      createForm.install_root = application?.install_root ?? '';
       meilisearchConfig.value = defaultMeilisearchConfig();
     }
     if (application?.service_spec?.default_port) {
@@ -159,6 +161,7 @@ function openCreate() {
     admin_credential_code: '',
     application_id: '',
     config_json: {},
+    install_root: '',
     instance_key: 'default',
     server_id: '',
   });
@@ -177,6 +180,7 @@ function openConfig(row: SoftwareInstallation) {
         : '',
     application_id: row.application_id,
     config_json: row.config_json,
+    install_root: '',
     instance_key: row.instance_key,
     server_id: row.server_id,
   });
@@ -556,6 +560,22 @@ onMounted(loadReferenceData);
             v-model:value="createForm.instance_key"
             :disabled="Boolean(editingInstallation)"
           />
+        </FormItem>
+        <FormItem
+          :extra="
+            editingInstallation
+              ? '实例创建后安装目录不可修改。'
+              : `最终目录会附加应用和实例子目录：${createForm.install_root || selectedApplication?.install_root || '-'}${selectedApplication ? `/${selectedApplication.code}/${createForm.instance_key || 'default'}` : ''}`
+          "
+          label="安装目录"
+          required
+        >
+          <Input
+            v-if="!editingInstallation"
+            v-model:value="createForm.install_root"
+            placeholder="请选择应用后自动带出默认目录"
+          />
+          <Input v-else :value="editingInstallation.install_path" disabled />
         </FormItem>
       </Form>
     </Modal>

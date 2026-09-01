@@ -1,9 +1,27 @@
+import type {
+  FileAccessView,
+  FileUploadView,
+  PresignedUploadCompleteWrite,
+  PresignedUploadPrepareView,
+  PresignedUploadPrepareWrite,
+  RenameFileWrite,
+  UploadFile,
+  UploadFilePageQuery,
+} from './file';
+
 import type { Page, PageQuery } from '#/api/request';
 import type { BusinessContact } from '#/auth';
 
-import { apiURL, requestClient } from '#/api/request';
+import { apiURL, plaintextRequestClient, requestClient } from '#/api/request';
 
+import { resolveFileAccessView, resolveFileUploadViewUrl } from './file';
 import { resolveFileAccessUrl } from './file-url';
+
+export interface FileShareStorageOption {
+  code: string;
+  storage_name: string;
+  storage_type: string;
+}
 
 export interface FileShareView {
   created_at: number | string;
@@ -85,6 +103,59 @@ function resolveShare(view: FileShareView): FileShareView {
 }
 
 export const StorageFileShareApi = {
+  pickerStorage: () =>
+    requestClient.get<FileShareStorageOption>('/storage/share/picker/storage'),
+  pickerFiles: (params?: UploadFilePageQuery) =>
+    requestClient.get<Page<UploadFile>>('/storage/share/picker/files', {
+      params,
+    }),
+  pickerFile: (id: number | string) =>
+    requestClient.get<UploadFile>(`/storage/share/picker/files/${id}`),
+  pickerRename: (id: number | string, data: RenameFileWrite) =>
+    requestClient.put<UploadFile>(
+      `/storage/share/picker/files/${id}/name`,
+      data,
+    ),
+  pickerUpload: async (file: File) => {
+    const result = await plaintextRequestClient.upload<FileUploadView[]>(
+      '/storage/share/picker/files/upload',
+      { file },
+    );
+    return Promise.all(result.map((item) => resolveFileUploadViewUrl(item)));
+  },
+  pickerConvertRemote: async (url: string) =>
+    resolveFileUploadViewUrl(
+      await requestClient.post<FileUploadView>(
+        '/storage/share/picker/files/convert-remote',
+        { url },
+      ),
+    ),
+  pickerPresignUpload: async (data: PresignedUploadPrepareWrite) => {
+    const result = await requestClient.post<PresignedUploadPrepareView>(
+      '/storage/share/picker/files/presign-upload',
+      data,
+    );
+    return {
+      ...result,
+      file: result.file
+        ? await resolveFileUploadViewUrl(result.file)
+        : undefined,
+    };
+  },
+  pickerPresignComplete: async (data: PresignedUploadCompleteWrite) =>
+    resolveFileUploadViewUrl(
+      await requestClient.post<FileUploadView>(
+        '/storage/share/picker/files/presign-complete',
+        data,
+      ),
+    ),
+  pickerUrls: async (ids: Array<number | string>) => {
+    const result = await requestClient.post<FileAccessView[]>(
+      '/storage/share/picker/files/urls',
+      ids,
+    );
+    return Promise.all(result.map((item) => resolveFileAccessView(item)));
+  },
   list: async (params?: FileSharePageQuery) => {
     const result = await requestClient.get<Page<FileShareView>>(
       '/storage/share',

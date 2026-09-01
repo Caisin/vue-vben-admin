@@ -23,8 +23,11 @@ export interface AdminUser {
 
 export interface AdminUserDetail extends AdminUser {
   api_ids: Array<number | string>;
+  effective_api_ids: Array<number | string>;
+  effective_permission_ids: Array<number | string>;
   permission_ids?: Array<number | string>;
   role_ids: string[];
+  initial_password?: string;
 }
 
 export interface AdminUserWrite {
@@ -44,6 +47,11 @@ export interface AdminUserWrite {
   remark?: null | string;
   role_ids?: string[];
   tel?: string;
+}
+
+export interface AdminUserPassword {
+  password: string;
+  user_name: string;
 }
 
 export interface AdminUserPageQuery extends PageQuery {
@@ -165,6 +173,10 @@ export const AdminUserApi = {
     requestClient.delete<boolean>(`/auth/user-admin/${id}`),
   resetMfa: (id: number | string) =>
     requestClient.delete<boolean>(`/auth/user-admin/${id}/mfa/totp`),
+  resetPassword: (id: number | string, password = '') =>
+    requestClient.put<AdminUserPassword>(`/auth/user-admin/${id}/password`, {
+      password,
+    }),
 };
 
 export const AdminRoleApi = {

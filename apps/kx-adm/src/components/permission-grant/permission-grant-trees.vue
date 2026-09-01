@@ -12,6 +12,7 @@ import { Button, InputSearch, Space, Spin, TabPane, Tabs } from 'antdv-next';
 import {
   buildApiGrantTree,
   buildPermissionGrantTree,
+  filterGrantTreeByIds,
   filterPermissionGrantTree,
   mergeVisibleGrantSelection,
   selectableGrantIds,
@@ -22,8 +23,9 @@ const props = withDefaults(
     apis: ApiPermission[];
     loading?: boolean;
     menus: SystemMenu[];
+    readonly?: boolean;
   }>(),
-  { loading: false },
+  { loading: false, readonly: false },
 );
 
 const permissionIds = defineModel<string[]>('permissionIds', {
@@ -37,12 +39,18 @@ const menuNodes = computed(() => buildPermissionGrantTree(props.menus));
 const apiNodes = computed(() =>
   buildApiGrantTree(props.apis, { includeBound: true }),
 );
-const visibleMenuNodes = computed(() =>
-  filterPermissionGrantTree(menuNodes.value, menuSearch.value),
-);
-const visibleApiNodes = computed(() =>
-  filterPermissionGrantTree(apiNodes.value, apiSearch.value),
-);
+const visibleMenuNodes = computed(() => {
+  const nodes = props.readonly
+    ? filterGrantTreeByIds(menuNodes.value, permissionIds.value)
+    : menuNodes.value;
+  return filterPermissionGrantTree(nodes, menuSearch.value);
+});
+const visibleApiNodes = computed(() => {
+  const nodes = props.readonly
+    ? filterGrantTreeByIds(apiNodes.value, apiIds.value)
+    : apiNodes.value;
+  return filterPermissionGrantTree(nodes, apiSearch.value);
+});
 
 function visibleSelectionModel(
   selected: { value: string[] },
@@ -54,6 +62,7 @@ function visibleSelectionModel(
       return selected.value.filter((id) => visibleIds.has(String(id)));
     },
     set: (next: Array<number | string>) => {
+      if (props.readonly) return;
       selected.value = mergeVisibleGrantSelection(
         selected.value,
         next,
@@ -113,7 +122,7 @@ function clearAllApis() {
             allow-clear
             placeholder="搜索 API 名称、方法、路径或编码"
           />
-          <Space>
+          <Space v-if="!readonly">
             <Button size="small" @click="selectAllApis">选择全部 API</Button>
             <Button size="small" @click="clearAllApis">取消全部 API</Button>
           </Space>

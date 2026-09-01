@@ -7,6 +7,7 @@ import {
   buildApiGrantTree,
   buildPermissionGrantTree,
   buildUnboundApiGrantTree,
+  filterGrantTreeByIds,
   filterPermissionGrantTree,
   mergeVisibleGrantSelection,
 } from './tree';
@@ -130,6 +131,41 @@ describe('permission grant trees', () => {
     expect(mergeVisibleGrantSelection(['2'], [1, '1'], visibleNodes)).toEqual([
       '2',
       '1',
+    ]);
+  });
+
+  it('keeps selected grants and their ancestors in readonly trees', () => {
+    const nodes = buildPermissionGrantTree([
+      {
+        authCode: '',
+        children: [
+          {
+            authCode: 'storage.file_share.*',
+            id: '2',
+            meta: { title: '文件分享' },
+            name: 'StorageFileShares',
+            path: '/storage/shares',
+            pid: '1',
+            status: 1,
+            type: 'menu',
+          },
+        ],
+        id: '1',
+        meta: { title: '存储管理' },
+        name: 'Storage',
+        path: '/storage',
+        pid: '0',
+        status: 1,
+        type: 'catalog',
+      },
+    ] satisfies SystemMenu[]);
+
+    expect(filterGrantTreeByIds(nodes, ['2'])).toMatchObject([
+      {
+        children: [{ id: '2', label: '文件分享' }],
+        id: '1',
+        label: '存储管理',
+      },
     ]);
   });
 

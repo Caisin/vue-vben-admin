@@ -31,6 +31,7 @@ import {
   FormItem,
   Input,
   InputNumber,
+  InputPassword,
   InputSearch,
   message,
   Modal,
@@ -113,6 +114,12 @@ const weeklyReportNotificationStyleOptions = [
 ] satisfies Array<{ label: string; value: WeeklyReportNotificationStyle }>;
 const selectedWeeklyReportPublishId = ref<number | string>();
 const reindexingSearch = ref(false);
+const resetPasswordOpen = ref(false);
+const resetPasswordLoading = ref(false);
+const resetPasswordValue = ref('');
+const resetPasswordUser = ref<SystemUser>();
+const passwordResultOpen = ref(false);
+const passwordResult = ref({ password: '', userName: '' });
 const selectedWeeklyReportPublish = computed(() =>
   weeklyReportPublishes.value.find(
     (item) => String(item.id) === String(selectedWeeklyReportPublishId.value),
@@ -262,6 +269,53 @@ function onResetMfa(row: SystemUser) {
     okType: 'danger',
     title: `确认重置用户「${row.name}」的 TOTP 二次验证？`,
   });
+}
+
+function onResetPassword(row: SystemUser) {
+  resetPasswordUser.value = row;
+  resetPasswordValue.value = '';
+  resetPasswordOpen.value = true;
+}
+
+async function submitResetPassword() {
+  const password = resetPasswordValue.value;
+  if (password && [...password].length < 8) {
+    message.warning('密码至少需要 8 位');
+    return;
+  }
+  const user = resetPasswordUser.value;
+  if (!user) return;
+  resetPasswordLoading.value = true;
+  try {
+    const result = await SystemUserApi.reset_password(user.id, password);
+    resetPasswordOpen.value = false;
+    showPasswordResult(result.user_name, result.password);
+  } finally {
+    resetPasswordLoading.value = false;
+  }
+}
+
+function showPasswordResult(userName: string, password: string) {
+  passwordResult.value = { password, userName };
+  passwordResultOpen.value = true;
+}
+
+async function copyLoginInfo() {
+  try {
+    await navigator.clipboard.writeText(
+      `用户名：${passwordResult.value.userName}\n密码：${passwordResult.value.password}`,
+    );
+    message.success('登录信息已复制');
+  } catch {
+    message.error('复制失败，请手动复制用户名和密码');
+  }
+}
+
+async function onUserSaved(user?: SystemUser) {
+  await onRefresh();
+  if (user?.initialPassword) {
+    showPasswordResult(user.name, user.initialPassword);
+  }
 }
 
 function onDelete(row: SystemUser) {
@@ -627,9 +681,52 @@ watch(selectedDeptId, (value) => {
     class="management-page user-page"
     content-class="management-content user-content"
   >
-    <FormDrawer @success="onRefresh" />
+    <FormDrawer @success="onUserSaved" />
     <DetailDrawer @success="onRefresh" />
     <WeeklyReportRepublishModal @success="onWeeklyReportRepublished" />
+    <PopupModal
+      v-model:open="resetPasswordOpen"
+      :confirm-loading="resetPasswordLoading"
+      title="重置登录密码"
+      width="520px"
+      @ok="submitResetPassword"
+    >
+      <AForm layout="vertical">
+        <FormItem label="用户">
+          <Input :value="resetPasswordUser?.name" disabled />
+        </FormItem>
+        <FormItem
+          extra="留空则由服务端生成 12 位随机密码。重置后旧密码立即失效。"
+          label="新密码"
+        >
+          <InputPassword
+            v-model:value="resetPasswordValue"
+            allow-clear
+            autocomplete="new-password"
+            placeholder="至少 8 位，或留空自动生成"
+          />
+        </FormItem>
+      </AForm>
+    </PopupModal>
+    <PopupModal
+      v-model:open="passwordResultOpen"
+      :footer="null"
+      title="登录信息"
+      width="520px"
+    >
+      <p class="mb-4 text-sm text-muted-foreground">
+        密码明文仅本次展示，请立即交给用户并妥善保存。
+      </p>
+      <AForm layout="vertical">
+        <FormItem label="用户名">
+          <Input :value="passwordResult.userName" readonly />
+        </FormItem>
+        <FormItem label="密码">
+          <InputPassword :value="passwordResult.password" readonly />
+        </FormItem>
+      </AForm>
+      <Button block type="primary" @click="copyLoginInfo">复制登录信息</Button>
+    </PopupModal>
     <PopupModal
       v-model:open="weeklyReportOpen"
       :confirm-loading="weeklyReportLoading"
@@ -956,6 +1053,11 @@ watch(selectedDeptId, (value) => {
                   danger: true,
                   onClick: () => onResetMfa(row),
                   auth: ['user:mfa:reset'],
+                },
+                {
+                  text: '重置登录密码',
+                  icon: 'lucide:key-round',
+                  onClick: () => onResetPassword(row),
                 },
                 {
                   text: $t('common.delete'),

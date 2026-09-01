@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   objectStorageErrorMessage,
+  objectStorageNetworkErrorMessage,
   uploadErrorMessage,
 } from '../internal/upload-error';
 
@@ -55,5 +56,29 @@ describe('upload errors', () => {
 
   it('keeps a directly thrown string error', () => {
     expect(uploadErrorMessage('连接 TOS 失败')).toBe('连接 TOS 失败');
+  });
+
+  it('explains TOS CORS failures without exposing the signed URL', () => {
+    const message = objectStorageNetworkErrorMessage(
+      'https://bucket.tos-s3-cn-beijing.volces.com/invoice/file?X-Amz-Credential=test-key&X-Amz-Signature=secret',
+      'http://127.0.0.1:5555',
+    );
+
+    expect(message).toContain('火山 TOS');
+    expect(message).toContain('http://127.0.0.1:5555');
+    expect(message).toContain('PUT、GET、HEAD');
+    expect(message).toContain('ETag、x-tos-request-id');
+    expect(message).not.toContain('X-Amz-Credential');
+    expect(message).not.toContain('X-Amz-Signature');
+    expect(message).not.toContain('secret');
+  });
+
+  it('keeps a generic message for non-TOS network failures', () => {
+    expect(
+      objectStorageNetworkErrorMessage(
+        'https://s3.example.com/file',
+        'https://admin.example.com',
+      ),
+    ).toContain('对象存储跨域配置');
   });
 });

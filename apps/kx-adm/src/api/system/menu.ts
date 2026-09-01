@@ -131,11 +131,13 @@ function snakeMeta(meta: SystemMenuMeta = {}): PermissionMeta {
 }
 
 function toSystemMenu(permission: AdminPermission): SystemMenu {
+  const meta = camelMeta(permission.meta);
+  meta.title = permission.title || meta.title || permission.name;
   return {
     authCode: permission.auth_code,
     component: permission.component,
     id: String(permission.id),
-    meta: camelMeta(permission.meta),
+    meta,
     name: permission.name,
     path: permission.path,
     pid: String(permission.pid),

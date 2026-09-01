@@ -2,7 +2,12 @@ import type { StorageFileReference } from './file-ref';
 
 import type { Page } from '#/api/request';
 import type {
+  FileAccessView,
   FileUploadView,
+  PresignedUploadCompleteWrite,
+  PresignedUploadPrepareView,
+  PresignedUploadPrepareWrite,
+  RenameFileWrite,
   UploadFile,
   UploadFilePageQuery,
 } from '#/api/storage';
@@ -17,14 +22,25 @@ export interface FilePickerProps {
   max_count?: number;
   multiple?: boolean;
   storage_code?: string;
+  storage_locked?: boolean;
 }
 
 export interface FilePickerAdapter {
   convertRemote?: (url: string) => Promise<FileUploadView>;
   detail?: (id: FileId) => Promise<UploadFile>;
   list: (params?: UploadFilePageQuery) => Promise<Page<UploadFile>>;
-  storageOptions?: () => Promise<Array<{ label: string; value: string }>>;
+  presignComplete?: (
+    data: PresignedUploadCompleteWrite,
+  ) => Promise<FileUploadView>;
+  presignUpload?: (
+    data: PresignedUploadPrepareWrite,
+  ) => Promise<PresignedUploadPrepareView>;
+  rename?: (id: FileId, data: RenameFileWrite) => Promise<UploadFile>;
+  storageOptions?: () => Promise<
+    Array<{ label: string; storage_type?: string; value: string }>
+  >;
   upload: (file: File) => Promise<FileUploadView[]>;
+  urls?: (ids: FileId[]) => Promise<FileAccessView[]>;
 }
 
 export interface SelectedStorageFile extends StorageFileReference {

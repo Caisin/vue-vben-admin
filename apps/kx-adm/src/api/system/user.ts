@@ -23,8 +23,11 @@ export interface SystemUser {
   createTime?: number | string;
   deptId?: number | string;
   email?: string;
+  effectiveApiIds?: string[];
+  effectivePermissionIds?: string[];
   homePermId?: null | string;
   id: string;
+  initialPassword?: string;
   name: string;
   permissions?: string[];
   platform?: string;
@@ -123,6 +126,9 @@ interface AdminUserSystem extends AdminUser {
   dept_id?: number | string;
   permission_ids?: Array<number | string>;
   remark?: null | string;
+  effective_api_ids?: Array<number | string>;
+  effective_permission_ids?: Array<number | string>;
+  initial_password?: string;
 }
 
 interface AdminUserSystemDetail extends AdminUserDetail {
@@ -141,6 +147,14 @@ function homePermissionId(value: null | string | undefined) {
   return value ? Number(value) : null;
 }
 
+function roleIds(
+  value: string | string[] | undefined,
+  fallback: string[] = [],
+) {
+  if (Array.isArray(value)) return value.map(String);
+  return value ? [String(value)] : fallback.map(String);
+}
+
 function toSystemUser(
   user: AdminUserSystem,
   permissions: Array<number | string> = [],
@@ -152,11 +166,16 @@ function toSystemUser(
     createTime: user.created_at,
     deptId: user.dept_id,
     email: user.email,
+    effectiveApiIds: (user.effective_api_ids ?? user.api_ids ?? []).map(String),
+    effectivePermissionIds: (user.effective_permission_ids ?? permissions).map(
+      String,
+    ),
     homePermId:
       user.home_perm_id === null || user.home_perm_id === undefined
         ? null
         : String(user.home_perm_id),
     id: String(user.id),
+    initialPassword: user.initial_password,
     name: user.name,
     permissions: permissions.map(String),
     platform: user.platform,
@@ -195,7 +214,7 @@ function toUserWrite(
     platform: data.platform ?? previous?.platform ?? '',
     reg_ip: previous?.reg_ip ?? '',
     remark: data.remark ?? previous?.remark ?? null,
-    role_ids: (data.roles ?? previous?.role_ids ?? []).map(String),
+    role_ids: roleIds(data.roles, previous?.role_ids),
     tel: data.tel ?? previous?.tel ?? '',
   };
 }
@@ -241,7 +260,7 @@ export const SystemUserApi = {
     return { items, total: result.total };
   },
   async create(data: SystemUserWrite) {
-    const user = await requestClient.post<AdminUserSystem>(
+    const user = await requestClient.post<AdminUserSystemDetail>(
       '/auth/user-admin',
       toUserWrite(data),
     );
@@ -270,6 +289,11 @@ export const SystemUserApi = {
     requestClient.post<{ indexed: number }>('/auth/user-admin/search/reindex'),
   reset_totp: (id: string) =>
     requestClient.delete<boolean>(`/auth/user-admin/${id}/mfa/totp`),
+  reset_password: (id: string, password = '') =>
+    requestClient.put<{ password: string; user_name: string }>(
+      `/auth/user-admin/${id}/password`,
+      { password },
+    ),
   weekly_report_template: (data: UserWeeklyReportTemplateRequest) =>
     requestClient.download<Blob>(
       '/auth/user-admin/actions/weekly-report-template',

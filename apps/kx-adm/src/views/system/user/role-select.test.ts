@@ -9,7 +9,11 @@ describe('user role select', () => {
       (item) => item.fieldName === 'roles',
     );
     expect(role?.component).toBe('TreeSelect');
-    expect(role?.componentProps).toMatchObject({ treeData: [] });
+    expect(role?.componentProps).toMatchObject({
+      multiple: true,
+      treeData: [],
+    });
     expect(role?.componentProps).not.toHaveProperty('options');
+    expect(role?.componentProps).not.toHaveProperty('mode');
   });
 });

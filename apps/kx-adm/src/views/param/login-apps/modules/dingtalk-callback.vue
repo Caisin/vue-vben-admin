@@ -6,7 +6,7 @@ import { useVbenModal } from '@vben/common-ui';
 import { Alert, Button, message } from 'antdv-next';
 
 import { useVbenForm } from '#/adapter/form';
-import { LoginAppApi } from '#/api';
+import { DingtalkAppApi } from '#/api';
 import { apiURL } from '#/api/request';
 
 import { buildDingtalkCallbackBase } from './dingtalk-callback-base';
@@ -34,7 +34,7 @@ const [Modal, modalApi] = useVbenModal({
     modalApi.lock();
     try {
       const values = await formApi.getValues();
-      await LoginAppApi.dingtalk_callback_base_save({
+      await DingtalkAppApi.saveCallbackBase({
         callback_base_url: String(values.callback_base_url ?? '').trim(),
       });
       message.success('回调地址已保存');
@@ -46,7 +46,7 @@ const [Modal, modalApi] = useVbenModal({
   async onOpenChange(isOpen) {
     if (!isOpen) return;
     await formApi.reset();
-    const config = await LoginAppApi.dingtalk_callback_base();
+    const config = await DingtalkAppApi.callbackBase();
     await formApi.setValues(config);
   },
 });
