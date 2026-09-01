@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type {
+  MeilisearchInstallConfig,
   SoftwareApplication,
   SoftwareInstallation,
   SoftwareServer,
@@ -33,6 +34,11 @@ import { CredentialSelect } from '#/components/credential';
 import { createIdempotencyKey } from '#/management';
 
 import { useColumns, useGridFormSchema } from './data';
+import {
+  defaultMeilisearchConfig,
+  meilisearchConfigFrom,
+} from './meilisearch-config';
+import MeilisearchConfigForm from './meilisearch-config-form.vue';
 
 const servers = ref<SoftwareServer[]>([]);
 const applications = ref<SoftwareApplication[]>([]);
@@ -42,6 +48,7 @@ const submitting = ref(false);
 const initializeSearchKeyLoading = ref(false);
 const versionLoading = ref(false);
 const createOpen = ref(false);
+const editingInstallation = ref<SoftwareInstallation>();
 const actionOpen = ref(false);
 const stateColors: Record<string, string> = {
   failed: 'error',
@@ -68,14 +75,24 @@ const createForm = reactive({
   server_id: '',
 });
 const serviceConfig = reactive({ listen: '127.0.0.1', port: 0 });
+const meilisearchConfig = ref<MeilisearchInstallConfig>(
+  defaultMeilisearchConfig(),
+);
 const selectedApplication = computed(() =>
   applications.value.find((item) => item.id === createForm.application_id),
+);
+const selectedServer = computed(() =>
+  servers.value.find((item) => item.id === createForm.server_id),
 );
 watch(
   selectedApplication,
   (application, previousApplication) => {
-    if (application?.id !== previousApplication?.id) {
+    if (
+      application?.id !== previousApplication?.id &&
+      !editingInstallation.value
+    ) {
       createForm.admin_credential_code = '';
+      meilisearchConfig.value = defaultMeilisearchConfig();
     }
     if (application?.service_spec?.default_port) {
       serviceConfig.port = application.service_spec.default_port;
@@ -136,7 +153,40 @@ async function loadReferenceData() {
   applications.value = appPage.items;
 }
 
-async function create() {
+function openCreate() {
+  editingInstallation.value = undefined;
+  Object.assign(createForm, {
+    admin_credential_code: '',
+    application_id: '',
+    config_json: {},
+    instance_key: 'default',
+    server_id: '',
+  });
+  serviceConfig.listen = '127.0.0.1';
+  serviceConfig.port = 0;
+  meilisearchConfig.value = defaultMeilisearchConfig();
+  createOpen.value = true;
+}
+
+function openConfig(row: SoftwareInstallation) {
+  editingInstallation.value = row;
+  Object.assign(createForm, {
+    admin_credential_code:
+      typeof row.config_json.admin_credential_code === 'string'
+        ? row.config_json.admin_credential_code
+        : '',
+    application_id: row.application_id,
+    config_json: row.config_json,
+    instance_key: row.instance_key,
+    server_id: row.server_id,
+  });
+  serviceConfig.listen = String(row.config_json.listen ?? '127.0.0.1');
+  serviceConfig.port = Number(row.config_json.port ?? 0);
+  meilisearchConfig.value = meilisearchConfigFrom(row.config_json);
+  createOpen.value = true;
+}
+
+async function saveInstallation() {
   if (needsAdminCredential.value && !createForm.admin_credential_code.trim()) {
     message.warning(
       needsSearchCredential.value
@@ -147,18 +197,31 @@ async function create() {
   }
   creating.value = true;
   try {
-    await SoftwareApi.createInstallation({
-      ...createForm,
-      admin_credential_code: needsAdminCredential.value
-        ? createForm.admin_credential_code
-        : undefined,
-      config_json: {
-        listen: serviceConfig.listen,
-        port: serviceConfig.port || undefined,
-      },
-    });
+    const configJson = needsSearchCredential.value
+      ? { ...meilisearchConfig.value }
+      : {
+          listen: serviceConfig.listen,
+          port: serviceConfig.port || undefined,
+        };
+    await (editingInstallation.value
+      ? SoftwareApi.updateInstallationConfig(editingInstallation.value.id, {
+          admin_credential_code: needsAdminCredential.value
+            ? createForm.admin_credential_code
+            : undefined,
+          config_json: configJson,
+          expected_version: editingInstallation.value.version,
+        })
+      : SoftwareApi.createInstallation({
+          ...createForm,
+          admin_credential_code: needsAdminCredential.value
+            ? createForm.admin_credential_code
+            : undefined,
+          config_json: configJson,
+        }));
     createOpen.value = false;
-    message.success('安装实例已创建');
+    message.success(
+      editingInstallation.value ? '实例配置已保存' : '安装实例已创建',
+    );
     await gridApi.query();
   } finally {
     creating.value = false;
@@ -274,7 +337,7 @@ onMounted(loadReferenceData);
         <Button
           v-access:code="'software:installation:create'"
           type="primary"
-          @click="createOpen = true"
+          @click="openCreate"
         >
           <Plus class="size-5" />
           新建实例
@@ -333,6 +396,13 @@ onMounted(loadReferenceData);
           ]"
           :dropdown-actions="[
             {
+              auth: ['software:installation:create'],
+              icon: 'lucide:settings-2',
+              onClick: () => openConfig(row),
+              text: '安装配置',
+              disabled: Boolean(row.active_operation_id),
+            },
+            {
               auth: ['software:installation:reinstall'],
               icon: 'lucide:refresh-ccw',
               onClick: () => openAction(row, 'reinstall'),
@@ -383,33 +453,50 @@ onMounted(loadReferenceData);
     <Modal
       v-model:open="createOpen"
       :confirm-loading="creating"
-      title="新建安装实例"
-      @ok="create"
+      :title="editingInstallation ? '编辑安装配置' : '新建安装实例'"
+      :width="820"
+      @ok="saveInstallation"
     >
       <Form layout="vertical">
-        <FormItem label="服务器" required>
-          <Select
-            v-model:value="createForm.server_id"
-            :options="
-              servers.map((item) => ({
-                label: `${item.name} (${item.code})`,
-                value: item.id,
-              }))
-            "
-          />
-        </FormItem>
-        <FormItem label="应用" required>
-          <Select
-            v-model:value="createForm.application_id"
-            :options="
-              applications.map((item) => ({
-                label: `${item.name} (${item.code})`,
-                value: item.id,
-              }))
-            "
-          />
-        </FormItem>
-        <template v-if="selectedApplication?.application_kind === 'service'">
+        <div class="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+          <FormItem label="服务器" required>
+            <Select
+              v-model:value="createForm.server_id"
+              :disabled="Boolean(editingInstallation)"
+              :options="
+                servers.map((item) => ({
+                  label: `${item.name} (${item.code})`,
+                  value: item.id,
+                }))
+              "
+            />
+          </FormItem>
+          <FormItem label="应用" required>
+            <Select
+              v-model:value="createForm.application_id"
+              :disabled="Boolean(editingInstallation)"
+              :options="
+                applications.map((item) => ({
+                  label: `${item.name} (${item.code})`,
+                  value: item.id,
+                }))
+              "
+            />
+          </FormItem>
+        </div>
+        <Alert
+          v-if="selectedServer && (!selectedServer.os || !selectedServer.arch)"
+          class="mb-4"
+          message="该服务器尚未完成平台探测，安装前会自动探测；建议先在服务器页执行连接测试。"
+          show-icon
+          type="warning"
+        />
+        <template
+          v-if="
+            selectedApplication?.application_kind === 'service' &&
+            !needsSearchCredential
+          "
+        >
           <div class="grid grid-cols-[1fr_140px] gap-3">
             <FormItem label="监听地址" required>
               <Input v-model:value="serviceConfig.listen" />
@@ -424,6 +511,10 @@ onMounted(loadReferenceData);
             </FormItem>
           </div>
         </template>
+        <MeilisearchConfigForm
+          v-if="needsSearchCredential"
+          v-model="meilisearchConfig"
+        />
         <FormItem
           v-if="needsAdminCredential"
           :label="
@@ -461,7 +552,10 @@ onMounted(loadReferenceData);
           />
         </FormItem>
         <FormItem label="实例编码" required>
-          <Input v-model:value="createForm.instance_key" />
+          <Input
+            v-model:value="createForm.instance_key"
+            :disabled="Boolean(editingInstallation)"
+          />
         </FormItem>
       </Form>
     </Modal>

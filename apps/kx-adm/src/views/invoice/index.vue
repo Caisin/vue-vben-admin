@@ -10,6 +10,7 @@ import type {
   InvoiceItemView,
   InvoiceListQuery,
   InvoiceStatisticsView,
+  InvoiceStorageOption,
 } from '#/api/invoice';
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -25,6 +26,7 @@ import {
   Checkbox,
   message,
   Modal,
+  Select,
   Space,
   Statistic,
   Tag,
@@ -59,6 +61,8 @@ const canUploadInvoice = computed(() => hasAccessByCodes(['invoice:upload']));
 const uploadInputRef = ref<HTMLInputElement>();
 const uploadFolderInputRef = ref<HTMLInputElement>();
 const uploading = ref(false);
+const storageOptions = ref<InvoiceStorageOption[]>([]);
+const activeStorageCode = ref<string>();
 const exportLoading = ref<InvoiceExportScope>();
 const selectedRows = ref<InvoiceItemView[]>([]);
 const currentFilter = ref<InvoiceListQuery>({});
@@ -142,7 +146,14 @@ const [Grid, gridApi] = useVbenVxeGrid<InvoiceItemView>({
 const selectedCount = computed(() => selectedRows.value.length);
 
 onMounted(async () => {
-  filterOptions.value = await InvoiceApi.filterOptions();
+  const [filters, storages] = await Promise.all([
+    InvoiceApi.filterOptions(),
+    canUploadInvoice.value ? InvoiceApi.storageOptions() : Promise.resolve([]),
+  ]);
+  filterOptions.value = filters;
+  storageOptions.value = storages;
+  activeStorageCode.value =
+    storages.find((storage) => storage.is_default)?.code ?? storages[0]?.code;
   await gridApi.formApi.updateSchema(
     useFormSchema(canAdminInvoice.value, filterOptions.value),
   );
@@ -209,9 +220,16 @@ async function onFilesPicked(event: Event) {
   const files = [...(input.files ?? [])];
   input.value = '';
   if (files.length === 0) return;
+  if (!activeStorageCode.value) {
+    message.warning('请选择发票文件存储');
+    return;
+  }
   uploading.value = true;
   try {
-    const dispatch = await InvoiceApi.uploadFiles(files);
+    const dispatch = await InvoiceApi.uploadFiles(
+      files,
+      activeStorageCode.value,
+    );
     activeImport.value = {
       failed: dispatch.task_run.failed_count,
       id: dispatch.import_id,
@@ -381,7 +399,20 @@ function downloadBlob(blob: Blob, fileName: string) {
   >
     <header class="page-heading">
       <h1>发票管理</h1>
-      <Space>
+      <Space wrap>
+        <Select
+          v-if="canUploadInvoice"
+          v-model:value="activeStorageCode"
+          class="invoice-storage-select"
+          :disabled="uploading"
+          :options="
+            storageOptions.map((storage) => ({
+              label: `${storage.name} (${storage.storage_type})`,
+              value: storage.code,
+            }))
+          "
+          placeholder="选择发票存储"
+        />
         <input
           ref="uploadInputRef"
           accept=".pdf,.ofd,.xml,.jpg,.jpeg,.png,.bmp,.webp,.tiff"
@@ -401,6 +432,7 @@ function downloadBlob(blob: Blob, fileName: string) {
         />
         <Button
           v-if="canUploadInvoice"
+          :disabled="!activeStorageCode"
           :loading="uploading"
           type="primary"
           @click="triggerUpload"
@@ -412,6 +444,7 @@ function downloadBlob(blob: Blob, fileName: string) {
         </Button>
         <Button
           v-if="canUploadInvoice"
+          :disabled="!activeStorageCode"
           :loading="uploading"
           @click="triggerUploadFolder"
         >
@@ -568,6 +601,11 @@ function downloadBlob(blob: Blob, fileName: string) {
   margin: 0;
   font-size: 22px;
   font-weight: 600;
+}
+
+.invoice-storage-select {
+  width: 220px;
+  max-width: 100%;
 }
 
 .stats-bar {

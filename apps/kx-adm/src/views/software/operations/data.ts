@@ -42,7 +42,12 @@ export function useGridFormSchema(
 export function useColumns(): VxeTableGridColumns<SoftwareOperation> {
   return [
     { field: 'id', fixed: 'left', title: 'ID', width: 90 },
-    { field: 'action', minWidth: 110, title: '操作' },
+    {
+      field: 'action',
+      minWidth: 110,
+      slots: { default: 'action' },
+      title: '操作',
+    },
     { field: 'target_version', minWidth: 130, title: '目标版本' },
     {
       field: 'state',

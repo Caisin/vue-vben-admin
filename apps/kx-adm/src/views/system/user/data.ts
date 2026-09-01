@@ -100,7 +100,7 @@ export function useFormSchema(
         class: 'w-full',
         mode: 'multiple',
         optionFilterProp: 'label',
-        options: [],
+        treeData: [],
         placeholder: '请选择角色',
         showSearch: true,
       },

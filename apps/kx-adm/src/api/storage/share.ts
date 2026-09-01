@@ -52,6 +52,10 @@ export interface FileShareAccessView {
   view_count: number | string;
 }
 
+export interface FileSharePasswordView {
+  download_password: string;
+}
+
 export interface FileSharePageQuery extends PageQuery {
   keyword?: string;
   status?: 'active' | 'expired';
@@ -143,6 +147,8 @@ export const StorageFileShareApi = {
       `/storage/share/${id}/access`,
       { params },
     ),
+  revealPassword: (id: number | string) =>
+    requestClient.get<FileSharePasswordView>(`/storage/share/${id}/password`),
   downloadFile: (id: number | string, fileId: number | string) =>
     requestClient.download<Blob>(
       `/storage/share/${id}/files/${fileId}/content`,

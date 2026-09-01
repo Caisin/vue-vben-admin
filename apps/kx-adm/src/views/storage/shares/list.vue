@@ -17,7 +17,14 @@ import type {
 import { computed, onMounted, ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
-import { Copy, Download, ExternalLink, Eye, Plus } from '@vben/icons';
+import {
+  Copy,
+  Download,
+  ExternalLink,
+  Eye,
+  IconifyIcon,
+  Plus,
+} from '@vben/icons';
 import { downloadFileFromBlob } from '@vben/utils';
 
 import { useClipboard } from '@vueuse/core';
@@ -33,6 +40,8 @@ import {
   message,
   Modal,
   Pagination,
+  Popover,
+  QRCode,
   Segmented,
   Space,
   Switch,
@@ -436,8 +445,32 @@ function showGeneratedPassword(id: number | string, password?: string) {
   Modal.info({
     content: password,
     okText: '关闭',
-    title: '下载密码（仅本次显示）',
+    title: '下载密码',
   });
+}
+
+async function currentSharePassword(row: FileShareView) {
+  const cached = generatedPasswords.get(String(row.id));
+  if (cached) return cached;
+  const result = await StorageFileShareApi.revealPassword(row.id);
+  generatedPasswords.set(String(row.id), result.download_password);
+  return result.download_password;
+}
+
+async function showSharePassword(row: FileShareView) {
+  try {
+    const password = await currentSharePassword(row);
+    Modal.info({
+      content: password,
+      okText: '复制密码',
+      async onOk() {
+        await copyPasswordText(password, '下载密码已复制');
+      },
+      title: '当前下载密码',
+    });
+  } catch {
+    message.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
+  }
 }
 
 function configureBusinessContact() {
@@ -476,46 +509,46 @@ async function copyShareInfo(row: FileShareView) {
     await copyShareText(row);
     return;
   }
-  const password = generatedPasswords.get(String(row.id));
-  if (password) {
+  try {
+    const password = await currentSharePassword(row);
     await copyShareText(row, password);
-    return;
+  } catch {
+    message.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
   }
-  confirmPasswordReset(row, true);
 }
 
 async function copySharePassword(row: FileShareView) {
-  const password = generatedPasswords.get(String(row.id));
-  if (password) {
+  try {
+    const password = await currentSharePassword(row);
     await copyPasswordText(password, '下载密码已复制');
-    return;
+  } catch {
+    message.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
   }
-  confirmPasswordReset(row, false);
 }
 
-function confirmPasswordReset(row: FileShareView, includeLink: boolean) {
+function resetSharePassword(row: FileShareView) {
   Modal.confirm({
-    content:
-      '系统只保存密码哈希，无法读取原密码。继续后将生成新密码，旧密码立即失效。',
-    okText: includeLink ? '重置并复制分享信息' : '重置并复制密码',
+    content: '重置后旧密码立即失效，公开下载必须使用新密码。',
+    okText: '重置随机密码',
     async onOk() {
       const updated = await StorageFileShareApi.setDownloadPolicy(row.id, {
         clear_password: false,
-        download_password: undefined,
         download_limit: row.download_limit,
         download_start_at: row.download_start_at,
         reset_password: true,
       });
-      const nextPassword = updated.download_password;
-      if (!nextPassword) throw new Error('下载密码生成失败');
-      generatedPasswords.set(String(row.id), nextPassword);
-      if (editingShare.value?.id === row.id) initializeSettings(updated);
-      await (includeLink
-        ? copyShareText(updated, nextPassword)
-        : copyPasswordText(nextPassword, '新下载密码已复制'));
+      const password = updated.download_password;
+      if (!password) throw new Error('下载密码生成失败');
+      generatedPasswords.set(String(row.id), password);
+      if (editingShare.value?.id === row.id) {
+        editingShare.value = updated;
+        policyPasswordAction.value = 'keep';
+        policyCustomPassword.value = '';
+      }
       await gridApi.query();
+      showGeneratedPassword(row.id, password);
     },
-    title: '需要重新生成下载密码',
+    title: '确认重置下载密码',
   });
 }
 
@@ -773,7 +806,29 @@ function disablePastDate(current: Dayjs) {
               {{ Times.formatUnix(editingShare.expires_at) }}
             </DescriptionsItem>
             <DescriptionsItem label="下载密码">
-              {{ editingShare.password_required ? '已启用' : '未启用' }}
+              <Space size="small">
+                <span>
+                  {{ editingShare.password_required ? '已启用' : '未启用' }}
+                </span>
+                <Button
+                  v-if="editingShare.password_required"
+                  size="small"
+                  type="link"
+                  @click="showSharePassword(editingShare)"
+                >
+                  <Eye class="size-4" />
+                  查看密码
+                </Button>
+                <Button
+                  v-if="editingShare.password_required"
+                  danger
+                  size="small"
+                  type="link"
+                  @click="resetSharePassword(editingShare)"
+                >
+                  重置随机密码
+                </Button>
+              </Space>
             </DescriptionsItem>
             <DescriptionsItem label="创建时间">
               {{ Times.formatUnix(editingShare.created_at) }}
@@ -786,6 +841,21 @@ function disablePastDate(current: Dayjs) {
                     <Copy class="size-4" />
                     复制分享信息
                   </Button>
+                  <Popover placement="bottomRight" trigger="click">
+                    <template #content>
+                      <div class="share-qrcode">
+                        <QRCode
+                          :size="220"
+                          :value="absoluteUrl(editingShare.share_url)"
+                        />
+                        <span>手机扫码查看分享</span>
+                      </div>
+                    </template>
+                    <Button size="small">
+                      <IconifyIcon class="size-4" icon="lucide:qr-code" />
+                      二维码
+                    </Button>
+                  </Popover>
                   <Button
                     :href="editingShare.share_url"
                     rel="noopener noreferrer"
@@ -1174,6 +1244,23 @@ function disablePastDate(current: Dayjs) {
               <Copy class="size-4" />
             </Button>
           </Tooltip>
+          <Popover placement="bottomRight" trigger="click">
+            <template #content>
+              <div class="share-qrcode">
+                <QRCode :size="200" :value="absoluteUrl(row.share_url)" />
+                <span>手机扫码查看分享</span>
+              </div>
+            </template>
+            <Button
+              aria-label="查看分享二维码"
+              size="small"
+              title="查看分享二维码"
+              type="text"
+              @click.stop
+            >
+              <IconifyIcon class="size-4" icon="lucide:qr-code" />
+            </Button>
+          </Popover>
         </div>
       </template>
 
@@ -1285,6 +1372,14 @@ function disablePastDate(current: Dayjs) {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.share-qrcode {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
 }
 
 .share-settings {

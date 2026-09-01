@@ -141,6 +141,15 @@ const quickProfile = computed(() =>
     ? (props.profile ?? defaultProfile(quickKind.value))
     : undefined,
 );
+const accessKeyLabels = computed(() => {
+  if (quickProfile.value === 'tencent') {
+    return { id: 'SecretId', secret: 'SecretKey' };
+  }
+  if (['aliyun', 's3', 'volcengine'].includes(quickProfile.value ?? '')) {
+    return { id: 'Access Key ID', secret: 'Secret Access Key' };
+  }
+  return { id: 'AppID / AppKey', secret: 'AppSecret / SK' };
+});
 
 const quickPayloadType = computed(() => {
   const kind = quickKind.value;
@@ -340,10 +349,10 @@ defineExpose({ reload: loadCredentials });
           <Input v-model:value="quickForm.name" />
         </FormItem>
         <template v-if="quickPayloadType === 'access_key'">
-          <FormItem label="AppID / AppKey" required>
+          <FormItem :label="accessKeyLabels.id" required>
             <Input v-model:value="quickForm.accessKeyId" />
           </FormItem>
-          <FormItem label="AppSecret / SK" required>
+          <FormItem :label="accessKeyLabels.secret" required>
             <InputPassword v-model:value="quickForm.secretAccessKey" />
           </FormItem>
         </template>

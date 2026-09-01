@@ -3,12 +3,14 @@ import type { SystemSettings } from '#/api/system/settings';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  applyPublicSystemSettings,
   buildPublicSystemSettingsPreferences,
   initPublicSystemSettings,
 } from './system-settings-init';
 
-const { publicSettings, updatePreferences } = vi.hoisted(() => ({
+const { publicSettings, storageUrl, updatePreferences } = vi.hoisted(() => ({
   publicSettings: vi.fn(),
+  storageUrl: vi.fn(),
   updatePreferences: vi.fn(),
 }));
 
@@ -24,6 +26,10 @@ vi.mock('#/api/system/settings', () => ({
   SystemSettingsApi: {
     public: publicSettings,
   },
+}));
+
+vi.mock('#/api/storage', () => ({
+  StorageFileApi: { url: storageUrl },
 }));
 
 const baseSettings: SystemSettings = {
@@ -44,6 +50,7 @@ describe('public system settings init', () => {
   beforeEach(() => {
     updatePreferences.mockClear();
     publicSettings.mockReset();
+    storageUrl.mockReset();
   });
 
   it('maps public settings to app name and light/dark logo preferences', async () => {
@@ -77,6 +84,32 @@ describe('public system settings init', () => {
     expect(updatePreferences).toHaveBeenCalledWith({
       app: { name: 'kx-adm' },
       logo: { source: '/logo.png', sourceDark: '/logo.png' },
+    });
+  });
+
+  it('does not use a storage file id as an image URL before login', () => {
+    expect(
+      buildPublicSystemSettingsPreferences({
+        ...baseSettings,
+        login_logo_url: '107',
+      }),
+    ).toEqual({ app: { name: 'kx-adm' } });
+  });
+
+  it('resolves a storage file id after login', async () => {
+    storageUrl.mockResolvedValueOnce('blob:http://localhost/logo');
+    await applyPublicSystemSettings(
+      { ...baseSettings, login_logo_url: '107' },
+      true,
+    );
+
+    expect(storageUrl).toHaveBeenCalledWith('107');
+    expect(updatePreferences).toHaveBeenLastCalledWith({
+      app: { name: 'kx-adm' },
+      logo: {
+        source: 'blob:http://localhost/logo',
+        sourceDark: 'blob:http://localhost/logo',
+      },
     });
   });
 });

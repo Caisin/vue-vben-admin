@@ -190,7 +190,7 @@ async function saveSettings() {
     }
     const saved = await SystemSettingsApi.save(form);
     assignSettings(saved);
-    applyPublicSystemSettings(saved);
+    await applyPublicSystemSettings(saved, true);
     message.success('系统设置已保存');
   } finally {
     saving.value = false;

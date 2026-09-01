@@ -29,6 +29,7 @@ import { message } from 'antdv-next';
 
 import { USER_OVERVIEW_PATH } from '#/router/routes/core';
 import { useAuthStore, useNotifyInboxStore } from '#/store';
+import { loadPublicSystemSettings } from '#/system-settings-init';
 import { Times } from '#/times';
 import LoginForm from '#/views/_core/authentication/login.vue';
 
@@ -188,6 +189,7 @@ onBeforeMount(() => {
 });
 
 onMounted(() => {
+  void loadPublicSystemSettings(true);
   refreshInbox();
   inboxPollTimer = window.setInterval(refreshInbox, 30_000);
 });

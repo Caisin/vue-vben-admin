@@ -6,13 +6,15 @@ import type {
   SoftwareInstallation,
   SoftwareVersion,
 } from '#/api/software';
+import type { FileInputValue } from '#/components/file-picker/file-ref';
 
-import { nextTick, reactive, ref } from 'vue';
+import { nextTick, reactive, ref, watch } from 'vue';
 
 import { Page } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
 import {
+  Alert,
   Button,
   Drawer,
   Form,
@@ -26,6 +28,8 @@ import {
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
 import { SoftwareApi } from '#/api/software';
+import { FileUrlInput } from '#/components/file-picker';
+import { normalizeFileId } from '#/components/file-picker/file-ref';
 
 import {
   providerOptions,
@@ -41,6 +45,12 @@ const editing = ref<SoftwareApplication>();
 const detailApplication = ref<SoftwareApplication>();
 const detailLoading = ref(false);
 const sourceJson = ref('{}');
+const artifactOpen = ref(false);
+const artifactSaving = ref(false);
+const artifactVersion = ref<SoftwareVersion>();
+const artifactFile = ref<FileInputValue>('');
+const artifactPlatform = ref('linux');
+const artifactArch = ref('x86_64');
 const form = reactive<ApplicationWrite>({
   code: '',
   install_root: '/opt/kx',
@@ -165,15 +175,19 @@ function edit(row?: SoftwareApplication) {
 
 async function save() {
   let source: Record<string, unknown>;
+  if (form.provider === 'meilisearch') {
+    source = { owner: 'meilisearch', repo: 'meilisearch' };
+  } else {
   try {
     const parsed = JSON.parse(sourceJson.value || '{}') as unknown;
     if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
       throw new TypeError('source must be an object');
     }
     source = parsed as Record<string, unknown>;
-  } catch {
-    message.error('来源配置必须是有效的 JSON 对象');
-    return;
+    } catch {
+      message.error('来源配置必须是有效的 JSON 对象');
+      return;
+    }
   }
   saving.value = true;
   try {
@@ -188,6 +202,49 @@ async function save() {
     saving.value = false;
   }
 }
+
+function openArtifactUpload(version: SoftwareVersion) {
+  artifactVersion.value = version;
+  artifactFile.value = '';
+  artifactPlatform.value = 'linux';
+  artifactArch.value = 'x86_64';
+  artifactOpen.value = true;
+}
+
+async function uploadArtifact() {
+  const application = detailApplication.value;
+  const version = artifactVersion.value;
+  const fileId = normalizeFileId(artifactFile.value);
+  if (!application || !version || !fileId) {
+    message.warning('请选择已上传的版本文件');
+    return;
+  }
+  artifactSaving.value = true;
+  try {
+    await SoftwareApi.uploadVersionArtifact(application.id, version.id, {
+      arch: artifactArch.value,
+      file_id: fileId,
+      platform: artifactPlatform.value,
+    });
+    artifactOpen.value = false;
+    message.success('上传制品已设为该平台当前安装来源');
+  } finally {
+    artifactSaving.value = false;
+  }
+}
+
+watch(
+  () => form.provider,
+  (provider) => {
+    if (provider === 'meilisearch') {
+      sourceJson.value = JSON.stringify(
+        { owner: 'meilisearch', repo: 'meilisearch' },
+        null,
+        2,
+      );
+    }
+  },
+);
 
 async function refreshVersions(row: SoftwareApplication) {
   await SoftwareApi.refreshVersions(row.id);
@@ -288,7 +345,14 @@ async function showDetail(row: SoftwareApplication) {
             :options="providerOptions"
           />
         </FormItem>
-        <FormItem label="来源配置 JSON">
+        <Alert
+          v-if="form.provider === 'meilisearch'"
+          class="mb-4"
+          message="版本固定从 Meilisearch 官方 GitHub Releases 获取；网络受限时可在版本详情上传对应平台二进制。"
+          show-icon
+          type="info"
+        />
+        <FormItem v-else label="来源配置 JSON">
           <Input.TextArea
             v-model:value="sourceJson"
             :rows="7"
@@ -312,7 +376,18 @@ async function showDetail(row: SoftwareApplication) {
       @close="detailApplication = undefined"
     >
       <div class="flex flex-col gap-5">
-        <VersionGrid table-title="已发现版本" />
+        <VersionGrid table-title="已发现版本">
+          <template #operation="{ row }">
+            <Button
+              v-if="detailApplication?.provider === 'meilisearch'"
+              size="small"
+              type="link"
+              @click="openArtifactUpload(row)"
+            >
+              上传制品
+            </Button>
+          </template>
+        </VersionGrid>
         <InstallationGrid table-title="服务器安装分布">
           <template #server="{ row }">
             <div class="font-medium">{{ row.server_name }}</div>
@@ -329,5 +404,48 @@ async function showDetail(row: SoftwareApplication) {
         </InstallationGrid>
       </div>
     </Drawer>
+
+    <Modal
+      v-model:open="artifactOpen"
+      :confirm-loading="artifactSaving"
+      title="上传平台制品"
+      @ok="uploadArtifact"
+    >
+      <Form layout="vertical">
+        <Alert
+          class="mb-4"
+          :message="`为 ${artifactVersion?.display_version ?? '-'} 登记浏览器上传文件；安装时优先使用该文件。`"
+          show-icon
+          type="info"
+        />
+        <div class="grid grid-cols-2 gap-3">
+          <FormItem label="目标平台" required>
+            <Select
+              v-model:value="artifactPlatform"
+              :options="[
+                { label: 'Linux', value: 'linux' },
+                { label: 'macOS', value: 'darwin' },
+              ]"
+            />
+          </FormItem>
+          <FormItem label="目标架构" required>
+            <Select
+              v-model:value="artifactArch"
+              :options="[
+                { label: 'x86_64 / AMD64', value: 'x86_64' },
+                { label: 'ARM64 / AArch64', value: 'aarch64' },
+              ]"
+            />
+          </FormItem>
+        </div>
+        <FormItem label="版本文件" required>
+          <FileUrlInput
+            v-model="artifactFile"
+            button-text="选择或上传文件"
+            placeholder="从文件库选择已下载的官方 Meilisearch 二进制"
+          />
+        </FormItem>
+      </Form>
+    </Modal>
   </Page>
 </template>

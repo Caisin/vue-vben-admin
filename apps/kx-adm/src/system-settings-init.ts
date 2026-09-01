@@ -4,14 +4,31 @@ import { computed, readonly, ref } from 'vue';
 
 import { preferences, updatePreferences } from '@vben/preferences';
 
+import { StorageFileApi } from '#/api/storage';
 import { SystemSettingsApi } from '#/api/system/settings';
 
 const settings = ref<SystemSettings>();
+const resolvedLogo = ref('');
+const resolvedSloganImage = ref('');
 let loadPromise: Promise<SystemSettings | undefined> | undefined;
 
 function trimText(value: string | undefined) {
   const text = value?.trim();
   return text || undefined;
+}
+
+function isImageUrl(value: string | undefined) {
+  return Boolean(value && /^(?:blob:|data:|https?:\/\/|\/)/i.test(value));
+}
+
+function configuredLogo(value: SystemSettings | undefined) {
+  const logo = trimText(value?.login_logo_url);
+  return isImageUrl(logo) ? logo : resolvedLogo.value || undefined;
+}
+
+function resolveStoredImage(value: string) {
+  if (!value.trim()) return Promise.resolve('');
+  return isImageUrl(value) ? Promise.resolve(value) : StorageFileApi.url(value);
 }
 
 function resolveDisplayName(value: SystemSettings | undefined) {
@@ -31,11 +48,11 @@ function resolveSystemName(value: SystemSettings | undefined) {
 }
 
 function resolveLogo(value: SystemSettings | undefined) {
-  return trimText(value?.login_logo_url) ?? preferences.logo.source;
+  return configuredLogo(value) ?? preferences.logo.source;
 }
 
 export function buildPublicSystemSettingsPreferences(value: SystemSettings) {
-  const logo = trimText(value.login_logo_url);
+  const logo = configuredLogo(value);
 
   return {
     app: {
@@ -52,16 +69,32 @@ export function buildPublicSystemSettingsPreferences(value: SystemSettings) {
   };
 }
 
-export function applyPublicSystemSettings(value: SystemSettings) {
+export async function applyPublicSystemSettings(
+  value: SystemSettings,
+  resolveStoredFiles = false,
+) {
+  for (const current of [resolvedLogo.value, resolvedSloganImage.value]) {
+    if (current.startsWith('blob:')) URL.revokeObjectURL(current);
+  }
   settings.value = value;
+  resolvedLogo.value = '';
+  resolvedSloganImage.value = '';
+  if (resolveStoredFiles) {
+    const [logo, slogan] = await Promise.allSettled([
+      resolveStoredImage(value.login_logo_url),
+      resolveStoredImage(value.login_banner_url),
+    ]);
+    if (logo.status === 'fulfilled') resolvedLogo.value = logo.value;
+    if (slogan.status === 'fulfilled') resolvedSloganImage.value = slogan.value;
+  }
   updatePreferences(buildPublicSystemSettingsPreferences(value));
 }
 
-export async function loadPublicSystemSettings() {
+export async function loadPublicSystemSettings(resolveStoredFiles = false) {
   if (!loadPromise) {
     loadPromise = SystemSettingsApi.public()
-      .then((value) => {
-        applyPublicSystemSettings(value);
+      .then(async (value) => {
+        await applyPublicSystemSettings(value);
         return value;
       })
       .catch((error) => {
@@ -72,7 +105,11 @@ export async function loadPublicSystemSettings() {
         loadPromise = undefined;
       });
   }
-  return loadPromise;
+  const value = await loadPromise;
+  if (resolveStoredFiles && value) {
+    await applyPublicSystemSettings(value, true);
+  }
+  return value;
 }
 
 export const initPublicSystemSettings = loadPublicSystemSettings;
@@ -89,5 +126,8 @@ export const systemSettingsState = {
     () => trimText(settings.value?.login_title) ?? 'KX 管理后台',
   ),
   settings: publicSystemSettings,
-  sloganImage: computed(() => trimText(settings.value?.login_banner_url) ?? ''),
+  sloganImage: computed(() => {
+    const image = trimText(settings.value?.login_banner_url);
+    return isImageUrl(image) ? image : resolvedSloganImage.value;
+  }),
 };

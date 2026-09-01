@@ -87,6 +87,13 @@ export function useVersionColumns(): VxeTableGridColumns<SoftwareVersion> {
       minWidth: 170,
       title: '发布时间',
     },
+    {
+      align: 'right',
+      field: 'operation',
+      slots: { default: 'operation' },
+      title: '制品',
+      width: 110,
+    },
   ];
 }
 

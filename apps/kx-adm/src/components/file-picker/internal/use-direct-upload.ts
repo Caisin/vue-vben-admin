@@ -8,12 +8,13 @@ import type { FileUploadView } from '#/api/storage';
 
 import { computed, ref } from 'vue';
 
-import { message } from 'antdv-next';
+import { message, notification } from 'antdv-next';
 
 import { StorageFileApi } from '#/api/storage';
 
 import { acceptsBrowserFile } from '../file-type';
 import { md5File } from './md5';
+import { objectStorageErrorMessage, uploadErrorMessage } from './upload-error';
 
 interface DirectUploadOptions {
   accept: () => string | string[] | undefined;
@@ -67,7 +68,15 @@ function putPresignedObject(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(xhr.getResponseHeader('ETag') ?? undefined);
       } else {
-        reject(new Error(`直传对象存储失败: HTTP ${xhr.status}`));
+        reject(
+          new Error(
+            objectStorageErrorMessage(
+              xhr.status,
+              xhr.statusText,
+              xhr.responseText,
+            ),
+          ),
+        );
       }
     });
     xhr.addEventListener('error', () =>
@@ -195,11 +204,13 @@ export function useDirectUpload(options: DirectUploadOptions) {
       });
       requestOptions.onSuccess?.(result);
     } catch (error) {
-      const normalized =
-        error instanceof Error ? error : new Error(String(error));
-      message.error(
-        `${normalized.message}；不支持直传的 storage 请切换服务端上传`,
-      );
+      const detail = uploadErrorMessage(error);
+      const normalized = error instanceof Error ? error : new Error(detail);
+      notification.error({
+        description: `${detail}；不支持直传的 storage 请切换服务端上传`,
+        duration: 0,
+        title: `本地直传失败：${relativePathOf(requestOptions.file as File)}`,
+      });
       requestOptions.onError?.(normalized);
     }
   };

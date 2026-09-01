@@ -32,11 +32,6 @@ interface StorageConfigFormValues extends StorageConfigWrite {
   code?: string;
 }
 
-interface SelectOption {
-  label: string;
-  value: string;
-}
-
 const router = useRouter();
 const editingRow = ref<StorageConfigView>();
 const storageTypes = ref<StorageTypeSpec[]>([]);
@@ -71,25 +66,6 @@ function credentialRequirementLabel(storage_type: unknown) {
     : '需要 active 兼容凭证';
 }
 
-function compatibleCredentials(storage_type: unknown) {
-  const spec = specOf(storage_type);
-  const expected = new Set(
-    (spec?.credential_specs ?? []).map((item) => specKey(item)),
-  );
-  if (!spec?.requires_credentials || expected.size === 0) return [];
-  return credentials.value.filter(
-    (item) =>
-      item.state === 'active' && expected.has(`${item.kind}:${item.profile}`),
-  );
-}
-
-function credentialOptions(storage_type: unknown): SelectOption[] {
-  return compatibleCredentials(storage_type).map((item) => ({
-    label: `${item.name} (${item.code}) · ${item.kind}/${item.profile}`,
-    value: item.code,
-  }));
-}
-
 function selectedCredentialLabel(code?: null | string) {
   if (!code) return '';
   const item = credentials.value.find((credential) => credential.code === code);
@@ -119,16 +95,17 @@ function showCredentials(values: Record<string, unknown>) {
 
 async function applyStorageType(storageType: unknown, resetCredential = true) {
   currentStorageType.value = String(storageType ?? '');
-  const options = credentialOptions(storageType);
+  const credentialSpec = specOf(storageType)?.credential_specs?.[0];
   await formApi.updateSchema([
     {
       componentProps: {
         allowClear: true,
         class: 'w-full',
-        notFoundContent: '没有 active 且 kind/profile 兼容的凭证',
-        options,
+        createKind: credentialSpec?.kind as CredentialKind | undefined,
+        kind: credentialSpec?.kind as CredentialKind | undefined,
         placeholder: '选择凭证中心的 active 凭证',
-        showSearch: true,
+        profile: credentialSpec?.profile,
+        state: 'active',
       },
       fieldName: 'credential_code',
     },
@@ -247,14 +224,11 @@ const [Form, formApi] = useVbenForm<StorageConfigFormValues>({
       label: '虚拟主机寻址',
     },
     {
-      component: 'Select',
+      component: 'CredentialSelect',
       componentProps: {
         allowClear: true,
         class: 'w-full',
-        notFoundContent: '没有 active 且 kind/profile 兼容的凭证',
-        options: [],
         placeholder: '选择凭证中心的 active 凭证',
-        showSearch: true,
       },
       dependencies: { show: showCredentials, triggerFields: ['storage_type'] },
       fieldName: 'credential_code',

@@ -119,7 +119,7 @@ async function loadRoles() {
       {
         componentProps: {
           loading: loadingRoles.value,
-          options: roles.value.map((role) => ({
+          treeData: roles.value.map((role) => ({
             label: `${role.name}（${role.id}${role.status === 0 ? '，停用' : ''}）`,
             value: role.id,
           })),

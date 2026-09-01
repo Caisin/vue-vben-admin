@@ -104,11 +104,57 @@ export interface SoftwareVersion {
   state: SoftwareState;
 }
 
+export interface SoftwareArtifact {
+  arch: string;
+  artifact_url: string;
+  checksum: string;
+  checksum_kind: string;
+  id: number | string;
+  immutable_ref: string;
+  is_current: boolean;
+  metadata: Record<string, unknown>;
+  platform: string;
+  size_bytes: number | string;
+  version_id: number | string;
+}
+
+export interface MeilisearchInstallConfig {
+  db_path: string;
+  dump_dir: string;
+  env: 'development' | 'production';
+  experimental_enable_metrics: boolean;
+  experimental_max_number_of_batched_tasks?: number;
+  experimental_reduce_indexing_memory_usage: boolean;
+  http_payload_size_limit: string;
+  ignore_dump_if_db_exists: boolean;
+  ignore_missing_dump: boolean;
+  ignore_missing_snapshot: boolean;
+  ignore_snapshot_if_db_exists: boolean;
+  import_dump?: string;
+  import_snapshot?: string;
+  listen: string;
+  log_level: 'DEBUG' | 'ERROR' | 'INFO' | 'OFF' | 'TRACE' | 'WARN';
+  max_indexing_memory?: string;
+  max_indexing_threads?: number;
+  no_analytics: boolean;
+  port: number;
+  schedule_snapshot: boolean | number;
+  snapshot_dir: string;
+  ssl_auth_path?: string;
+  ssl_cert_path?: string;
+  ssl_key_path?: string;
+  ssl_ocsp_path?: string;
+  ssl_require_auth: boolean;
+  ssl_resumption: boolean;
+  ssl_tickets: boolean;
+}
+
 export interface SoftwareInstallation {
   active_operation_id?: null | number | string;
   application_code: string;
   application_id: number | string;
   application_name: string;
+  config_json: Record<string, unknown>;
   available_revision?: null | string;
   available_version?: null | string;
   desired_version: string;
@@ -137,6 +183,12 @@ export interface InstallationCreate {
   server_id: number | string;
 }
 
+export interface InstallationConfigWrite {
+  admin_credential_code?: string;
+  config_json: Record<string, unknown>;
+  expected_version: number | string;
+}
+
 export interface SoftwareOperation {
   action: string;
   application_id: number | string;
@@ -145,10 +197,13 @@ export interface SoftwareOperation {
   id: number | string;
   installation_id: number | string;
   state: OperationState;
+  stage: string;
   stderr_tail: string;
   stdout_tail: string;
   step: number;
   target_version: string;
+  finished_at: number | string;
+  started_at: number | string;
 }
 
 export interface OperationWrite {
@@ -173,6 +228,14 @@ export const SoftwareApi = {
     requestClient.post<SoftwareApplication>('/software/applications', data),
   createInstallation: (data: InstallationCreate) =>
     requestClient.post<SoftwareInstallation>('/software/installations', data),
+  updateInstallationConfig: (
+    id: number | string,
+    data: InstallationConfigWrite,
+  ) =>
+    requestClient.put<SoftwareInstallation>(
+      `/software/installations/${id}/config`,
+      data,
+    ),
   deleteInstallation: (id: number | string) =>
     requestClient.delete<boolean>(`/software/installations/${id}`),
   createServer: (data: ServerWrite) =>
@@ -219,6 +282,15 @@ export const SoftwareApi = {
   refreshVersions: (id: number | string) =>
     requestClient.post<SoftwareVersion[]>(
       `/software/applications/${id}/versions/refresh`,
+    ),
+  uploadVersionArtifact: (
+    applicationId: number | string,
+    versionId: number | string,
+    data: { arch: string; file_id: number | string; platform: string },
+  ) =>
+    requestClient.post<SoftwareArtifact>(
+      `/software/applications/${applicationId}/versions/${versionId}/artifacts`,
+      data,
     ),
   servers: (params?: PageQuery & { keyword?: string }) =>
     requestClient.get<Page<SoftwareServer>>('/software/servers', { params }),

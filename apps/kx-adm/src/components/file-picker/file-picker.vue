@@ -22,6 +22,7 @@ import {
   Input,
   InputSearch,
   message,
+  notification,
   Pagination,
   Progress,
   Select,
@@ -50,6 +51,7 @@ import {
   supportsDirectUpload,
   uploadModeOptions,
 } from './internal/file-picker-options';
+import { uploadErrorMessage } from './internal/upload-error';
 import { useDirectUpload } from './internal/use-direct-upload';
 
 const props = withDefaults(defineProps<FilePickerProps>(), {
@@ -563,6 +565,18 @@ async function uploadServerFile(file: File) {
   return result;
 }
 
+function showUploadError(
+  mode: '服务端上传' | '本地直传',
+  fileName: string,
+  error: unknown,
+) {
+  notification.error({
+    description: uploadErrorMessage(error),
+    duration: 0,
+    title: `${mode}失败：${fileName}`,
+  });
+}
+
 const serverUploadRequest: NonNullable<UploadProps['customRequest']> = async (
   options,
 ) => {
@@ -575,9 +589,10 @@ const serverUploadRequest: NonNullable<UploadProps['customRequest']> = async (
     const result = await uploadServerFile(options.file as File);
     options.onSuccess?.(result);
   } catch (error) {
-    options.onError?.(
-      error instanceof Error ? error : new Error(String(error)),
-    );
+    const normalized =
+      error instanceof Error ? error : new Error(uploadErrorMessage(error));
+    showUploadError('服务端上传', (options.file as File).name, error);
+    options.onError?.(normalized);
   }
 };
 
@@ -605,7 +620,15 @@ async function dropFiles(event: DragEvent) {
         : uploadServerFiles;
     await upload(files);
   } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error));
+    const mode =
+      direct_upload_supported.value && active_upload_mode.value === 'direct'
+        ? '本地直传'
+        : '服务端上传';
+    showUploadError(
+      mode,
+      files.length === 1 ? (files[0]?.name ?? '文件') : '拖拽文件',
+      error,
+    );
   }
 }
 

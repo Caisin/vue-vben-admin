@@ -123,6 +123,13 @@ export interface InvoiceImportDispatchView {
   total: number | string;
 }
 
+export interface InvoiceStorageOption {
+  code: string;
+  is_default: boolean;
+  name: string;
+  storage_type: string;
+}
+
 export interface InvoiceStatisticsView {
   amount_tax_total: string;
   needs_review_count: number | string;
@@ -222,8 +229,11 @@ export const InvoiceApi = {
     plaintextRequestClient.download<Blob>(
       `/invoice/imports/${importId}/items/${itemId}/content`,
     ),
-  uploadFiles: (files: File[]) => {
+  storageOptions: () =>
+    requestClient.get<InvoiceStorageOption[]>('/invoice/storage-options'),
+  uploadFiles: (files: File[], storageCode: string) => {
     const formData = new FormData();
+    formData.append('storage_code', storageCode);
     for (const file of files) formData.append('files', file, file.name);
     return plaintextRequestClient.post<InvoiceImportDispatchView>(
       '/invoice/files',
