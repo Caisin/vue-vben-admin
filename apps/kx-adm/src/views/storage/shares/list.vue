@@ -3,7 +3,12 @@ import type { MenuProps } from 'antdv-next';
 import type { Dayjs } from 'dayjs';
 
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
-import type { FileShareAccessView, FileShareView } from '#/api/storage';
+import type {
+  FileShareAccessView,
+  FileShareFileView,
+  FileShareView,
+} from '#/api/storage';
+import type { BusinessContact } from '#/auth';
 import type {
   FilePickerExpose,
   SelectedStorageFile,
@@ -12,11 +17,15 @@ import type {
 import { computed, onMounted, ref } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
-import { Copy, Plus } from '@vben/icons';
+import { Copy, Download, ExternalLink, Eye, Plus } from '@vben/icons';
+import { downloadFileFromBlob } from '@vben/utils';
 
+import { useClipboard } from '@vueuse/core';
 import {
   Button,
   DatePicker,
+  Descriptions,
+  DescriptionsItem,
   Drawer,
   Dropdown,
   Input,
@@ -28,6 +37,8 @@ import {
   Space,
   Switch,
   Table,
+  TabPane,
+  Tabs,
   Tag,
   Tooltip,
 } from 'antdv-next';
@@ -64,6 +75,7 @@ const createImmediate = ref(true);
 const createUnlimited = ref(true);
 const createDownloadLimit = ref(10);
 const createPasswordRequired = ref(false);
+const createPassword = ref('');
 const createShowBusinessContact = ref(false);
 const businessContactAvailable = ref(false);
 const editingShare = ref<FileShareView>();
@@ -72,13 +84,20 @@ const policyStart = ref<Dayjs>();
 const policyImmediate = ref(true);
 const policyUnlimited = ref(true);
 const policyLimit = ref(10);
-const policyPasswordAction = ref<'clear' | 'keep' | 'reset'>('keep');
-const accessOpen = ref(false);
+const policyPasswordAction = ref<'clear' | 'custom' | 'keep' | 'reset'>('keep');
+const policyCustomPassword = ref('');
+const detailOpen = ref(false);
+const detailTab = ref('overview');
+const settingsSaving = ref(false);
+const addDownloadCount = ref(10);
+const editShowBusinessContact = ref(false);
+const editBusinessContact = ref<BusinessContact>(emptyBusinessContact());
 const accessLoading = ref(false);
-const accessShare = ref<FileShareView>();
 const accessRows = ref<FileShareAccessView[]>([]);
 const accessPage = ref(1);
 const accessTotal = ref(0);
+const { copy: copyText } = useClipboard({ legacy: true });
+const generatedPasswords = new Map<string, string>();
 
 const expiryOptions = [
   { label: '+7 天', value: 7 },
@@ -137,6 +156,15 @@ const [CreateModal, createModalApi] = useVbenModal({
       message.warning('下载次数必须大于 0');
       return;
     }
+    const downloadPassword = createPassword.value.trim();
+    if (
+      createPasswordRequired.value &&
+      downloadPassword &&
+      !validDownloadPassword(downloadPassword)
+    ) {
+      message.warning('下载密码需要 6–32 个字符');
+      return;
+    }
     createModalApi.lock();
     try {
       const created = await StorageFileShareApi.create({
@@ -145,79 +173,19 @@ const [CreateModal, createModalApi] = useVbenModal({
         file_name: createTitle.value.trim() || undefined,
         download_start_at: downloadStartAt,
         download_limit: downloadLimit,
+        download_password:
+          createPasswordRequired.value && downloadPassword
+            ? downloadPassword
+            : undefined,
         password_required: createPasswordRequired.value,
         show_business_contact: createShowBusinessContact.value,
       });
       message.success('分享链接已创建');
       createModalApi.close();
       await gridApi.query();
-      showGeneratedPassword(created.download_password);
+      showGeneratedPassword(created.id, created.download_password);
     } finally {
       createModalApi.lock(false);
-    }
-  },
-});
-
-const [PolicyModal, policyModalApi] = useVbenModal({
-  class: 'w-[min(520px,calc(100vw-20px))]',
-  connectedComponent: ContentModal,
-  destroyOnClose: true,
-  title: '下载策略',
-  async onConfirm() {
-    const share = editingShare.value;
-    if (!share) return;
-    const startAt = policyImmediate.value ? 0 : policyStart.value?.unix();
-    if (
-      startAt === undefined ||
-      startAt < 0 ||
-      (startAt > 0 && startAt >= Number(share.expires_at))
-    ) {
-      message.warning('开始下载时间必须早于过期时间');
-      return;
-    }
-    const limit = policyUnlimited.value ? 0 : policyLimit.value;
-    if (limit > 0 && limit < Number(share.download_count)) {
-      message.warning('总下载次数不能小于已下载次数');
-      return;
-    }
-    policyModalApi.lock();
-    try {
-      const updated = await StorageFileShareApi.setDownloadPolicy(share.id, {
-        clear_password: policyPasswordAction.value === 'clear',
-        download_limit: limit,
-        download_start_at: startAt,
-        reset_password: policyPasswordAction.value === 'reset',
-      });
-      message.success('下载策略已更新');
-      policyModalApi.close();
-      await gridApi.query();
-      showGeneratedPassword(updated.download_password);
-    } finally {
-      policyModalApi.lock(false);
-    }
-  },
-});
-
-const [ExpiryModal, expiryModalApi] = useVbenModal({
-  class: 'w-[min(480px,calc(100vw-20px))]',
-  connectedComponent: ContentModal,
-  destroyOnClose: true,
-  title: '修改过期时间',
-  async onConfirm() {
-    const share = editingShare.value;
-    const expiresAt = editingExpiry.value?.unix();
-    if (!share || !expiresAt || expiresAt <= dayjs().unix()) {
-      message.warning('请选择未来的过期时间');
-      return;
-    }
-    expiryModalApi.lock();
-    try {
-      await StorageFileShareApi.setExpiry(share.id, expiresAt);
-      message.success('过期时间已更新');
-      expiryModalApi.close();
-      await gridApi.query();
-    } finally {
-      expiryModalApi.lock(false);
     }
   },
 });
@@ -276,6 +244,7 @@ async function openCreate() {
   createUnlimited.value = true;
   createDownloadLimit.value = 10;
   createPasswordRequired.value = false;
+  createPassword.value = '';
   createShowBusinessContact.value = false;
   createModalApi.open();
 }
@@ -288,8 +257,9 @@ function handleFileSelected(files: SelectedStorageFile[]) {
   selectedFiles.value = files;
 }
 
-function openPolicy(row: FileShareView) {
+function initializeSettings(row: FileShareView) {
   editingShare.value = row;
+  editingExpiry.value = dayjs.unix(Number(row.expires_at));
   policyImmediate.value = Number(row.download_start_at) === 0;
   policyStart.value = policyImmediate.value
     ? dayjs()
@@ -297,23 +267,153 @@ function openPolicy(row: FileShareView) {
   policyUnlimited.value = Number(row.download_limit) === 0;
   policyLimit.value = policyUnlimited.value ? 10 : Number(row.download_limit);
   policyPasswordAction.value = 'keep';
-  policyModalApi.open();
+  policyCustomPassword.value = '';
+  addDownloadCount.value = 10;
+  editShowBusinessContact.value = row.show_business_contact;
+  editBusinessContact.value = {
+    ...emptyBusinessContact(),
+    ...row.business_contact,
+  };
+}
+
+async function openDetail(row: FileShareView, tab = 'overview') {
+  initializeSettings(row);
+  detailTab.value = tab;
+  detailOpen.value = true;
+  accessRows.value = [];
+  accessTotal.value = 0;
+  if (tab === 'access') await loadAccess(1);
+}
+
+async function changeDetailTab(key: number | string) {
+  detailTab.value = String(key);
+  if (detailTab.value === 'access' && accessRows.value.length === 0) {
+    await loadAccess(1);
+  }
+}
+
+async function saveSettings() {
+  const share = editingShare.value;
+  const expiresAt = editingExpiry.value?.unix();
+  if (!share || !expiresAt) {
+    message.warning('请选择过期时间');
+    return;
+  }
+  const expiryChanged = expiresAt !== Number(share.expires_at);
+  if (expiryChanged && expiresAt <= dayjs().unix()) {
+    message.warning('请选择未来的过期时间');
+    return;
+  }
+  const startAt = policyImmediate.value ? 0 : policyStart.value?.unix();
+  if (
+    startAt === undefined ||
+    startAt < 0 ||
+    (startAt > 0 && startAt >= expiresAt)
+  ) {
+    message.warning('开始下载时间必须早于过期时间');
+    return;
+  }
+  const limit = policyUnlimited.value ? 0 : policyLimit.value;
+  if (limit > 0 && limit < Number(share.download_count)) {
+    message.warning('总下载次数不能小于已下载次数');
+    return;
+  }
+  const customPassword = policyCustomPassword.value.trim();
+  if (
+    policyPasswordAction.value === 'custom' &&
+    !validDownloadPassword(customPassword)
+  ) {
+    message.warning('下载密码需要 6–32 个字符');
+    return;
+  }
+
+  const policyChanged =
+    startAt !== Number(share.download_start_at) ||
+    limit !== Number(share.download_limit) ||
+    policyPasswordAction.value !== 'keep';
+  const businessContact = Object.fromEntries(
+    Object.entries(editBusinessContact.value).map(([key, value]) => [
+      key,
+      value.trim(),
+    ]),
+  ) as unknown as BusinessContact;
+  const contactChanged =
+    editShowBusinessContact.value !== share.show_business_contact ||
+    JSON.stringify(businessContact) !==
+      JSON.stringify({
+        ...emptyBusinessContact(),
+        ...share.business_contact,
+      });
+  if (!expiryChanged && !policyChanged && !contactChanged) {
+    message.info('没有需要保存的修改');
+    return;
+  }
+
+  settingsSaving.value = true;
+  let updated = share;
+  let generatedPassword: string | undefined;
+  const updateExpiry = async () => {
+    updated = await StorageFileShareApi.setExpiry(share.id, expiresAt);
+  };
+  const updatePolicy = async () => {
+    updated = await StorageFileShareApi.setDownloadPolicy(share.id, {
+      clear_password: policyPasswordAction.value === 'clear',
+      download_password:
+        policyPasswordAction.value === 'custom' ? customPassword : undefined,
+      download_limit: limit,
+      download_start_at: startAt,
+      reset_password: policyPasswordAction.value === 'reset',
+    });
+    generatedPassword = updated.download_password;
+  };
+  try {
+    if (expiryChanged && policyChanged) {
+      if (expiresAt >= Number(share.expires_at)) {
+        await updateExpiry();
+        await updatePolicy();
+      } else {
+        await updatePolicy();
+        await updateExpiry();
+      }
+    } else if (expiryChanged) {
+      await updateExpiry();
+    } else if (policyChanged) {
+      await updatePolicy();
+    }
+    if (contactChanged) {
+      updated = await StorageFileShareApi.setBusinessContact(share.id, {
+        business_contact: businessContact,
+        show_business_contact: editShowBusinessContact.value,
+      });
+    }
+    if (policyPasswordAction.value === 'clear') {
+      generatedPasswords.delete(String(share.id));
+    }
+    initializeSettings(updated);
+    message.success('分享设置已保存');
+    await gridApi.query();
+    showGeneratedPassword(share.id, generatedPassword);
+  } finally {
+    settingsSaving.value = false;
+  }
 }
 
 async function addDownloads(row: FileShareView, count: number) {
-  await StorageFileShareApi.addDownloads(row.id, count);
+  const updated = await StorageFileShareApi.addDownloads(row.id, count);
+  if (editingShare.value?.id === row.id) {
+    editingShare.value = updated;
+    policyLimit.value = Number(updated.download_limit);
+  }
   message.success(`已增加 ${count} 次下载额度`);
   await gridApi.query();
 }
 
 async function openAccess(row: FileShareView) {
-  accessShare.value = row;
-  accessOpen.value = true;
-  await loadAccess(1);
+  await openDetail(row, 'access');
 }
 
 async function loadAccess(page: number) {
-  const share = accessShare.value;
+  const share = editingShare.value;
   if (!share) return;
   accessPage.value = page;
   accessLoading.value = true;
@@ -329,13 +429,14 @@ async function loadAccess(page: number) {
   }
 }
 
-function showGeneratedPassword(password?: string) {
+function showGeneratedPassword(id: number | string, password?: string) {
   if (!password) return;
-  void navigator.clipboard.writeText(password).catch(() => undefined);
+  generatedPasswords.set(String(id), password);
+  void copyText(password).catch(() => undefined);
   Modal.info({
     content: password,
     okText: '关闭',
-    title: '下载密码（已复制，仅本次显示）',
+    title: '下载密码（仅本次显示）',
   });
 }
 
@@ -356,22 +457,82 @@ async function loadBusinessContactAvailability() {
 
 onMounted(loadBusinessContactAvailability);
 
-function openExpiry(row: FileShareView) {
-  editingShare.value = row;
-  editingExpiry.value = dayjs.unix(Number(row.expires_at));
-  expiryModalApi.open();
-}
-
-async function extend(row: FileShareView, days = 15) {
-  await StorageFileShareApi.extend(row.id, days);
-  message.success(`有效期已延长 ${days} 天`);
-  await gridApi.query();
-}
-
-async function copyShareUrl(row: FileShareView) {
+async function copyShareText(row: FileShareView, password?: string) {
   const url = absoluteUrl(row.share_url);
-  await navigator.clipboard.writeText(url);
-  message.success('分享链接已复制');
+  if (!url) {
+    message.warning('分享链接为空');
+    return;
+  }
+  try {
+    await copyText(password ? `分享链接：${url}\n下载密码：${password}` : url);
+    message.success(password ? '分享链接和下载密码已复制' : '分享链接已复制');
+  } catch {
+    message.error('复制失败，请在分享详情中手动复制');
+  }
+}
+
+async function copyShareInfo(row: FileShareView) {
+  if (!row.password_required) {
+    await copyShareText(row);
+    return;
+  }
+  const password = generatedPasswords.get(String(row.id));
+  if (password) {
+    await copyShareText(row, password);
+    return;
+  }
+  confirmPasswordReset(row, true);
+}
+
+async function copySharePassword(row: FileShareView) {
+  const password = generatedPasswords.get(String(row.id));
+  if (password) {
+    await copyPasswordText(password, '下载密码已复制');
+    return;
+  }
+  confirmPasswordReset(row, false);
+}
+
+function confirmPasswordReset(row: FileShareView, includeLink: boolean) {
+  Modal.confirm({
+    content:
+      '系统只保存密码哈希，无法读取原密码。继续后将生成新密码，旧密码立即失效。',
+    okText: includeLink ? '重置并复制分享信息' : '重置并复制密码',
+    async onOk() {
+      const updated = await StorageFileShareApi.setDownloadPolicy(row.id, {
+        clear_password: false,
+        download_password: undefined,
+        download_limit: row.download_limit,
+        download_start_at: row.download_start_at,
+        reset_password: true,
+      });
+      const nextPassword = updated.download_password;
+      if (!nextPassword) throw new Error('下载密码生成失败');
+      generatedPasswords.set(String(row.id), nextPassword);
+      if (editingShare.value?.id === row.id) initializeSettings(updated);
+      await (includeLink
+        ? copyShareText(updated, nextPassword)
+        : copyPasswordText(nextPassword, '新下载密码已复制'));
+      await gridApi.query();
+    },
+    title: '需要重新生成下载密码',
+  });
+}
+
+async function downloadSharedFile(file: FileShareFileView) {
+  const share = editingShare.value;
+  if (!share) return;
+  const blob = await StorageFileShareApi.downloadFile(share.id, file.file_id);
+  downloadFileFromBlob({ fileName: displayFileName(file), source: blob });
+}
+
+async function previewSharedFile(file: FileShareFileView) {
+  const share = editingShare.value;
+  if (!share) return;
+  const blob = await StorageFileShareApi.downloadFile(share.id, file.file_id);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function confirmDelete(row: FileShareView) {
@@ -399,6 +560,37 @@ function displayFileName(file: { file_ext: string; file_name: string }) {
   return file.file_ext && !file.file_name.endsWith(`.${file.file_ext}`)
     ? `${file.file_name}.${file.file_ext}`
     : file.file_name;
+}
+
+function emptyBusinessContact(): BusinessContact {
+  return {
+    company: '',
+    contact_name: '',
+    email: '',
+    phone: '',
+    title: '',
+    website: '',
+    wechat: '',
+  };
+}
+
+function validDownloadPassword(value: string) {
+  const length = [...value].length;
+  return (
+    length >= 6 &&
+    length <= 32 &&
+    new TextEncoder().encode(value).length <= 72 &&
+    !/\p{Cc}/u.test(value)
+  );
+}
+
+async function copyPasswordText(password: string, successMessage: string) {
+  try {
+    await copyText(password);
+    message.success(successMessage);
+  } catch {
+    message.error('复制失败，请在分享详情中手动复制');
+  }
 }
 
 function formatBytes(value: number | string) {
@@ -508,6 +700,14 @@ function disablePastDate(current: Dayjs) {
             </div>
           </div>
         </div>
+        <div v-if="createPasswordRequired" class="form-field">
+          <span class="field-label">指定下载密码</span>
+          <Input
+            v-model:value="createPassword"
+            :maxlength="32"
+            placeholder="留空则自动生成 6 位随机密码"
+          />
+        </div>
         <div v-if="!createImmediate" class="form-field">
           <span class="field-label">开始下载时间</span>
           <DatePicker
@@ -529,117 +729,337 @@ function disablePastDate(current: Dayjs) {
       </div>
     </CreateModal>
 
-    <ExpiryModal>
-      <div class="share-form">
-        <div class="form-field">
-          <span class="field-label">文件</span>
-          <span>{{ editingShare?.file_name }}</span>
-        </div>
-        <div class="form-field">
-          <span class="field-label">过期时间</span>
-          <DatePicker
-            v-model:value="editingExpiry"
-            class="w-full"
-            :disabled-date="disablePastDate"
-            format="YYYY-MM-DD HH:mm"
-            show-time
-          />
-        </div>
-      </div>
-    </ExpiryModal>
-
-    <PolicyModal>
-      <div class="share-form">
-        <div class="form-field">
-          <span class="field-label">分享</span>
-          <span>{{ editingShare?.file_name }}</span>
-        </div>
-        <div class="two-fields">
-          <div class="form-field">
-            <span class="field-label">立即允许下载</span>
-            <Switch v-model:checked="policyImmediate" />
-          </div>
-          <div class="form-field">
-            <span class="field-label">不限下载次数</span>
-            <Switch v-model:checked="policyUnlimited" />
-          </div>
-        </div>
-        <div v-if="!policyImmediate" class="form-field">
-          <span class="field-label">开始下载时间</span>
-          <DatePicker
-            v-model:value="policyStart"
-            class="w-full"
-            format="YYYY-MM-DD HH:mm"
-            show-time
-          />
-        </div>
-        <div v-if="!policyUnlimited" class="form-field">
-          <span class="field-label">总下载次数</span>
-          <InputNumber
-            v-model:value="policyLimit"
-            class="w-full"
-            :min="Number(editingShare?.download_count || 1)"
-          />
-        </div>
-        <div class="form-field">
-          <span class="field-label">下载密码</span>
-          <Segmented
-            v-model:value="policyPasswordAction"
-            :options="[
-              { label: '保持不变', value: 'keep' },
-              { label: '重新生成', value: 'reset' },
-              { label: '清除密码', value: 'clear' },
-            ]"
-          />
-        </div>
-      </div>
-    </PolicyModal>
-
     <Drawer
-      v-model:open="accessOpen"
-      size="large"
-      :title="`访问明细 · ${accessShare?.file_name || ''}`"
+      v-model:open="detailOpen"
+      size="min(920px, calc(100vw - 16px))"
+      :title="`分享详情 · ${editingShare?.file_name || ''}`"
     >
-      <Table
-        :columns="[
-          { title: 'IP', dataIndex: 'client_ip', width: 180 },
-          { title: '查看', dataIndex: 'view_count', width: 80 },
-          { title: '下载', dataIndex: 'download_count', width: 80 },
-          { title: '最近查看', dataIndex: 'last_viewed_at' },
-          { title: '最近下载', dataIndex: 'last_downloaded_at' },
-        ]"
-        :data-source="accessRows"
-        :loading="accessLoading"
-        :pagination="false"
-        row-key="client_ip"
-        size="small"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.dataIndex === 'last_viewed_at'">
-            {{
-              Number(record.last_viewed_at) > 0
-                ? Times.formatUnix(record.last_viewed_at)
-                : '-'
-            }}
-          </template>
-          <template v-else-if="column.dataIndex === 'last_downloaded_at'">
-            {{
-              Number(record.last_downloaded_at) > 0
-                ? Times.formatUnix(record.last_downloaded_at)
-                : '-'
-            }}
-          </template>
-        </template>
-      </Table>
-      <Pagination
-        v-if="accessTotal > 50"
-        v-model:current="accessPage"
-        class="mt-4 text-right"
-        :page-size="50"
-        :show-size-changer="false"
-        :total="accessTotal"
-        @change="loadAccess"
-      />
+      <Tabs :active-key="detailTab" @change="changeDetailTab">
+        <TabPane key="overview" tab="概览">
+          <Descriptions
+            v-if="editingShare"
+            bordered
+            :column="{ xs: 1, sm: 2 }"
+            size="small"
+          >
+            <DescriptionsItem label="状态">
+              <Tag :color="shareStatus(editingShare).color">
+                {{ shareStatus(editingShare).label }}
+              </Tag>
+            </DescriptionsItem>
+            <DescriptionsItem label="分享人">
+              {{ editingShare.sharer }}
+            </DescriptionsItem>
+            <DescriptionsItem label="文件数量">
+              {{ editingShare.file_count }} 个
+            </DescriptionsItem>
+            <DescriptionsItem label="总大小">
+              {{ formatBytes(editingShare.total_size) }}
+            </DescriptionsItem>
+            <DescriptionsItem label="查看 / 下载">
+              {{ editingShare.view_count }} / {{ editingShare.download_count }}
+            </DescriptionsItem>
+            <DescriptionsItem label="剩余下载">
+              {{ editingShare.remaining_download_count ?? '不限' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="开始下载">
+              {{
+                Number(editingShare.download_start_at) === 0
+                  ? '立即'
+                  : Times.formatUnix(editingShare.download_start_at)
+              }}
+            </DescriptionsItem>
+            <DescriptionsItem label="过期时间">
+              {{ Times.formatUnix(editingShare.expires_at) }}
+            </DescriptionsItem>
+            <DescriptionsItem label="下载密码">
+              {{ editingShare.password_required ? '已启用' : '未启用' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="创建时间">
+              {{ Times.formatUnix(editingShare.created_at) }}
+            </DescriptionsItem>
+            <DescriptionsItem :span="2" label="分享链接">
+              <div class="detail-link">
+                <span>{{ absoluteUrl(editingShare.share_url) }}</span>
+                <Space size="small">
+                  <Button size="small" @click="copyShareInfo(editingShare)">
+                    <Copy class="size-4" />
+                    复制分享信息
+                  </Button>
+                  <Button
+                    :href="editingShare.share_url"
+                    rel="noopener noreferrer"
+                    size="small"
+                    target="_blank"
+                  >
+                    <ExternalLink class="size-4" />
+                    打开
+                  </Button>
+                </Space>
+              </div>
+            </DescriptionsItem>
+          </Descriptions>
+
+          <Descriptions
+            v-if="editingShare?.business_contact"
+            class="mt-5"
+            bordered
+            :column="{ xs: 1, sm: 2 }"
+            size="small"
+            title="商务联系卡片"
+          >
+            <DescriptionsItem label="公司">
+              {{ editingShare.business_contact.company || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="联系人">
+              {{ editingShare.business_contact.contact_name || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="职位">
+              {{ editingShare.business_contact.title || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="电话">
+              {{ editingShare.business_contact.phone || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="邮箱">
+              {{ editingShare.business_contact.email || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="微信">
+              {{ editingShare.business_contact.wechat || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem :span="2" label="网站">
+              {{ editingShare.business_contact.website || '-' }}
+            </DescriptionsItem>
+          </Descriptions>
+        </TabPane>
+
+        <TabPane key="files" :tab="`文件 (${editingShare?.file_count || 0})`">
+          <Table
+            :columns="[
+              { title: '文件名', dataIndex: 'file_name' },
+              { title: '存储', dataIndex: 'storage_code', width: 150 },
+              { title: '大小', dataIndex: 'size', width: 110 },
+              { title: '操作', dataIndex: 'actions', width: 180 },
+            ]"
+            :data-source="editingShare?.files || []"
+            :pagination="false"
+            row-key="file_id"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.dataIndex === 'file_name'">
+                <span class="file-name-full">{{
+                  displayFileName(record)
+                }}</span>
+              </template>
+              <template v-else-if="column.dataIndex === 'size'">
+                {{ formatBytes(record.size) }}
+              </template>
+              <template v-else-if="column.dataIndex === 'actions'">
+                <Space size="small">
+                  <Button size="small" @click="previewSharedFile(record)">
+                    <Eye class="size-4" />
+                    查看
+                  </Button>
+                  <Button size="small" @click="downloadSharedFile(record)">
+                    <Download class="size-4" />
+                    下载
+                  </Button>
+                </Space>
+              </template>
+            </template>
+          </Table>
+        </TabPane>
+
+        <TabPane key="settings" tab="分享设置">
+          <div class="share-settings">
+            <section>
+              <h3>有效期</h3>
+              <div class="setting-row">
+                <DatePicker
+                  v-model:value="editingExpiry"
+                  class="min-w-0 flex-1"
+                  :disabled-date="disablePastDate"
+                  format="YYYY-MM-DD HH:mm"
+                  show-time
+                />
+              </div>
+            </section>
+
+            <section>
+              <h3>下载策略</h3>
+              <div class="two-fields">
+                <div class="form-field">
+                  <span class="field-label">立即允许下载</span>
+                  <Switch v-model:checked="policyImmediate" />
+                </div>
+                <div class="form-field">
+                  <span class="field-label">不限下载次数</span>
+                  <Switch v-model:checked="policyUnlimited" />
+                </div>
+              </div>
+              <div v-if="!policyImmediate" class="form-field mt-4">
+                <span class="field-label">开始下载时间</span>
+                <DatePicker
+                  v-model:value="policyStart"
+                  class="w-full"
+                  format="YYYY-MM-DD HH:mm"
+                  show-time
+                />
+              </div>
+              <div v-if="!policyUnlimited" class="two-fields mt-4">
+                <div class="form-field">
+                  <span class="field-label">总下载次数</span>
+                  <InputNumber
+                    v-model:value="policyLimit"
+                    class="w-full"
+                    :min="Number(editingShare?.download_count || 1)"
+                  />
+                </div>
+                <div class="form-field">
+                  <span class="field-label">追加下载次数</span>
+                  <div class="setting-row">
+                    <InputNumber
+                      v-model:value="addDownloadCount"
+                      class="min-w-0 flex-1"
+                      :min="1"
+                      :max="1000000"
+                    />
+                    <Button
+                      :disabled="!editingShare"
+                      @click="
+                        editingShare &&
+                        addDownloads(editingShare, addDownloadCount)
+                      "
+                    >
+                      增加
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3>下载密码</h3>
+              <Segmented
+                v-model:value="policyPasswordAction"
+                :options="[
+                  { label: '保持不变', value: 'keep' },
+                  { label: '重新生成', value: 'reset' },
+                  { label: '指定密码', value: 'custom' },
+                  { label: '清除密码', value: 'clear' },
+                ]"
+              />
+              <div
+                v-if="policyPasswordAction === 'custom'"
+                class="form-field mt-4"
+              >
+                <span class="field-label">新下载密码</span>
+                <Input
+                  v-model:value="policyCustomPassword"
+                  :maxlength="32"
+                  placeholder="输入 6–32 个字符"
+                />
+              </div>
+            </section>
+
+            <section>
+              <div class="section-heading">
+                <h3>商务联系卡片</h3>
+                <div class="inline-control">
+                  <span class="field-label">公开展示</span>
+                  <Switch v-model:checked="editShowBusinessContact" />
+                </div>
+              </div>
+              <div class="two-fields">
+                <div class="form-field">
+                  <span class="field-label">公司</span>
+                  <Input v-model:value="editBusinessContact.company" />
+                </div>
+                <div class="form-field">
+                  <span class="field-label">联系人</span>
+                  <Input v-model:value="editBusinessContact.contact_name" />
+                </div>
+                <div class="form-field">
+                  <span class="field-label">职位</span>
+                  <Input v-model:value="editBusinessContact.title" />
+                </div>
+                <div class="form-field">
+                  <span class="field-label">电话</span>
+                  <Input v-model:value="editBusinessContact.phone" />
+                </div>
+                <div class="form-field">
+                  <span class="field-label">邮箱</span>
+                  <Input v-model:value="editBusinessContact.email" />
+                </div>
+                <div class="form-field">
+                  <span class="field-label">微信</span>
+                  <Input v-model:value="editBusinessContact.wechat" />
+                </div>
+              </div>
+              <div class="form-field mt-4">
+                <span class="field-label">网站</span>
+                <Input
+                  v-model:value="editBusinessContact.website"
+                  placeholder="https://example.com"
+                />
+              </div>
+            </section>
+
+            <div class="settings-actions">
+              <Button
+                type="primary"
+                :loading="settingsSaving"
+                @click="saveSettings"
+              >
+                保存设置
+              </Button>
+            </div>
+          </div>
+        </TabPane>
+
+        <TabPane key="access" tab="访问记录">
+          <Table
+            :columns="[
+              { title: 'IP', dataIndex: 'client_ip', width: 180 },
+              { title: '查看', dataIndex: 'view_count', width: 80 },
+              { title: '下载', dataIndex: 'download_count', width: 80 },
+              { title: '最近查看', dataIndex: 'last_viewed_at' },
+              { title: '最近下载', dataIndex: 'last_downloaded_at' },
+            ]"
+            :data-source="accessRows"
+            :loading="accessLoading"
+            :pagination="false"
+            row-key="client_ip"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.dataIndex === 'last_viewed_at'">
+                {{
+                  Number(record.last_viewed_at) > 0
+                    ? Times.formatUnix(record.last_viewed_at)
+                    : '-'
+                }}
+              </template>
+              <template v-else-if="column.dataIndex === 'last_downloaded_at'">
+                {{
+                  Number(record.last_downloaded_at) > 0
+                    ? Times.formatUnix(record.last_downloaded_at)
+                    : '-'
+                }}
+              </template>
+            </template>
+          </Table>
+          <Pagination
+            v-if="accessTotal > 50"
+            v-model:current="accessPage"
+            class="mt-4 text-right"
+            :page-size="50"
+            :show-size-changer="false"
+            :total="accessTotal"
+            @change="loadAccess"
+          />
+        </TabPane>
+      </Tabs>
     </Drawer>
 
     <FilePicker
@@ -663,20 +1083,14 @@ function disablePastDate(current: Dayjs) {
       </Dropdown>
 
       <template #fileNameCell="{ row }">
-        <a
-          v-if="!row.expired"
-          class="block min-w-0 truncate"
-          :href="row.share_url"
-          rel="noopener noreferrer"
-          target="_blank"
+        <Button
+          class="share-name-button"
+          type="link"
+          @click.stop="openDetail(row)"
         >
-          {{ row.file_name }}
+          <span>{{ row.file_name }}</span>
           <small>{{ row.file_count }} 个文件</small>
-        </a>
-        <span v-else class="block min-w-0 truncate" :title="row.file_name">
-          {{ row.file_name }}
-          <small>{{ row.file_count }} 个文件</small>
-        </span>
+        </Button>
       </template>
 
       <template #statusCell="{ row }">
@@ -690,10 +1104,24 @@ function disablePastDate(current: Dayjs) {
           <Button type="link" class="px-0" @click.stop="openAccess(row)">
             {{ row.view_count }} 查看
           </Button>
-          <span>{{ row.download_count }} 下载</span>
-          <span> 剩余 {{ row.remaining_download_count ?? '不限' }} </span>
-          <Button size="small" @click.stop="openPolicy(row)"> 编辑次数 </Button>
-          <Tag v-if="row.password_required" color="warning">有密码</Tag>
+          <Button
+            class="usage-summary"
+            type="link"
+            @click.stop="openDetail(row, 'settings')"
+          >
+            {{ row.download_count }} 下载 · 剩余
+            {{ row.remaining_download_count ?? '不限' }}
+          </Button>
+          <Tooltip v-if="row.password_required" title="复制下载密码">
+            <Button
+              class="password-copy"
+              size="small"
+              @click.stop="copySharePassword(row)"
+            >
+              <Copy class="size-3.5" />
+              有密码
+            </Button>
+          </Tooltip>
           <template v-if="Number(row.download_limit) > 0">
             <Button size="small" @click.stop="addDownloads(row, 10)">
               +10
@@ -705,43 +1133,43 @@ function disablePastDate(current: Dayjs) {
         </div>
       </template>
 
-      <template #downloadPolicyCell="{ row }">
-        <Button class="px-0" type="link" @click.stop="openPolicy(row)">
-          {{
-            Number(row.download_start_at) === 0
-              ? '立即下载'
-              : Times.formatUnix(row.download_start_at)
-          }}
-        </Button>
-      </template>
-
       <template #expiryCell="{ row }">
         <div class="expiry-cell">
           <Button
             class="min-w-0 px-0"
             type="link"
-            @click.stop="openExpiry(row)"
+            @click.stop="openDetail(row, 'settings')"
           >
             {{ Times.formatUnix(row.expires_at) }}
           </Button>
-          <Tag :color="row.expired ? 'default' : 'processing'">
+          <Button
+            class="expiry-remaining"
+            size="small"
+            type="link"
+            @click.stop="openDetail(row, 'settings')"
+          >
             {{ remaining(row.expires_at) }}
-          </Tag>
-          <Button size="small" @click.stop="extend(row, 15)">+15 天</Button>
+          </Button>
         </div>
       </template>
 
       <template #shareUrlCell="{ row }">
         <div class="url-cell">
-          <span class="url-value" :title="absoluteUrl(row.share_url)">
+          <a
+            class="url-value"
+            :href="row.share_url"
+            rel="noopener noreferrer"
+            target="_blank"
+            :title="absoluteUrl(row.share_url)"
+          >
             {{ absoluteUrl(row.share_url) }}
-          </span>
-          <Tooltip title="复制分享链接">
+          </a>
+          <Tooltip title="复制分享信息">
             <Button
-              aria-label="复制分享链接"
+              aria-label="复制分享信息"
               size="small"
               type="text"
-              @click.stop="copyShareUrl(row)"
+              @click.stop="copyShareInfo(row)"
             >
               <Copy class="size-4" />
             </Button>
@@ -811,10 +1239,86 @@ function disablePastDate(current: Dayjs) {
   flex-wrap: wrap;
 }
 
+.usage-summary {
+  height: auto;
+  padding: 0;
+}
+
+.expiry-remaining {
+  padding-inline: 2px;
+}
+
 .inline-control {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+.share-name-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  height: auto;
+  padding: 2px 0;
+  text-align: left;
+  white-space: normal;
+}
+
+.share-name-button > span,
+.file-name-full {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.detail-link,
+.setting-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.detail-link > span {
+  flex: 1;
+  min-width: 240px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.share-settings {
+  display: grid;
+  gap: 24px;
+}
+
+.share-settings section {
+  padding-bottom: 24px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.share-settings h3 {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.section-heading h3 {
+  margin: 0;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .selected-file,
@@ -835,11 +1339,20 @@ function disablePastDate(current: Dayjs) {
   flex: 1;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
+  color: inherit;
 }
 
 @media (max-width: 640px) {
   .two-fields {
     grid-template-columns: 1fr;
+  }
+
+  .detail-link > span {
+    min-width: 100%;
+  }
+
+  .setting-row > * {
+    width: 100%;
   }
 }
 </style>

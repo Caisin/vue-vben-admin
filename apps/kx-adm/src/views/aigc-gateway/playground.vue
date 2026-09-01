@@ -154,11 +154,20 @@ function responseText(value: unknown): string {
   const record = value as Record<string, unknown>;
   if (typeof record.output_text === 'string') return record.output_text;
   if (typeof record.text === 'string') return record.text;
-  if (Array.isArray(record.output)) {
-    return record.output.map(responseText).filter(Boolean).join('\n');
+  if (typeof record.content === 'string') return record.content;
+  if (record.message) {
+    const message = responseText(record.message);
+    if (message) return message;
   }
-  if (Array.isArray(record.content)) {
-    return record.content.map(responseText).filter(Boolean).join('\n');
+  for (const key of ['output', 'content', 'choices', 'candidates', 'parts']) {
+    const items = record[key];
+    if (Array.isArray(items)) {
+      const text = items
+        .map((item) => responseText(item))
+        .filter(Boolean)
+        .join('\n');
+      if (text) return text;
+    }
   }
   return '';
 }

@@ -30,7 +30,7 @@ export function useColumns(): VxeTableGridColumns<FileShareView> {
     {
       field: 'file_name',
       fixed: 'left',
-      minWidth: 230,
+      minWidth: 300,
       slots: { default: 'fileNameCell' },
       sortable: true,
       title: '分享内容',
@@ -47,12 +47,6 @@ export function useColumns(): VxeTableGridColumns<FileShareView> {
       slots: { default: 'usageCell' },
       sortable: true,
       title: '访问 / 下载',
-    },
-    {
-      field: 'download_start_at',
-      minWidth: 180,
-      slots: { default: 'downloadPolicyCell' },
-      title: '开始下载',
     },
     {
       field: 'expires_at',

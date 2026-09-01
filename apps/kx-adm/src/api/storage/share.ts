@@ -19,6 +19,7 @@ export interface FileShareView {
   downloadable: boolean;
   download_password?: string;
   password_required: boolean;
+  show_business_contact: boolean;
   business_contact?: BusinessContact;
   file_ext: string;
   file_id: number | string;
@@ -57,12 +58,18 @@ export interface FileSharePageQuery extends PageQuery {
 }
 
 export interface FileShareCreateWrite {
+  download_password?: string;
   download_limit: number | string;
   download_start_at: number | string;
   expires_at: number | string;
   file_ids: Array<number | string>;
   file_name?: string;
   password_required: boolean;
+  show_business_contact: boolean;
+}
+
+export interface FileShareBusinessContactWrite {
+  business_contact: BusinessContact;
   show_business_contact: boolean;
 }
 
@@ -103,6 +110,7 @@ export const StorageFileShareApi = {
     data: {
       clear_password: boolean;
       download_limit: number | string;
+      download_password?: string;
       download_start_at: number | string;
       reset_password: boolean;
     },
@@ -110,6 +118,16 @@ export const StorageFileShareApi = {
     resolveShare(
       await requestClient.put<FileShareView>(
         `/storage/share/${id}/download-policy`,
+        data,
+      ),
+    ),
+  setBusinessContact: async (
+    id: number | string,
+    data: FileShareBusinessContactWrite,
+  ) =>
+    resolveShare(
+      await requestClient.put<FileShareView>(
+        `/storage/share/${id}/business-contact`,
         data,
       ),
     ),
@@ -124,6 +142,10 @@ export const StorageFileShareApi = {
     requestClient.get<Page<FileShareAccessView>>(
       `/storage/share/${id}/access`,
       { params },
+    ),
+  downloadFile: (id: number | string, fileId: number | string) =>
+    requestClient.download<Blob>(
+      `/storage/share/${id}/files/${fileId}/content`,
     ),
   remove: (id: number | string) =>
     requestClient.delete<boolean>(`/storage/share/${id}`),

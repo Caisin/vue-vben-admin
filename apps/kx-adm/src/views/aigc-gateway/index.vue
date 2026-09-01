@@ -133,6 +133,14 @@ const editingProviderProtocol = computed(
     providers.value.find((item) => item.id === modelForm.provider_id)
       ?.protocol ?? 'openai',
 );
+const editingProviderIsJimeng = computed(() =>
+  isJimengProtocol(editingProviderProtocol.value),
+);
+const editingProviderCapabilitiesLocked = computed(() =>
+  ['anthropic', 'deepseek', 'gemini', 'ollama'].includes(
+    editingProviderProtocol.value,
+  ),
+);
 const strategyOptions = [
   { label: '优先级', value: 'priority' },
   { label: '轮询', value: 'round_robin' },
@@ -142,10 +150,25 @@ const breakerStatusOptions = [401, 403, 408, 409, 429, 500, 502, 503, 504].map(
   (value) => ({ label: `${value}`, value }),
 );
 const protocolOptions = [
-  { label: 'OpenAI-compatible', value: 'openai' },
+  { label: 'OpenAI', value: 'openai' },
+  { label: 'OpenAI Compatible', value: 'openai_compatible' },
+  { label: 'DeepSeek', value: 'deepseek' },
+  { label: 'Anthropic', value: 'anthropic' },
+  { label: 'Google Gemini', value: 'gemini' },
+  { label: 'Ollama', value: 'ollama' },
   { label: '火山引擎 · 即梦', value: 'volc_jimeng' },
   { label: 'BytePlus · Jimeng', value: 'byteplus_jimeng' },
 ];
+const protocolDefaultUrls: Record<string, string> = {
+  anthropic: 'https://api.anthropic.com/v1',
+  byteplus_jimeng: 'https://visual.byteplusapi.com',
+  deepseek: 'https://api.deepseek.com/v1',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta',
+  ollama: 'http://127.0.0.1:11434/v1',
+  openai: 'https://api.openai.com/v1',
+  openai_compatible: '',
+  volc_jimeng: 'https://visual.volcengineapi.com',
+};
 const jimengModelOptions = [
   { label: '即梦 2.0 · 文生视频', value: 'jimeng_vgfm_t2v_l20' },
   { label: '即梦 2.0 · 图生视频', value: 'jimeng_vgfm_i2v_l20' },
@@ -214,7 +237,7 @@ function openProvider(v?: Provider) {
           code: '',
           name: '',
           protocol: 'openai',
-          base_url: '',
+          base_url: protocolDefaultUrls.openai,
           credential_code: '',
           priority: 0,
           weight: 1,
@@ -229,25 +252,14 @@ function openProvider(v?: Provider) {
 function selectProviderProtocol(value: string) {
   providerForm.protocol = value;
   providerForm.credential_code = '';
-  if (value === 'volc_jimeng') {
-    providerForm.base_url = 'https://visual.volcengineapi.com';
-  } else if (value === 'byteplus_jimeng') {
-    providerForm.base_url = 'https://visual.byteplusapi.com';
-  } else if (
-    providerForm.base_url.includes('visual.volcengineapi.com') ||
-    providerForm.base_url.includes('visual.byteplusapi.com')
-  ) {
-    providerForm.base_url = '';
-  }
+  providerForm.base_url = protocolDefaultUrls[value] ?? '';
 }
 function openModel(v?: ModelRoute) {
   editingId.value = v?.id;
   const defaultProvider = providers.value[0];
-  const defaultCapabilities =
-    defaultProvider?.protocol === 'volc_jimeng' ||
-    defaultProvider?.protocol === 'byteplus_jimeng'
-      ? ['video']
-      : ['chat'];
+  const defaultCapabilities = isJimengProtocol(defaultProvider?.protocol)
+    ? ['video']
+    : ['chat'];
   Object.assign(
     modelForm,
     v
@@ -286,8 +298,12 @@ function providerName(id: number | string) {
 function selectModelProvider(id: number | string) {
   modelForm.provider_id = id;
   const protocol = providers.value.find((item) => item.id === id)?.protocol;
-  if (protocol === 'volc_jimeng' || protocol === 'byteplus_jimeng') {
+  if (isJimengProtocol(protocol)) {
     modelForm.capabilities = ['video'];
+  } else if (
+    ['anthropic', 'deepseek', 'gemini', 'ollama'].includes(protocol ?? '')
+  ) {
+    modelForm.capabilities = ['chat'];
   }
 }
 function selectJimengModel(value: string) {
@@ -297,6 +313,16 @@ function selectJimengModel(value: string) {
 }
 function protocolLabel(value: string) {
   return protocolOptions.find((item) => item.value === value)?.label ?? value;
+}
+function isJimengProtocol(value?: string) {
+  return value === 'volc_jimeng' || value === 'byteplus_jimeng';
+}
+function isHttpProviderProtocol(value: string) {
+  return !isJimengProtocol(value);
+}
+function defaultCredentialKind(value: string) {
+  if (value === 'anthropic' || value === 'gemini') return 'http_header';
+  return isHttpProviderProtocol(value) ? 'http_token' : 'access_key';
 }
 async function save() {
   if (modal.value === 'group')
@@ -738,15 +764,11 @@ async function initSortables() {
               <CredentialSelect
                 v-model="providerForm.credential_code"
                 :kinds="
-                  providerForm.protocol === 'openai'
+                  isHttpProviderProtocol(providerForm.protocol)
                     ? ['http_header', 'http_token', 'password']
                     : ['access_key']
                 "
-                :create-kind="
-                  providerForm.protocol === 'openai'
-                    ? 'http_token'
-                    : 'access_key'
-                "
+                :create-kind="defaultCredentialKind(providerForm.protocol)"
                 placeholder="选择 Provider 授权凭证"
               />
             </FormItem>
@@ -792,7 +814,7 @@ async function initSortables() {
               <Input v-model:value="modelForm.canonical_model" />
 </FormItem><FormItem label="上游模型 ID">
               <Select
-                v-if="editingProviderProtocol !== 'openai'"
+                v-if="editingProviderIsJimeng"
                 v-model:value="modelForm.upstream_model"
                 :options="jimengModelOptions"
                 @change="selectJimengModel"
@@ -812,7 +834,9 @@ async function initSortables() {
               <Select
                 v-model:value="modelForm.capabilities"
                 mode="multiple"
-                :disabled="editingProviderProtocol !== 'openai'"
+                :disabled="
+                  editingProviderIsJimeng || editingProviderCapabilitiesLocked
+                "
                 :options="capabilityOptions"
               />
             </FormItem>
