@@ -261,6 +261,7 @@ function inferQuickFilterFromRoute(): QuickFilter {
   if (queryString('phone_number_state') === 'unknown') return 'missing_phone';
   if (queryString('phone_number_state') === 'known') return 'has_phone';
   if (queryString('arrears_state') === 'arrears') return 'arrears';
+  if (queryString('account_alert') === 'active') return 'balance_warning';
   if (queryString('balance_lt')) return 'low_balance';
   switch (queryString('expiry_state')) {
     case 'expired': {
@@ -293,6 +294,16 @@ function currentQueryParams(formValues: Record<string, unknown>) {
   };
 }
 
+function accountAlertLabel(card: SimCardView) {
+  if (card.account_alert === 'arrears') return '欠费';
+  if (card.account_alert === 'top_up_required') return '充值预警';
+  return '';
+}
+
+function hasAccountAlert(card: SimCardView) {
+  return Boolean(accountAlertLabel(card));
+}
+
 function quickFilterParams(formValues: Record<string, unknown>) {
   switch (formValues.quick_filter as QuickFilter) {
     case 'apple_developer': {
@@ -300,6 +311,9 @@ function quickFilterParams(formValues: Record<string, unknown>) {
     }
     case 'arrears': {
       return { arrears_state: 'arrears' };
+    }
+    case 'balance_warning': {
+      return { account_alert: 'active' };
     }
     case 'device_has_empty_slot': {
       return { device_has_empty_slot: true };
@@ -454,14 +468,15 @@ async function submitDiscovery() {
 
 function refreshAllBalances() {
   Modal.confirm({
-    content: '系统将为当前在槽的中国电信卡和香港卡创建余额查询短信任务。',
+    content:
+      '系统将为当前可见且在槽的中国电信卡创建持久化余额查询任务。香港和海外卡根据运营商短信更新余额与预警。',
     okText: '开始查询',
     title: '确认批量查询余额',
     async onOk() {
       balanceBatchLoading.value = true;
       try {
-        await SimCardApi.refreshBalances();
-        message.success('批量查询余额后台任务已提交');
+        const task = await SimCardApi.refreshBalances();
+        message.success(`批量查询余额任务 #${task.id} 已提交`);
       } finally {
         balanceBatchLoading.value = false;
       }
@@ -835,6 +850,9 @@ onMounted(loadInitialData);
               <template #icon><Copy /></template>
             </Button>
           </Tooltip>
+          <Tag v-if="hasAccountAlert(row)" color="error">
+            {{ accountAlertLabel(row) }}
+          </Tag>
           <Tooltip v-if="canManageSimCards" title="使用该号码发送短信">
             <Button
               aria-label="使用该号码发送短信"
@@ -950,6 +968,7 @@ onMounted(loadInitialData);
             <Button
               aria-label="修改余额"
               class="cell-edit-button"
+              :danger="hasAccountAlert(row)"
               type="link"
               @click="openBalance(row)"
             >
@@ -960,7 +979,7 @@ onMounted(loadInitialData);
               }}
             </Button>
           </Tooltip>
-          <span v-else>
+          <span v-else :class="{ 'text-red-500': hasAccountAlert(row) }">
             {{
               row.balance
                 ? `${row.balance_currency || ''} ${row.balance}`

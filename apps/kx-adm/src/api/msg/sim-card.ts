@@ -9,6 +9,8 @@ import type {
   SmsMessage,
 } from './types';
 
+import type { TaskRun } from '#/api/task';
+
 import { requestClient } from '#/api/request';
 
 export interface BatchSmsRequest {
@@ -114,9 +116,7 @@ export const SimCardApi = {
       '/msg/sim-cards/actions/repair-phone-numbers',
     ),
   refreshBalances: () =>
-    requestClient.post<{ status: string }>(
-      '/msg/sim-cards/actions/refresh-balances',
-    ),
+    requestClient.post<TaskRun>('/msg/sim-cards/actions/refresh-balances'),
   refreshBalance: (iccid: string) =>
     requestClient.post<{ job_key: string; status: string }>(
       `/msg/sim-cards/${iccid}/actions/refresh-balance`,

@@ -197,12 +197,13 @@ function selectedMessages() {
 
 function reprocessResultText(result: {
   balances_updated: number;
+  expirations_updated: number;
   failed: number;
   phone_numbers_updated: number;
   scanned: number;
   skipped: number;
 }) {
-  return `扫描 ${result.scanned} 条，余额更新 ${result.balances_updated} 条，号码更新 ${result.phone_numbers_updated} 条，跳过 ${result.skipped} 条，失败 ${result.failed} 条`;
+  return `扫描 ${result.scanned} 条，余额更新 ${result.balances_updated} 条，有效期更新 ${result.expirations_updated} 条，号码更新 ${result.phone_numbers_updated} 条，跳过 ${result.skipped} 条，失败 ${result.failed} 条`;
 }
 
 function openMessage(record: SmsMessage) {

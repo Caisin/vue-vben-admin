@@ -6,6 +6,7 @@ export type QuickFilter =
   | 'all'
   | 'apple_developer'
   | 'arrears'
+  | 'balance_warning'
   | 'device_has_empty_slot'
   | 'expired'
   | 'expiring'
@@ -21,6 +22,7 @@ const quickFilterOptions: Array<{ label: string; value: QuickFilter }> = [
   { label: '有号码', value: 'has_phone' },
   { label: '设备有空卡槽', value: 'device_has_empty_slot' },
   { label: '欠费', value: 'arrears' },
+  { label: '欠费 / 充值预警', value: 'balance_warning' },
   { label: '低余额', value: 'low_balance' },
   { label: '即将过期', value: 'expiring' },
   { label: '已过期', value: 'expired' },

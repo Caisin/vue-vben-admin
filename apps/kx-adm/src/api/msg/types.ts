@@ -178,6 +178,8 @@ export interface DeviceEventDetail extends DeviceEvent {
 }
 
 export interface SimCard {
+  account_alert: string;
+  account_alert_at: number;
   account_source: string;
   account_updated_at: number;
   apple_developer_registered: boolean;
@@ -266,6 +268,7 @@ export interface SmsMessage {
 
 export interface SmsReprocessResult {
   balances_updated: number;
+  expirations_updated: number;
   failed: number;
   phone_numbers_updated: number;
   scanned: number;
