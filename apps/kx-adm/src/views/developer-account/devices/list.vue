@@ -22,6 +22,8 @@ import {
 } from 'antdv-next';
 
 import { DeveloperAccountApi } from '#/api/developer-account';
+import { FileRefPreview } from '#/components/file-picker';
+import { BusinessImport } from '#/components/import-export';
 import { Times } from '#/times';
 
 const rows = ref<AppleDevice[]>([]);
@@ -30,22 +32,26 @@ const loading = ref(false);
 const saving = ref(false);
 const open = ref(false);
 const editingId = ref<number>();
+const previewFileId = ref<number>();
 const form = reactive({
   developer_account_id: undefined as number | undefined,
   device_no: '',
   name: '',
   model: '',
   serial_number: '',
+  screenshot_file_id: undefined as number | undefined,
   user: '',
   remark: '',
 });
 
 const columns = [
   { dataIndex: 'device_no', title: '设备号' },
+  { dataIndex: 'developer_account_id', title: '开发者账户' },
   { dataIndex: 'name', title: '名称' },
   { dataIndex: 'model', title: '型号' },
   { dataIndex: 'serial_number', title: '序列号' },
   { dataIndex: 'user', title: '使用者' },
+  { dataIndex: 'screenshot_file_id', title: '截图', width: 220 },
   { dataIndex: 'updated_at', title: '更新时间' },
   { key: 'actions', title: '操作' },
 ];
@@ -71,6 +77,7 @@ function resetForm() {
     name: '',
     model: '',
     serial_number: '',
+    screenshot_file_id: undefined,
     user: '',
     remark: '',
   });
@@ -85,11 +92,12 @@ function openCreate() {
 function openEdit(row: AppleDevice) {
   editingId.value = row.id;
   Object.assign(form, {
-    developer_account_id: row.developer_account_id,
+    developer_account_id: row.developer_account_id || undefined,
     device_no: row.device_no,
     name: row.name,
     model: row.model,
     serial_number: row.serial_number,
+    screenshot_file_id: row.screenshot_file_id ?? undefined,
     user: row.user,
     remark: row.remark,
   });
@@ -142,6 +150,13 @@ onMounted(refresh);
     <div class="mb-3 flex justify-end">
       <Space>
         <Button @click="refresh">刷新</Button>
+        <span v-access:code="'developer-account:apple-device-import'">
+          <BusinessImport
+            button-text="导入设备"
+            definition-code="developer_account.apple_device"
+            @completed="refresh"
+          />
+        </span>
         <Button
           v-access:code="'developer-account:apple-device-create'"
           type="primary"
@@ -158,7 +173,24 @@ onMounted(refresh);
       row-key="id"
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'updated_at'">
+        <template v-if="column.dataIndex === 'developer_account_id'">
+          {{
+            accounts.find(
+              (item) => Number(item.id) === record.developer_account_id,
+            )?.account || '未关联'
+          }}
+        </template>
+        <template v-else-if="column.dataIndex === 'screenshot_file_id'">
+          <Button
+            v-if="record.screenshot_file_id"
+            type="link"
+            @click="previewFileId = record.screenshot_file_id"
+          >
+            查看
+          </Button>
+          <span v-else>-</span>
+        </template>
+        <template v-else-if="column.dataIndex === 'updated_at'">
           {{ Times.formatOptionalUnix(record.updated_at) }}
         </template>
         <template v-else-if="column.key === 'actions'">
@@ -180,6 +212,15 @@ onMounted(refresh);
         </template>
       </template>
     </Table>
+
+    <Modal
+      :footer="null"
+      :open="Boolean(previewFileId)"
+      title="设备截图"
+      @cancel="previewFileId = undefined"
+    >
+      <FileRefPreview v-if="previewFileId" :value="previewFileId" />
+    </Modal>
 
     <Modal
       v-model:open="open"

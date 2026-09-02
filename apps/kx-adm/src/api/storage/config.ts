@@ -76,6 +76,18 @@ export interface StorageOptionView {
   storage_type: string;
 }
 
+export interface BusinessStorageDefaults {
+  developer_account_private: StorageOptionView;
+  file_share_upload: StorageOptionView;
+  import_export_private: StorageOptionView;
+}
+
+export interface BusinessStorageDefaultsWrite {
+  developer_account_private: string;
+  file_share_upload: string;
+  import_export_private: string;
+}
+
 export interface StorageConfigPageQuery extends PageQuery {
   code_prefix?: string;
   is_public?: boolean;
@@ -93,6 +105,15 @@ export const StorageConfigApi = {
     requestClient.put<StorageOptionView>('/storage/cfg/file-share-default', {
       storage_code,
     }),
+  businessDefaults: () =>
+    requestClient.get<BusinessStorageDefaults>(
+      '/storage/cfg/business-defaults',
+    ),
+  setBusinessDefaults: (data: BusinessStorageDefaultsWrite) =>
+    requestClient.put<BusinessStorageDefaults>(
+      '/storage/cfg/business-defaults',
+      data,
+    ),
   detail: (code: string) =>
     requestClient.get<StorageConfigView>(`/storage/cfg/${code}`),
   save: (code: string, data: StorageConfigWrite) =>
