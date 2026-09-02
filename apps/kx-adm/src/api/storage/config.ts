@@ -77,15 +77,29 @@ export interface StorageOptionView {
 }
 
 export interface BusinessStorageDefaults {
+  article_private?: null | StorageOptionView;
+  article_public?: null | StorageOptionView;
   developer_account_private: StorageOptionView;
   file_share_upload: StorageOptionView;
   import_export_private: StorageOptionView;
+  invoice_private?: null | StorageOptionView;
+  mall_private?: null | StorageOptionView;
+  mall_public?: null | StorageOptionView;
+  wmxt_private?: null | StorageOptionView;
+  wmxt_public?: null | StorageOptionView;
 }
 
 export interface BusinessStorageDefaultsWrite {
+  article_private?: string;
+  article_public?: string;
   developer_account_private: string;
   file_share_upload: string;
   import_export_private: string;
+  invoice_private: string;
+  mall_private?: string;
+  mall_public?: string;
+  wmxt_private?: string;
+  wmxt_public?: string;
 }
 
 export interface StorageConfigPageQuery extends PageQuery {
