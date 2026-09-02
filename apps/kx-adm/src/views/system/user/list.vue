@@ -18,6 +18,7 @@ import type { StatusValue } from '#/api/system/shared';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
+import { useAccess } from '@vben/access';
 import { Page, Tree, useVbenDrawer, useVbenModal } from '@vben/common-ui';
 import { Download, Plus, RotateCw } from '@vben/icons';
 import { useUserStore } from '@vben/stores';
@@ -78,6 +79,10 @@ const userSearchCodec = Times.createDateRangeCodec<UserSearchFormValues>()({
   rangeField: 'createTime',
   startField: 'startTime',
 });
+const { hasAccessByCodes } = useAccess();
+const canEditUsers = computed(() =>
+  hasAccessByCodes(['AC_100100', 'users:delegate-roles']),
+);
 
 type UserSearchSubmitValues = ReturnType<typeof userSearchCodec.encode>;
 
@@ -1023,7 +1028,7 @@ watch(selectedDeptId, (value) => {
               >
                 周报发布记录
               </Button>
-              <Button type="primary" @click="onCreate">
+              <Button v-if="canEditUsers" type="primary" @click="onCreate">
                 <Plus class="size-5" />
                 {{ $t('ui.actionTitle.create', [$t('system.user.name')]) }}
               </Button>
@@ -1044,6 +1049,7 @@ watch(selectedDeptId, (value) => {
                   text: $t('common.edit'),
                   icon: 'lucide:edit',
                   onClick: () => onEdit(row),
+                  auth: ['AC_100100', 'users:delegate-roles'],
                 },
               ]"
               :dropdown-actions="[
@@ -1058,6 +1064,7 @@ watch(selectedDeptId, (value) => {
                   text: '重置登录密码',
                   icon: 'lucide:key-round',
                   onClick: () => onResetPassword(row),
+                  auth: ['AC_100100'],
                 },
                 {
                   text: $t('common.delete'),

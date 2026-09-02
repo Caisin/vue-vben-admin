@@ -1,12 +1,10 @@
 <script lang="ts" setup>
-import type { Dayjs } from 'dayjs';
-
 import type {
   DeveloperSubject,
   DeveloperSubjectWrite,
 } from '#/api/developer-account';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 import { ArrowUpToLine, Download, Plus } from '@vben/icons';
@@ -14,17 +12,16 @@ import { downloadFileFromBlob } from '@vben/utils';
 
 import {
   Button,
-  DatePicker,
   Form,
   FormItem,
   Input,
   message,
   Modal,
+  Select,
   Space,
   Table,
   Upload,
 } from 'antdv-next';
-import dayjs from 'dayjs';
 
 import { DeveloperAccountApi } from '#/api/developer-account';
 import { BusinessImport } from '#/components/import-export';
@@ -36,17 +33,43 @@ const saving = ref(false);
 const open = ref(false);
 const editing = ref<DeveloperSubject>();
 const form = reactive<DeveloperSubjectWrite>(emptyForm());
-const registeredAt = ref<Dayjs>();
-const smallBusinessAppliedAt = ref<Dayjs>();
+const keyword = ref('');
+const countryOrRegion = ref<string>();
+const subjectId = ref<number>();
+const duns = ref<string>();
+const certifierName = ref<string>();
+const filterOptions = ref<DeveloperSubject[]>([]);
 const uploadingDocument = ref<'business_license' | 'duns'>();
 
+const countryOrRegionOptions = computed(() =>
+  uniqueOptions(filterOptions.value.map((item) => item.country_or_region)),
+);
+const subjectOptions = computed(() =>
+  filterOptions.value.map((item) => ({
+    label: item.subject_name_cn,
+    value: item.id,
+  })),
+);
+const dunsOptions = computed(() =>
+  uniqueOptions(filterOptions.value.map((item) => item.duns)),
+);
+const certifierNameOptions = computed(() =>
+  uniqueOptions(filterOptions.value.map((item) => item.certifier_name)),
+);
+
 const columns = [
-  { dataIndex: 'subject_name_cn', title: '主体名称' },
-  { dataIndex: 'company_name', title: '公司主体' },
-  { dataIndex: 'duns', title: 'D-U-N-S' },
-  { dataIndex: 'registered_at', title: '注册时间' },
-  { dataIndex: 'updated_at', title: '更新时间' },
-  { key: 'actions', title: '操作' },
+  { dataIndex: 'country_or_region', title: '国家或区域', width: 140 },
+  { dataIndex: 'subject_name_cn', title: '主体名称', width: 260 },
+  { dataIndex: 'certifier_name', title: '法人', width: 120 },
+  {
+    dataIndex: 'unified_social_credit_code',
+    title: '统一社会信用代码',
+    width: 190,
+  },
+  { dataIndex: 'registration_number', title: '注册编号', width: 170 },
+  { dataIndex: 'duns', title: 'D-U-N-S', width: 140 },
+  { dataIndex: 'updated_at', title: '更新时间', width: 180 },
+  { fixed: 'right' as const, key: 'actions', title: '操作', width: 130 },
 ];
 
 function emptyForm(): DeveloperSubjectWrite {
@@ -57,15 +80,12 @@ function emptyForm(): DeveloperSubjectWrite {
     certifier_name: '',
     certifier_phone: '',
     company_address: '',
-    company_name: '',
+    country_or_region: '',
     unified_social_credit_code: '',
     registration_number: '',
     duns: '',
     enterprise_email: '',
     remark: '',
-    registered_at: 0,
-    small_business_applied_at: '',
-    small_business_status: '',
     subject_name_cn: '',
     subject_name_en: '',
     tiktok_us_registered: false,
@@ -74,33 +94,64 @@ function emptyForm(): DeveloperSubjectWrite {
   };
 }
 
+function writeData(value: DeveloperSubjectWrite): DeveloperSubjectWrite {
+  return {
+    business_license_file_id: value.business_license_file_id,
+    certifier_address: value.certifier_address,
+    certifier_id_no: value.certifier_id_no,
+    certifier_name: value.certifier_name,
+    certifier_phone: value.certifier_phone,
+    company_address: value.company_address,
+    country_or_region: value.country_or_region,
+    duns: value.duns,
+    duns_file_id: value.duns_file_id,
+    enterprise_email: value.enterprise_email,
+    expected_version: value.expected_version,
+    registration_number: value.registration_number,
+    remark: value.remark,
+    subject_name_cn: value.subject_name_cn,
+    subject_name_en: value.subject_name_en,
+    tiktok_us_registered: value.tiktok_us_registered,
+    unified_social_credit_code: value.unified_social_credit_code,
+    website: value.website,
+  };
+}
+
 async function refresh() {
   loading.value = true;
   try {
-    rows.value = await DeveloperAccountApi.subjects();
+    const all = await DeveloperAccountApi.subjects();
+    filterOptions.value = all;
+    const params = {
+      certifier_name: certifierName.value,
+      country_or_region: countryOrRegion.value,
+      duns: duns.value,
+      keyword: keyword.value.trim() || undefined,
+      subject_id: subjectId.value,
+    };
+    rows.value = Object.values(params).some((value) => value !== undefined)
+      ? await DeveloperAccountApi.subjects(params)
+      : all;
   } finally {
     loading.value = false;
   }
 }
 
+function uniqueOptions(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].map(
+    (value) => ({ label: value, value }),
+  );
+}
+
 function openCreate() {
   editing.value = undefined;
   Object.assign(form, emptyForm());
-  registeredAt.value = undefined;
-  smallBusinessAppliedAt.value = undefined;
   open.value = true;
 }
 
 function openEdit(row: DeveloperSubject) {
   editing.value = row;
   Object.assign(form, row, { expected_version: row.updated_at });
-  registeredAt.value = row.registered_at
-    ? dayjs.unix(row.registered_at)
-    : undefined;
-  const appliedAt = row.small_business_applied_at
-    ? dayjs(row.small_business_applied_at)
-    : undefined;
-  smallBusinessAppliedAt.value = appliedAt?.isValid() ? appliedAt : undefined;
   open.value = true;
 }
 
@@ -111,12 +162,10 @@ async function save() {
   }
   saving.value = true;
   try {
-    form.registered_at = registeredAt.value?.unix() ?? 0;
-    form.small_business_applied_at =
-      smallBusinessAppliedAt.value?.format('YYYY-MM-DD HH:mm:ss') ?? '';
+    const data = writeData(form);
     await (editing.value
-      ? DeveloperAccountApi.updateSubject(editing.value.id, form)
-      : DeveloperAccountApi.createSubject(form));
+      ? DeveloperAccountApi.updateSubject(editing.value.id, data)
+      : DeveloperAccountApi.createSubject(data));
     open.value = false;
     message.success('主体已保存');
     await refresh();
@@ -176,7 +225,53 @@ onMounted(refresh);
 
 <template>
   <Page auto-content-height class="management-page">
-    <div class="mb-3 flex justify-end">
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <Space class="min-w-0 flex-1" wrap>
+        <Input.Search
+          v-model:value="keyword"
+          allow-clear
+          class="w-72"
+          placeholder="全文搜索主体信息"
+          @change="() => !keyword && refresh()"
+          @search="refresh"
+        />
+        <Select
+          v-model:value="countryOrRegion"
+          allow-clear
+          class="w-44"
+          :options="countryOrRegionOptions"
+          placeholder="国家或区域"
+          show-search
+          @change="refresh"
+        />
+        <Select
+          v-model:value="subjectId"
+          allow-clear
+          class="w-56"
+          :options="subjectOptions"
+          placeholder="主体"
+          show-search
+          @change="refresh"
+        />
+        <Select
+          v-model:value="duns"
+          allow-clear
+          class="w-44"
+          :options="dunsOptions"
+          placeholder="D-U-N-S"
+          show-search
+          @change="refresh"
+        />
+        <Select
+          v-model:value="certifierName"
+          allow-clear
+          class="w-44"
+          :options="certifierNameOptions"
+          placeholder="法人"
+          show-search
+          @change="refresh"
+        />
+      </Space>
       <Space>
         <Button @click="refresh">刷新</Button>
         <span v-access:code="'developer-account:subject-import'">
@@ -199,13 +294,11 @@ onMounted(refresh);
       :columns="columns"
       :data-source="rows"
       :loading="loading"
+      :scroll="{ x: 1330 }"
       row-key="id"
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'registered_at'">
-          {{ Times.formatOptionalUnix(record.registered_at) }}
-        </template>
-        <template v-else-if="column.dataIndex === 'updated_at'">
+        <template v-if="column.dataIndex === 'updated_at'">
           {{ Times.formatOptionalUnix(record.updated_at) }}
         </template>
         <template v-else-if="column.key === 'actions'">
@@ -245,8 +338,8 @@ onMounted(refresh);
           <FormItem label="英文名称">
             <Input v-model:value="form.subject_name_en" />
           </FormItem>
-          <FormItem label="公司主体">
-            <Input v-model:value="form.company_name" />
+          <FormItem label="国家或区域">
+            <Input v-model:value="form.country_or_region" />
           </FormItem>
           <FormItem label="D-U-N-S">
             <Input v-model:value="form.duns" />
@@ -254,27 +347,8 @@ onMounted(refresh);
           <FormItem class="col-span-2" label="公司地址">
             <Input v-model:value="form.company_address" />
           </FormItem>
-          <FormItem label="注册时间">
-            <DatePicker
-              v-model:value="registeredAt"
-              class="w-full"
-              format="YYYY-MM-DD HH:mm:ss"
-              show-time
-            />
-          </FormItem>
           <FormItem label="认证官网">
             <Input v-model:value="form.website" />
-          </FormItem>
-          <FormItem label="小企业状态">
-            <Input v-model:value="form.small_business_status" />
-          </FormItem>
-          <FormItem label="小企业申请时间">
-            <DatePicker
-              v-model:value="smallBusinessAppliedAt"
-              class="w-full"
-              format="YYYY-MM-DD HH:mm:ss"
-              show-time
-            />
           </FormItem>
           <FormItem class="col-span-2" label="营业执照资料">
             <Space wrap>

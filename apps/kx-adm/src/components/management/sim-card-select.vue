@@ -168,7 +168,4 @@ defineExpose({ reload: loadOptions });
       </Button>
     </Tooltip>
   </SpaceCompact>
-  <div class="mt-1 text-xs text-muted-foreground">
-    电话卡由设备上报或批量导入维护，此处仅提供选择和刷新。
-  </div>
 </template>

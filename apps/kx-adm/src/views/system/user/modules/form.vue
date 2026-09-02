@@ -6,7 +6,9 @@ import type { SystemUser } from '#/api/system/user';
 
 import { computed, nextTick, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { useVbenDrawer } from '@vben/common-ui';
+import { useUserStore } from '@vben/stores';
 
 import { message } from 'antdv-next';
 
@@ -28,12 +30,21 @@ import { useFormSchema } from '../data';
 
 const emits = defineEmits(['success']);
 
+const { hasAccessByCodes } = useAccess();
+const userStore = useUserStore();
+const delegatedRoleMode = computed(
+  () =>
+    hasAccessByCodes(['users:delegate-roles']) &&
+    !hasAccessByCodes(['AC_100100']),
+);
+
 const formData = ref<SystemUser>();
 const permissionMenus = ref<SystemMenu[]>([]);
 const apiPermissions = ref<ApiPermission[]>([]);
 const roles = ref<SystemRole[]>([]);
 const selectedPermissionIds = ref<string[]>([]);
 const selectedApiIds = ref<string[]>([]);
+const immutableRoleIds = ref<string[]>([]);
 
 function resolveHomeOptions(values: Readonly<SystemUser>) {
   const effectiveIds = userEffectivePermissionIds(
@@ -70,16 +81,25 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
       const validHomeIds = homePageOptionValues(
         resolveHomeOptions(values as SystemUser),
       );
+      let homePermId = formData.value?.homePermId ?? null;
+      if (!delegatedRoleMode.value) {
+        homePermId =
+          values.homePermId && validHomeIds.has(String(values.homePermId))
+            ? String(values.homePermId)
+            : null;
+      }
       const payload = {
         ...values,
         apiIds: selectedApiIds.value,
         deptId: values.deptId || 0,
-        homePermId:
-          values.homePermId && validHomeIds.has(String(values.homePermId))
-            ? String(values.homePermId)
-            : null,
+        homePermId,
         permissions: selectedPermissionIds.value,
-        roles: normalizeRoleIds(values.roles),
+        roles: [
+          ...new Set([
+            ...immutableRoleIds.value,
+            ...normalizeRoleIds(values.roles),
+          ]),
+        ],
       };
       drawerApi.lock();
       const saved = await (id.value
@@ -106,14 +126,27 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
         id.value = data.id;
         selectedApiIds.value = [...(data.apiIds ?? [])];
         selectedPermissionIds.value = [...(data.permissions ?? [])];
+        immutableRoleIds.value = delegatedRoleMode.value
+          ? normalizeRoleIds(data.roles).filter(
+              (roleId) => !userStore.userRoles.includes(roleId),
+            )
+          : [];
       } else {
         formData.value = undefined;
         id.value = undefined;
         selectedApiIds.value = [];
         selectedPermissionIds.value = [];
+        immutableRoleIds.value = [];
       }
 
-      await Promise.all([loadRoles(), loadPermissionGrants()]);
+      await Promise.all([
+        loadRoles(),
+        delegatedRoleMode.value ? Promise.resolve() : loadPermissionGrants(),
+      ]);
+      await formApi.updateSchema([
+        { fieldName: 'permissions', hide: delegatedRoleMode.value },
+        { fieldName: 'homePermId', hide: delegatedRoleMode.value },
+      ]);
       await formApi.updateSchema([
         {
           componentProps: {
@@ -140,7 +173,9 @@ async function loadRoles() {
   loadingRoles.value = true;
   try {
     const fetchedRoles = await SystemRoleApi.all();
-    roles.value = fetchedRoles;
+    roles.value = delegatedRoleMode.value
+      ? fetchedRoles.filter((role) => userStore.userRoles.includes(role.id))
+      : fetchedRoles;
     await formApi.updateSchema([
       {
         componentProps: {
@@ -191,6 +226,7 @@ async function updatePermissionIds(ids: string[]) {
     <Form>
       <template #permissions>
         <PermissionGrantTrees
+          v-if="!delegatedRoleMode"
           :api-ids="selectedApiIds"
           :apis="apiPermissions"
           :loading="loadingGrants"

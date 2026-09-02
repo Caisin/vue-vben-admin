@@ -140,3 +140,10 @@ export function mergeVisibleGrantSelection(
   const hidden = selected.filter((id) => !visibleIds.has(String(id)));
   return [...new Set([...hidden, ...next.map(String)])];
 }
+
+export function mergeSearchedGrantSelection(
+  selected: string[],
+  next: Array<number | string>,
+) {
+  return [...new Set([...selected.map(String), ...next.map(String)])];
+}

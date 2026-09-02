@@ -9,6 +9,7 @@ import {
   buildUnboundApiGrantTree,
   filterGrantTreeByIds,
   filterPermissionGrantTree,
+  mergeSearchedGrantSelection,
   mergeVisibleGrantSelection,
 } from './tree';
 
@@ -132,6 +133,15 @@ describe('permission grant trees', () => {
       '2',
       '1',
     ]);
+  });
+
+  it('only adds grants while selecting search results', () => {
+    expect(mergeSearchedGrantSelection(['1', '2'], ['3'])).toEqual([
+      '1',
+      '2',
+      '3',
+    ]);
+    expect(mergeSearchedGrantSelection(['1', '2'], [])).toEqual(['1', '2']);
   });
 
   it('keeps selected grants and their ancestors in readonly trees', () => {

@@ -44,7 +44,7 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { DeveloperAccountApi } from '#/api/developer-account';
 import { SystemUserApi } from '#/api/system/user';
 import { CredentialSelect } from '#/components/credential';
-import { DicSelect } from '#/components/dictionary';
+import { DicLabel, DicSelect } from '#/components/dictionary';
 import { BusinessImport } from '#/components/import-export';
 import { ReferenceSelect } from '#/components/management';
 import { Times } from '#/times';
@@ -83,13 +83,13 @@ const activeEditTab = ref('account');
 const form = reactive<FormState>(emptyForm());
 const registeredAt = ref<Dayjs>();
 const renewalDueAt = ref<Dayjs>();
+const smallBusinessAppliedAt = ref<Dayjs>();
 const subjectModalOpen = ref(false);
 const subjectSaving = ref(false);
 const editingSubjectId = ref<number>();
 const subjectForm = reactive<DeveloperSubjectWrite>(emptySubjectForm());
 const subjectQuickName = ref('');
 const subjectQuickSaving = ref(false);
-const subjectSmallBusinessAppliedAt = ref<Dayjs>();
 const certifierModalOpen = ref(false);
 const certifierSaving = ref(false);
 const editingCertifierId = ref<number>();
@@ -184,6 +184,8 @@ function emptyForm(): FormState {
     platform: 'apple',
     registered_at: 0,
     renewal_due_at: 0,
+    small_business_applied_at: '',
+    small_business_status: '',
     remark: '',
     screen_share_account: '',
     screen_share_ip: '',
@@ -200,21 +202,41 @@ function emptySubjectForm(): DeveloperSubjectWrite {
     certifier_name: '',
     certifier_phone: '',
     company_address: '',
-    company_name: '',
+    country_or_region: '',
     duns: '',
     duns_file_id: undefined,
     enterprise_email: '',
     expected_version: undefined,
     remark: '',
-    registered_at: 0,
-    small_business_applied_at: '',
-    small_business_status: '',
     subject_name_cn: '',
     subject_name_en: '',
     tiktok_us_registered: false,
     unified_social_credit_code: '',
     registration_number: '',
     website: '',
+  };
+}
+
+function subjectWriteData(value: DeveloperSubjectWrite): DeveloperSubjectWrite {
+  return {
+    business_license_file_id: value.business_license_file_id,
+    certifier_address: value.certifier_address,
+    certifier_id_no: value.certifier_id_no,
+    certifier_name: value.certifier_name,
+    certifier_phone: value.certifier_phone,
+    company_address: value.company_address,
+    country_or_region: value.country_or_region,
+    duns: value.duns,
+    duns_file_id: value.duns_file_id,
+    enterprise_email: value.enterprise_email,
+    expected_version: value.expected_version,
+    registration_number: value.registration_number,
+    remark: value.remark,
+    subject_name_cn: value.subject_name_cn,
+    subject_name_en: value.subject_name_en,
+    tiktok_us_registered: value.tiktok_us_registered,
+    unified_social_credit_code: value.unified_social_credit_code,
+    website: value.website,
   };
 }
 
@@ -240,6 +262,21 @@ function emptyCertifierForm(): DeveloperCertifierWrite {
   };
 }
 
+function certifierWriteData(
+  value: DeveloperCertifierWrite,
+): DeveloperCertifierWrite {
+  return {
+    address: value.address,
+    document_file_id: value.document_file_id,
+    enterprise_email: value.enterprise_email,
+    expected_updated_at: value.expected_updated_at,
+    id_no: value.id_no,
+    name: value.name,
+    phone: value.phone,
+    remark: value.remark,
+  };
+}
+
 async function openCreate() {
   await loadSubjects();
   await loadCertifiers();
@@ -247,6 +284,7 @@ async function openCreate() {
   Object.assign(form, emptyForm());
   registeredAt.value = undefined;
   renewalDueAt.value = undefined;
+  smallBusinessAppliedAt.value = undefined;
   activeEditTab.value = 'account';
   modalOpen.value = true;
 }
@@ -324,6 +362,7 @@ async function openEdit(
   });
   registeredAt.value = timestampValue(value.registered_at);
   renewalDueAt.value = timestampValue(value.renewal_due_at);
+  smallBusinessAppliedAt.value = dateTimeValue(value.small_business_applied_at);
   activeEditTab.value = tab;
   modalOpen.value = true;
 }
@@ -349,9 +388,6 @@ async function openSubjectEdit(target?: DeveloperAccountListItem) {
       : undefined) ?? (await DeveloperAccountApi.subject(subjectId));
   editingSubjectId.value = subject.id;
   Object.assign(subjectForm, subject, { expected_version: subject.updated_at });
-  subjectSmallBusinessAppliedAt.value = dateTimeValue(
-    subject.small_business_applied_at,
-  );
   subjectModalOpen.value = true;
 }
 
@@ -372,11 +408,9 @@ async function saveSubject() {
   }
   subjectSaving.value = true;
   try {
-    subjectForm.small_business_applied_at =
-      subjectSmallBusinessAppliedAt.value?.format('YYYY-MM-DD HH:mm:ss') ?? '';
     await DeveloperAccountApi.updateSubject(
       editingSubjectId.value,
-      subjectForm,
+      subjectWriteData(subjectForm),
     );
     const saved = await DeveloperAccountApi.subject(editingSubjectId.value);
     if (detail.value?.subject_id === editingSubjectId.value) {
@@ -450,9 +484,11 @@ async function saveCertifier() {
     const saved = editingCertifierId.value
       ? await DeveloperAccountApi.updateCertifier(
           editingCertifierId.value,
-          certifierForm,
+          certifierWriteData(certifierForm),
         )
-      : await DeveloperAccountApi.createCertifier(certifierForm);
+      : await DeveloperAccountApi.createCertifier(
+          certifierWriteData(certifierForm),
+        );
     detailCertifier.value = saved;
     form.certifier_id = saved.id;
     await loadCertifiers();
@@ -535,15 +571,28 @@ async function save() {
   saving.value = true;
   try {
     const data: DeveloperAccountWrite = {
-      ...form,
+      account: form.account,
       apps: form.apps_text
         .split(/[\n,，;；]/)
         .map((value) => value.trim())
         .filter(Boolean),
+      certifier_id: form.certifier_id,
+      credential_code: form.credential_code,
       // 设备和主体由各自的独立编辑接口维护，账户保存只保留当前关联 ID。
       devices: editing.value?.devices ?? [],
+      expected_version: form.expected_version,
+      payment_account: form.payment_account,
+      platform: form.platform,
       registered_at: registeredAt.value?.unix() ?? 0,
+      remark: form.remark,
       renewal_due_at: renewalDueAt.value?.unix() ?? 0,
+      screen_share_account: form.screen_share_account,
+      screen_share_ip: form.screen_share_ip,
+      small_business_applied_at:
+        smallBusinessAppliedAt.value?.format('YYYY-MM-DD HH:mm:ss') ?? '',
+      small_business_status: form.small_business_status,
+      status: form.status,
+      subject_id: form.subject_id,
     };
     await (editing.value
       ? DeveloperAccountApi.update(editing.value.id, data)
@@ -899,6 +948,22 @@ async function loadAccessUserOptions() {
                   show-time
                 />
               </FormItem>
+              <FormItem label="小企业状态">
+                <DicSelect
+                  v-model="form.small_business_status"
+                  :auto-select="false"
+                  code="developer_account_small_business_status"
+                  placeholder="选择小企业状态"
+                />
+              </FormItem>
+              <FormItem label="小企业申请时间">
+                <DatePicker
+                  v-model:value="smallBusinessAppliedAt"
+                  class="w-full"
+                  format="YYYY-MM-DD HH:mm:ss"
+                  show-time
+                />
+              </FormItem>
               <FormItem label="屏幕共享 IP">
                 <Input v-model:value="form.screen_share_ip" />
               </FormItem>
@@ -927,26 +992,17 @@ async function loadAccessUserOptions() {
               <FormItem label="英文主体">
                 <Input :value="selectedFormSubject?.subject_name_en" disabled />
               </FormItem>
-              <FormItem label="公司名称">
-                <Input :value="selectedFormSubject?.company_name" disabled />
+              <FormItem label="国家或区域">
+                <Input
+                  :value="selectedFormSubject?.country_or_region"
+                  disabled
+                />
               </FormItem>
               <FormItem label="公司地址">
                 <Input :value="selectedFormSubject?.company_address" disabled />
               </FormItem>
               <FormItem label="D-U-N-S">
                 <Input :value="selectedFormSubject?.duns" disabled />
-              </FormItem>
-              <FormItem label="小企业状态">
-                <Input
-                  :value="selectedFormSubject?.small_business_status"
-                  disabled
-                />
-              </FormItem>
-              <FormItem label="小企业申请时间">
-                <Input
-                  :value="selectedFormSubject?.small_business_applied_at"
-                  disabled
-                />
               </FormItem>
             </div>
           </TabPane>
@@ -1076,27 +1132,14 @@ async function loadAccessUserOptions() {
           <FormItem label="英文主体">
             <Input v-model:value="subjectForm.subject_name_en" />
           </FormItem>
-          <FormItem label="公司名称">
-            <Input v-model:value="subjectForm.company_name" />
+          <FormItem label="国家或区域">
+            <Input v-model:value="subjectForm.country_or_region" />
           </FormItem>
           <FormItem label="公司地址">
             <Input v-model:value="subjectForm.company_address" />
           </FormItem>
           <FormItem label="D-U-N-S">
             <Input v-model:value="subjectForm.duns" />
-          </FormItem>
-          <FormItem label="注册时间">
-            <DatePicker
-              :value="timestampValue(subjectForm.registered_at)"
-              class="w-full"
-              format="YYYY-MM-DD HH:mm:ss"
-              show-time
-              @update:value="
-                (value) =>
-                  (subjectForm.registered_at =
-                    value && !Array.isArray(value) ? value.unix() : 0)
-              "
-            />
           </FormItem>
           <FormItem label="统一社会信用代码">
             <Input v-model:value="subjectForm.unified_social_credit_code" />
@@ -1121,17 +1164,6 @@ async function loadAccessUserOptions() {
           </FormItem>
           <FormItem label="网站">
             <Input v-model:value="subjectForm.website" />
-          </FormItem>
-          <FormItem label="小企业状态">
-            <Input v-model:value="subjectForm.small_business_status" />
-          </FormItem>
-          <FormItem label="小企业申请时间">
-            <DatePicker
-              v-model:value="subjectSmallBusinessAppliedAt"
-              class="w-full"
-              format="YYYY-MM-DD HH:mm:ss"
-              show-time
-            />
           </FormItem>
         </div>
       </Form>
@@ -1277,6 +1309,15 @@ async function loadAccessUserOptions() {
             <DescriptionsItem label="续费时间">
               {{ Times.formatUnix(detail.renewal_due_at) }}
             </DescriptionsItem>
+            <DescriptionsItem label="小企业状态">
+              <DicLabel
+                code="developer_account_small_business_status"
+                :value="detail.small_business_status"
+              />
+            </DescriptionsItem>
+            <DescriptionsItem label="小企业申请时间">
+              {{ detail.small_business_applied_at || '-' }}
+            </DescriptionsItem>
             <DescriptionsItem label="屏幕共享 IP">
               {{ detail.screen_share_ip || '-' }}
             </DescriptionsItem>
@@ -1314,8 +1355,8 @@ async function loadAccessUserOptions() {
             <DescriptionsItem label="英文主体">
               {{ detailSubject?.subject_name_en || '-' }}
             </DescriptionsItem>
-            <DescriptionsItem label="公司名称">
-              {{ detailSubject?.company_name || '-' }}
+            <DescriptionsItem label="国家或区域">
+              {{ detailSubject?.country_or_region || '-' }}
             </DescriptionsItem>
             <DescriptionsItem label="公司地址">
               {{ detailSubject?.company_address || '-' }}
@@ -1341,21 +1382,8 @@ async function loadAccessUserOptions() {
             <DescriptionsItem label="网站">
               {{ detailSubject?.website || '-' }}
             </DescriptionsItem>
-            <DescriptionsItem label="主体注册时间">
-              {{
-                detailSubject
-                  ? Times.formatUnix(detailSubject.registered_at)
-                  : '-'
-              }}
-            </DescriptionsItem>
             <DescriptionsItem label="主体备注">
               {{ detailSubject?.remark || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="小企业状态">
-              {{ detailSubject?.small_business_status || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="小企业申请时间">
-              {{ detailSubject?.small_business_applied_at || '-' }}
             </DescriptionsItem>
           </Descriptions>
         </TabPane>

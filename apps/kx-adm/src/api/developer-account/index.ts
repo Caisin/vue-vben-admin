@@ -51,6 +51,8 @@ export interface DeveloperAccountDetail {
   platform: DeveloperPlatform;
   registered_at: number;
   renewal_due_at: number;
+  small_business_status: string;
+  small_business_applied_at: string;
   subject_id?: null | number;
   remark: string;
   screen_share_account: string;
@@ -71,7 +73,7 @@ export interface DeveloperSubject {
   id: number;
   subject_name_cn: string;
   subject_name_en: string;
-  company_name: string;
+  country_or_region: string;
   company_address: string;
   unified_social_credit_code: string;
   registration_number: string;
@@ -82,12 +84,9 @@ export interface DeveloperSubject {
   certifier_address: string;
   certifier_phone: string;
   enterprise_email: string;
-  registered_at: number;
   business_license_file_id?: null | number;
   duns_file_id?: null | number;
   tiktok_us_registered: boolean;
-  small_business_status: string;
-  small_business_applied_at: string;
   remark: string;
   created_at: number;
   updated_at: number;
@@ -308,7 +307,15 @@ export const DeveloperAccountApi = {
       `/developer-account/certifiers/${id}`,
       data,
     ),
-  subjects: (params?: { keyword?: string }) =>
+  removeCertifier: (id: number | string) =>
+    requestClient.delete<boolean>(`/developer-account/certifiers/${id}`),
+  subjects: (params?: {
+    certifier_name?: string;
+    country_or_region?: string;
+    duns?: string;
+    keyword?: string;
+    subject_id?: number;
+  }) =>
     requestClient.get<DeveloperSubject[]>('/developer-account/subjects', {
       params,
     }),

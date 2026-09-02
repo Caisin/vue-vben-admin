@@ -14,6 +14,7 @@ import {
   buildPermissionGrantTree,
   filterGrantTreeByIds,
   filterPermissionGrantTree,
+  mergeSearchedGrantSelection,
   mergeVisibleGrantSelection,
   selectableGrantIds,
 } from './tree';
@@ -55,6 +56,7 @@ const visibleApiNodes = computed(() => {
 function visibleSelectionModel(
   selected: { value: string[] },
   visibleNodes: { value: ReturnType<typeof buildPermissionGrantTree> },
+  search: { value: string },
 ) {
   return computed({
     get: () => {
@@ -63,6 +65,10 @@ function visibleSelectionModel(
     },
     set: (next: Array<number | string>) => {
       if (props.readonly) return;
+      if (search.value.trim()) {
+        selected.value = mergeSearchedGrantSelection(selected.value, next);
+        return;
+      }
       selected.value = mergeVisibleGrantSelection(
         selected.value,
         next,
@@ -75,8 +81,9 @@ function visibleSelectionModel(
 const visiblePermissionIds = visibleSelectionModel(
   permissionIds,
   visibleMenuNodes,
+  menuSearch,
 );
-const visibleApiIds = visibleSelectionModel(apiIds, visibleApiNodes);
+const visibleApiIds = visibleSelectionModel(apiIds, visibleApiNodes, apiSearch);
 
 function selectAllApis() {
   apiIds.value = [...selectableGrantIds(apiNodes.value)];

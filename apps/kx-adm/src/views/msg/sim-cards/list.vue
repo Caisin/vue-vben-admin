@@ -56,7 +56,7 @@ import {
   PhoneGroupApi,
   SimCardApi,
 } from '#/api/msg';
-import { BusinessImport } from '#/components/import-export';
+import { BusinessExport, BusinessImport } from '#/components/import-export';
 import { StatusTag } from '#/components/management';
 import SimCardAccounts from '#/components/management/sim-card-accounts.vue';
 import SimCardSelect from '#/components/management/sim-card-select.vue';
@@ -79,6 +79,7 @@ import PopupDrawer from './modules/popup-drawer.vue';
 import PopupModal from './modules/popup-modal.vue';
 
 const repairLoading = ref(false);
+const exportOptions = ref<Record<string, unknown>>({});
 const addGroupOpen = ref(false);
 const addGroupLoading = ref(false);
 const addGroupSubmitting = ref(false);
@@ -182,8 +183,10 @@ const [Grid, gridApi] = useVbenVxeGrid<SimCardView>({
       ajax: {
         query: async (params, formValues) => {
           const { page } = params;
+          const query = currentQueryParams(formValues);
+          exportOptions.value = query;
           const result = await SimCardApi.list({
-            ...currentQueryParams(formValues),
+            ...query,
             page: page.currentPage,
             size: page.pageSize,
             ...vxeSortParams(params, simCardSortFields),
@@ -785,6 +788,13 @@ onMounted(loadInitialData);
           definition-code="msg.sim.real_name"
           @completed="refreshAfterRealNameImport"
         />
+        <span v-access:code="'sim_cards:export'">
+          <BusinessExport
+            button-text="导出号码"
+            :default-options="exportOptions"
+            definition-code="msg.sim.export"
+          />
+        </span>
         <Button v-if="canDiscoverPhoneNumber" @click="openDiscoverBatch">
           <template #icon><MessageSquareCode /></template>批量查询号码
         </Button>

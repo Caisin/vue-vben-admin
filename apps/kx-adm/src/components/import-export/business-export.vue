@@ -85,13 +85,14 @@ async function show() {
     definition.value = await ImportExportApi.definition(props.definitionCode);
     for (const key of Object.keys(options))
       Reflect.deleteProperty(options, key);
+    Object.assign(options, props.defaultOptions);
     for (const [name, schema] of Object.entries(
       definition.value.options_schema.properties ?? {},
     )) {
-      options[name] =
-        props.defaultOptions[name] ??
-        schema.default ??
-        (schema.type === 'boolean' ? false : '');
+      if (!Object.hasOwn(options, name)) {
+        options[name] =
+          schema.default ?? (schema.type === 'boolean' ? false : '');
+      }
     }
     run.value =
       (await ImportExportApi.activeExportRun(props.definitionCode)) ??
