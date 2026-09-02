@@ -5,10 +5,11 @@ import type {
   DingtalkKnowledgeTargetWrite,
   DingtalkNodeView,
   DingtalkOperatorOption,
+  DingtalkOperatorTreeNode,
   DingtalkWorkspaceView,
 } from '#/api';
 
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, ref } from 'vue';
 
 import { useUserStore } from '@vben/stores';
 
@@ -35,6 +36,13 @@ interface KnowledgeTargetOptions {
   form: DingtalkKnowledgeTargetWrite;
 }
 
+interface OperatorTreeOption {
+  children?: OperatorTreeOption[];
+  selectable?: boolean;
+  title: string;
+  value: string;
+}
+
 export function useKnowledgeTargetOptions({
   editingId,
   form,
@@ -46,30 +54,18 @@ export function useKnowledgeTargetOptions({
   const treeError = ref('');
   const treeErrorDetail = ref('');
   const treeErrorLink = ref('');
-  const operators = ref<DingtalkOperatorOption[]>([]);
+  const operatorTree = ref<DingtalkOperatorTreeNode[]>([]);
   const operatorLoading = ref(false);
   let operatorRequest = 0;
-  let operatorSearchTimer: number | undefined;
   let treeRequest = 0;
 
   const operatorOptions = computed(() => {
-    const options = operators.value.map((item) => ({
-      label: item.mobile
-        ? `${item.display_name} (${item.mobile})`
-        : `${item.display_name} (#${item.uid})`,
-      value: item.union_id,
-    }));
+    const options = operatorTree.value.map(toOperatorTreeOption);
     const current = form.operator_union_id;
-    if (current && !options.some((item) => item.value === current)) {
-      options.unshift({ label: `当前配置 (${current})`, value: current });
+    if (current && !operatorTreeContains(options, current)) {
+      options.unshift({ title: `当前配置 (${current})`, value: current });
     }
     return options;
-  });
-
-  onBeforeUnmount(() => {
-    if (operatorSearchTimer) {
-      window.clearTimeout(operatorSearchTimer);
-    }
   });
 
   function prepare(row?: DingtalkKnowledgeTargetCfg) {
@@ -83,28 +79,21 @@ export function useKnowledgeTargetOptions({
     }
   }
 
-  async function loadOperators(displayNamePrefix = '') {
+  async function loadOperators() {
     const appKey = form.app_key.trim();
     if (!appKey) {
-      operators.value = [];
+      operatorTree.value = [];
       return;
     }
     const request = ++operatorRequest;
     const currentUid = userStore.userInfo?.userId;
     const shouldDefaultCurrentUser = Boolean(
-      currentUid &&
-      !displayNamePrefix &&
-      !editingId.value &&
-      !form.operator_union_id,
+      currentUid && !editingId.value && !form.operator_union_id,
     );
     operatorLoading.value = true;
     try {
-      const [page, currentPage] = await Promise.all([
-        OrgSyncApi.dingtalk_operators(appKey, {
-          display_name_prefix: displayNamePrefix || undefined,
-          page: 1,
-          size: 100,
-        }),
+      const [tree, currentPage] = await Promise.all([
+        OrgSyncApi.dingtalk_operator_tree(appKey),
         shouldDefaultCurrentUser
           ? OrgSyncApi.dingtalk_operators(appKey, {
               page: 1,
@@ -115,37 +104,25 @@ export function useKnowledgeTargetOptions({
       ]);
       if (request !== operatorRequest || appKey !== form.app_key) return;
 
-      const seen = new Set<string>();
-      operators.value = [...(currentPage?.items ?? []), ...page.items].filter(
-        (item) => {
-          if (seen.has(item.union_id)) return false;
-          seen.add(item.union_id);
-          return true;
-        },
-      );
-      const currentOperator = currentPage?.items[0];
+      operatorTree.value = tree;
+      const currentDisplayName =
+        userStore.userInfo?.realName || userStore.userInfo?.username || '';
+      const currentOperator =
+        currentPage?.items[0] ??
+        findUniqueOperatorByName(tree, currentDisplayName);
       if (currentOperator && !editingId.value && !form.operator_union_id) {
         form.operator_union_id = currentOperator.union_id;
         void loadTreeRoots();
       }
     } catch {
       if (request === operatorRequest) {
-        operators.value = [];
+        operatorTree.value = [];
       }
     } finally {
       if (request === operatorRequest) {
         operatorLoading.value = false;
       }
     }
-  }
-
-  function searchOperators(value: string) {
-    if (operatorSearchTimer) {
-      window.clearTimeout(operatorSearchTimer);
-    }
-    operatorSearchTimer = window.setTimeout(() => {
-      void loadOperators(value.trim());
-    }, 250);
   }
 
   function resetLocation() {
@@ -164,7 +141,7 @@ export function useKnowledgeTargetOptions({
   function onAppChange(value: string) {
     form.app_key = value;
     form.operator_union_id = '';
-    operators.value = [];
+    operatorTree.value = [];
     resetLocation();
     void loadOperators();
   }
@@ -321,7 +298,6 @@ export function useKnowledgeTargetOptions({
     operatorOptions,
     prepare,
     refreshOperators: () => loadOperators(),
-    searchOperators,
     selectTreeNode,
     treeLoading,
     treeError,
@@ -330,6 +306,68 @@ export function useKnowledgeTargetOptions({
     treeNodes,
     treeValue,
   };
+}
+
+function toOperatorTreeOption(
+  node: DingtalkOperatorTreeNode,
+): OperatorTreeOption {
+  return {
+    children: [
+      ...node.users.map((user) => ({
+        title: operatorLabel(user),
+        value: user.union_id,
+      })),
+      ...node.children.map((child) => toOperatorTreeOption(child)),
+    ],
+    selectable: false,
+    title: node.dept_name,
+    value: `dept:${node.dept_id}`,
+  };
+}
+
+function operatorLabel(operator: DingtalkOperatorOption) {
+  if (operator.mobile) {
+    return `${operator.display_name} (${operator.mobile})`;
+  }
+  return operator.uid && Number(operator.uid) > 0
+    ? `${operator.display_name} (#${operator.uid})`
+    : operator.display_name;
+}
+
+function operatorTreeContains(
+  nodes: OperatorTreeOption[],
+  value: string,
+): boolean {
+  return nodes.some(
+    (node) =>
+      node.value === value || operatorTreeContains(node.children ?? [], value),
+  );
+}
+
+function findUniqueOperatorByName(
+  nodes: DingtalkOperatorTreeNode[],
+  displayName: string,
+): DingtalkOperatorOption | undefined {
+  const normalized = displayName.trim();
+  if (!normalized) return undefined;
+  const matches = new Map<string, DingtalkOperatorOption>();
+  collectOperatorsByName(nodes, normalized, matches);
+  return matches.size === 1 ? [...matches.values()][0] : undefined;
+}
+
+function collectOperatorsByName(
+  nodes: DingtalkOperatorTreeNode[],
+  displayName: string,
+  matches: Map<string, DingtalkOperatorOption>,
+): void {
+  for (const node of nodes) {
+    for (const user of node.users) {
+      if (user.display_name.trim() === displayName) {
+        matches.set(user.union_id, user);
+      }
+    }
+    collectOperatorsByName(node.children, displayName, matches);
+  }
 }
 
 function treeNodeValue(workspaceId: string, nodeId: string) {

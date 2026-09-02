@@ -78,7 +78,15 @@ export interface DingtalkOperatorOption {
 
 export interface DingtalkOperatorQuery extends PageQuery {
   display_name_prefix?: string;
+  keyword?: string;
   uid?: number | string;
+}
+
+export interface DingtalkOperatorTreeNode {
+  children: DingtalkOperatorTreeNode[];
+  dept_id: number | string;
+  dept_name: string;
+  users: DingtalkOperatorOption[];
 }
 
 export interface OrgSnapshotRecord {
@@ -103,6 +111,10 @@ export const OrgSyncApi = {
     requestClient.get<Page<DingtalkOperatorOption>>(
       `/auth/dingtalk-operators/${appKey}`,
       { params },
+    ),
+  dingtalk_operator_tree: (appKey: string) =>
+    requestClient.get<DingtalkOperatorTreeNode[]>(
+      `/auth/dingtalk-operators/tree/${appKey}`,
     ),
   sources: () => requestClient.get<OrgSyncSource[]>('/auth/org-sync/sources'),
   runs: (params?: OrgSyncRunQuery) =>

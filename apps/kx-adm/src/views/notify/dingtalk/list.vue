@@ -103,7 +103,6 @@ const {
   operatorOptions: knowledgeOperatorOptions,
   prepare: prepareKnowledgeTargetOptions,
   refreshOperators: refreshKnowledgeOperators,
-  searchOperators: searchKnowledgeOperators,
   selectTreeNode: selectKnowledgeTreeNode,
   treeLoading: knowledgeTreeLoading,
   treeError: knowledgeTreeError,
@@ -785,17 +784,16 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
               />
             </template>
             <div class="compact-row">
-              <Select
+              <TreeSelect
                 v-model:value="knowledgeForm.operator_union_id"
                 allow-clear
                 class="flex-1"
-                :filter-option="false"
                 :loading="knowledgeOperatorLoading"
-                :options="knowledgeOperatorOptions"
                 placeholder="请选择或搜索在职人员"
                 show-search
+                :tree-data="knowledgeOperatorOptions"
+                tree-node-filter-prop="title"
                 @change="onKnowledgeOperatorChange"
-                @search="searchKnowledgeOperators"
               />
               <Tooltip title="维护并执行组织同步">
                 <Button
