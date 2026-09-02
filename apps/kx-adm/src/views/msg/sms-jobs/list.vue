@@ -4,9 +4,10 @@ import type { SenderMode } from './data';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { SimCardFilterOptions, SmsJob, SmsMessage } from '#/api/msg';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { Copy, Eye, MessageSquareCode, RotateCw } from '@vben/icons';
 
@@ -64,6 +65,8 @@ const jobSortFields = [
 ];
 
 const route = useRoute();
+const { hasAccessByCodes } = useAccess();
+const canManageSmsJobs = computed(() => hasAccessByCodes(['sms_jobs:manage']));
 const activeTab = ref('messages');
 const reprocessLoading = ref(false);
 const selectedReprocessLoading = ref(false);
@@ -404,7 +407,7 @@ onMounted(async () => {
         >
           <template #icon><RotateCw /></template>重跑短信补数据
         </Button>
-        <Button type="primary" @click="openSend">
+        <Button v-if="canManageSmsJobs" type="primary" @click="openSend">
           <template #icon><MessageSquareCode /></template>发送短信
         </Button>
       </Space>
@@ -556,7 +559,10 @@ onMounted(async () => {
             }}</span>
           </div>
           <Button
-            v-if="['failed', 'unknown'].includes(selectedJob.status)"
+            v-if="
+              canManageSmsJobs &&
+              ['failed', 'unknown'].includes(selectedJob.status)
+            "
             danger
             :loading="jobRetrying"
             @click="retrySelectedJob"

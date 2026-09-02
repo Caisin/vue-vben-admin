@@ -2,17 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SystemRoleApi } from '#/api/system/role';
 
-const { get } = vi.hoisted(() => ({
+const { get, post } = vi.hoisted(() => ({
   get: vi.fn(),
+  post: vi.fn(),
 }));
 
 vi.mock('#/api/request', () => ({
-  requestClient: { get },
+  requestClient: { get, post },
 }));
 
 describe('systemRoleApi', () => {
   beforeEach(() => {
     get.mockReset();
+    post.mockReset();
   });
 
   it('角色分页直接使用列表响应，不因详情接口失败而丢失整页数据', async () => {
@@ -57,6 +59,36 @@ describe('systemRoleApi', () => {
         role_name_prefix: undefined,
         size: 20,
       },
+    });
+  });
+
+  it('复制角色调用事务复制接口并保留返回的授权集合', async () => {
+    post.mockResolvedValueOnce({
+      api_ids: [21],
+      created_at: 1_788_000_001,
+      enabled: true,
+      home_perm_id: 11,
+      order_no: 2,
+      permission_ids: [11, 12],
+      remark: '复制角色',
+      role_id: 'msg_admin_copy',
+      role_name: 'MSG 管理员副本',
+    });
+
+    await expect(
+      SystemRoleApi.copy('msg_admin', {
+        id: 'msg_admin_copy',
+        name: 'MSG 管理员副本',
+      }),
+    ).resolves.toMatchObject({
+      apiIds: ['21'],
+      id: 'msg_admin_copy',
+      name: 'MSG 管理员副本',
+      permissions: ['11', '12'],
+    });
+    expect(post).toHaveBeenCalledWith('/auth/role/msg_admin/copy', {
+      role_id: 'msg_admin_copy',
+      role_name: 'MSG 管理员副本',
     });
   });
 });

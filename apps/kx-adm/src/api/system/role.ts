@@ -102,6 +102,19 @@ export const SystemRoleApi = {
       apiIds: data.apiIds?.map(String) ?? [],
     };
   },
+  async copy(sourceId: string, data: { id: string; name: string }) {
+    const role = await requestClient.post<AdminRole>(
+      `/auth/role/${sourceId}/copy`,
+      {
+        role_id: data.id,
+        role_name: data.name,
+      },
+    );
+    return {
+      ...toSystemRole(role, role.permission_ids),
+      apiIds: role.api_ids?.map(String) ?? [],
+    };
+  },
   async update(id: string, data: SystemRoleWrite) {
     const detail = await requestClient.get<AdminRoleDetail>(`/auth/role/${id}`);
     const roleName = data.name ?? detail.role_name;

@@ -155,6 +155,7 @@ const otaForm = reactive({
 const route = useRoute();
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
+const canManageDevices = computed(() => hasAccessByCodes(['devices:manage']));
 const canLocateDevice = computed(() => hasAccessByCodes(['devices:locate']));
 const canManageSystemConfig = computed(() =>
   hasAccessByCodes(['devices:system-config']),
@@ -839,12 +840,14 @@ onMounted(loadInitialDevices);
       </div>
       <Space wrap>
         <Button
+          v-if="canManageDevices"
           :loading="actionLoading === 'devices'"
           @click="refreshAll('devices')"
         >
           刷新设备信息
         </Button>
         <Button
+          v-if="canManageDevices"
           :loading="actionLoading === 'cards'"
           @click="refreshAll('cards')"
         >
@@ -858,6 +861,7 @@ onMounted(loadInitialDevices);
           同步系统配置
         </Button>
         <Button
+          v-if="canManageDevices"
           :loading="actionLoading === 'all'"
           type="primary"
           @click="refreshAll('all')"
@@ -912,7 +916,7 @@ onMounted(loadInitialDevices);
               <template #icon><ExternalLink /></template>
             </Button>
           </Tooltip>
-          <Tooltip title="同步">
+          <Tooltip v-if="canManageDevices" title="同步">
             <Button
               aria-label="同步"
               size="small"
@@ -959,6 +963,7 @@ onMounted(loadInitialDevices);
               <template #icon><ExternalLink /></template>设备后台
             </Button>
             <Button
+              v-if="canManageDevices"
               :loading="actionLoading === `${selectedDevice.device_code}:sync`"
               @click="runDeviceAction(selectedDevice, 'sync')"
             >
@@ -974,7 +979,7 @@ onMounted(loadInitialDevices);
             >
               <template #icon><Pin /></template>定位设备
             </Button>
-            <Dropdown>
+            <Dropdown v-if="canManageDevices || canManageSystemConfig">
               <Button
                 :disabled="selectedDevice.online_state !== 'online'"
                 :loading="
@@ -1070,7 +1075,7 @@ onMounted(loadInitialDevices);
             </span>
             <Tooltip v-else-if="column.key === 'balance'" title="点击修改余额">
               <Button
-                v-if="slotHasCard(record)"
+                v-if="canManageDevices && slotHasCard(record)"
                 class="cell-edit-button"
                 type="link"
                 @click="openSlotBalance(record)"
@@ -1081,21 +1086,27 @@ onMounted(loadInitialDevices);
                     : '未知'
                 }}
               </Button>
-              <span v-else>未知</span>
+              <span v-else>
+                {{
+                  record.balance
+                    ? `${record.balance_currency || ''} ${record.balance}`
+                    : '未知'
+                }}
+              </span>
             </Tooltip>
             <Tooltip
               v-else-if="column.key === 'expires_at'"
               title="点击修改有效期"
             >
               <Button
-                v-if="slotHasCard(record)"
+                v-if="canManageDevices && slotHasCard(record)"
                 class="cell-edit-button"
                 type="link"
                 @click="openSlotExpiry(record)"
               >
                 {{ Times.formatUnix(record.expires_at) }}
               </Button>
-              <span v-else>未知</span>
+              <span v-else>{{ Times.formatUnix(record.expires_at) }}</span>
             </Tooltip>
             <Space
               v-else-if="column.key === 'actions' && slotHasCard(record)"
@@ -1111,7 +1122,7 @@ onMounted(loadInitialDevices);
                   <template #icon><Eye /></template>
                 </Button>
               </Tooltip>
-              <Tooltip title="发短信">
+              <Tooltip v-if="canManageDevices" title="发短信">
                 <Button
                   aria-label="发短信"
                   size="small"
@@ -1121,7 +1132,7 @@ onMounted(loadInitialDevices);
                   <template #icon><MessageSquareCode /></template>
                 </Button>
               </Tooltip>
-              <Tooltip title="查余额">
+              <Tooltip v-if="canManageDevices" title="查余额">
                 <Button
                   aria-label="查余额"
                   :loading="balanceRefreshingIccid === record.current_sim_iccid"
@@ -1132,7 +1143,7 @@ onMounted(loadInitialDevices);
                   <template #icon><RotateCw /></template>
                 </Button>
               </Tooltip>
-              <Tooltip title="设备配置">
+              <Tooltip v-if="canManageDevices" title="设备配置">
                 <Button
                   aria-label="设备配置"
                   size="small"

@@ -200,6 +200,7 @@ export function useGridFormSchema(): VbenFormSchema[] {
 export function useColumns<T = SystemRole>(
   onActionClick: OnActionClickFn<T>,
   onStatusChange?: (newStatus: any, row: T) => PromiseLike<boolean | undefined>,
+  canManage: () => boolean = () => true,
 ): VxeTableGridColumns {
   return [
     {
@@ -214,7 +215,7 @@ export function useColumns<T = SystemRole>(
     },
     {
       cellRender: {
-        attrs: { beforeChange: onStatusChange },
+        attrs: { beforeChange: onStatusChange, disabled: () => !canManage() },
         name: onStatusChange ? 'CellSwitch' : 'CellTag',
       },
       field: 'status',
@@ -241,11 +242,17 @@ export function useColumns<T = SystemRole>(
           onClick: onActionClick,
         },
         name: 'CellOperation',
+        options: [
+          { auth: 'roles:manage', code: 'edit' },
+          { code: 'detail' },
+          { auth: 'roles:copy', code: 'copy', text: '复制' },
+          { auth: 'roles:manage', code: 'delete' },
+        ],
       },
       field: 'operation',
       fixed: 'right',
       title: $t('system.role.operation'),
-      width: 130,
+      width: 180,
     },
   ];
 }

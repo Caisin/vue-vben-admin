@@ -10,10 +10,20 @@ import type {
 import type { SystemRole } from '#/api';
 import type { StatusValue } from '#/api/system/shared';
 
+import { computed, reactive, ref } from 'vue';
+
+import { useAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
-import { Button, message, Modal } from 'antdv-next';
+import {
+  Form as AntForm,
+  Button,
+  FormItem,
+  Input,
+  message,
+  Modal,
+} from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { SystemRoleApi } from '#/api';
@@ -36,6 +46,13 @@ const roleSearchCodec = Times.createDateRangeCodec<RoleSearchFormValues>()({
 
 type RoleSearchSubmitValues = ReturnType<typeof roleSearchCodec.encode>;
 
+const { hasAccessByCodes } = useAccess();
+const canManageRoles = computed(() => hasAccessByCodes(['roles:manage']));
+const copyOpen = ref(false);
+const copySubmitting = ref(false);
+const copySource = ref<SystemRole>();
+const copyForm = reactive({ id: '', name: '' });
+
 const [FormDrawer, formDrawerApi] = useVbenDrawer({
   connectedComponent: Form,
   destroyOnClose: true,
@@ -53,7 +70,11 @@ const [Grid, gridApi] = useVbenVxeGrid({
     submitOnChange: true,
   },
   gridOptions: {
-    columns: useColumns(onActionClick, onStatusChange),
+    columns: useColumns(
+      onActionClick,
+      onStatusChange,
+      () => canManageRoles.value,
+    ),
     height: 'auto',
     keepSource: true,
     proxyConfig: {
@@ -83,6 +104,10 @@ const [Grid, gridApi] = useVbenVxeGrid({
 
 function onActionClick(e: OnActionClickParams<SystemRole>) {
   switch (e.code) {
+    case 'copy': {
+      onCopy(e.row);
+      break;
+    }
     case 'delete': {
       onDelete(e.row);
       break;
@@ -125,6 +150,7 @@ function confirm(content: string, title: string) {
  * @returns 返回false则中止改变，返回其他值（undefined、true）则允许改变
  */
 async function onStatusChange(newStatus: number, row: SystemRole) {
+  if (!canManageRoles.value) return false;
   const status: Recordable<string> = {
     0: '禁用',
     1: '启用',
@@ -168,6 +194,32 @@ function onDelete(row: SystemRole) {
     });
 }
 
+function onCopy(row: SystemRole) {
+  copySource.value = row;
+  copyForm.id = `${row.id}_copy`;
+  copyForm.name = `${row.name}副本`;
+  copyOpen.value = true;
+}
+
+async function submitCopy() {
+  const source = copySource.value;
+  const id = copyForm.id.trim();
+  const name = copyForm.name.trim();
+  if (!source || !id || !name) {
+    message.warning('请填写新角色编码和名称');
+    return;
+  }
+  copySubmitting.value = true;
+  try {
+    await SystemRoleApi.copy(source.id, { id, name });
+    message.success(`已复制为角色“${name}”`);
+    copyOpen.value = false;
+    await onRefresh();
+  } finally {
+    copySubmitting.value = false;
+  }
+}
+
 function onRefresh() {
   gridApi.query();
 }
@@ -186,11 +238,29 @@ function onCreate() {
     <DetailDrawer />
     <Grid class="management-grid" :table-title="$t('system.role.list')">
       <template #toolbar-tools>
-        <Button type="primary" @click="onCreate">
+        <Button v-if="canManageRoles" type="primary" @click="onCreate">
           <Plus class="size-5" />
           {{ $t('ui.actionTitle.create', [$t('system.role.name')]) }}
         </Button>
       </template>
     </Grid>
+    <Modal
+      v-model:open="copyOpen"
+      :confirm-loading="copySubmitting"
+      title="复制角色"
+      @ok="submitCopy"
+    >
+      <AntForm layout="vertical">
+        <FormItem label="源角色">
+          <Input :value="copySource?.name" disabled />
+        </FormItem>
+        <FormItem label="新角色编码" required>
+          <Input v-model:value="copyForm.id" :maxlength="64" />
+        </FormItem>
+        <FormItem label="新角色名称" required>
+          <Input v-model:value="copyForm.name" :maxlength="64" />
+        </FormItem>
+      </AntForm>
+    </Modal>
   </Page>
 </template>

@@ -121,6 +121,12 @@ const filterOptions = ref<SimCardFilterOptions>({
 });
 const route = useRoute();
 const { hasAccessByCodes } = useAccess();
+const canManageSimCards = computed(() =>
+  hasAccessByCodes(['sim_cards:manage']),
+);
+const canImportRealName = computed(() =>
+  hasAccessByCodes(['sim_cards:import-real-name']),
+);
 const canDiscoverPhoneNumber = computed(() =>
   hasAccessByCodes(['sim_cards:discover-phone-number']),
 );
@@ -758,6 +764,7 @@ onMounted(loadInitialData);
       </div>
       <Space wrap>
         <BusinessImport
+          v-if="canImportRealName"
           button-size="middle"
           button-text="导入实名"
           definition-code="msg.sim.real_name"
@@ -773,10 +780,18 @@ onMounted(loadInitialData);
         >
           <template #icon><Link2 /></template>加入分组
         </Button>
-        <Button :loading="balanceBatchLoading" @click="refreshAllBalances">
+        <Button
+          v-if="canManageSimCards"
+          :loading="balanceBatchLoading"
+          @click="refreshAllBalances"
+        >
           <template #icon><RotateCw /></template>批量查询余额
         </Button>
-        <Button :loading="repairLoading" @click="repairAllPhoneNumbers">
+        <Button
+          v-if="canManageSimCards"
+          :loading="repairLoading"
+          @click="repairAllPhoneNumbers"
+        >
           <template #icon><RotateCw /></template>批量修复号码格式
         </Button>
       </Space>
@@ -799,12 +814,14 @@ onMounted(loadInitialData);
         <div class="inline-cell">
           <Tooltip title="更新设备卡片信息并通知设备同步修改">
             <Button
+              v-if="canManageSimCards"
               class="cell-edit-button inline-cell-value"
               type="link"
               @click="openUpdate(row)"
             >
               {{ cardDisplay(row, 'phone_number') }}
             </Button>
+            <span v-else>{{ cardDisplay(row, 'phone_number') }}</span>
           </Tooltip>
           <Tooltip title="复制号码">
             <Button
@@ -818,7 +835,7 @@ onMounted(loadInitialData);
               <template #icon><Copy /></template>
             </Button>
           </Tooltip>
-          <Tooltip title="使用该号码发送短信">
+          <Tooltip v-if="canManageSimCards" title="使用该号码发送短信">
             <Button
               aria-label="使用该号码发送短信"
               class="table-icon-button"
@@ -893,7 +910,7 @@ onMounted(loadInitialData);
         <StatusTag :status="row.online_state" />
       </template>
       <template #appleDeveloper="{ row }">
-        <Tooltip title="编辑数据库号码资料">
+        <Tooltip v-if="canManageSimCards" title="编辑数据库号码资料">
           <Button
             class="cell-edit-button"
             type="link"
@@ -904,9 +921,15 @@ onMounted(loadInitialData);
             </Tag>
           </Button>
         </Tooltip>
+        <Tag
+          v-else
+          :color="row.apple_developer_registered ? 'blue' : 'default'"
+        >
+          {{ row.apple_developer_registered ? '已注册' : '未注册' }}
+        </Tag>
       </template>
       <template #profileField="{ column, row }">
-        <Tooltip title="编辑实名和备注">
+        <Tooltip v-if="canManageSimCards" title="编辑实名和备注">
           <Button
             :aria-label="column.field === 'real_name' ? '编辑实名' : '编辑备注'"
             class="cell-edit-button"
@@ -916,13 +939,14 @@ onMounted(loadInitialData);
             {{ cardDisplay(row, column.field) }}
           </Button>
         </Tooltip>
+        <span v-else>{{ cardDisplay(row, column.field) }}</span>
       </template>
       <template #cardValue="{ column, row }">
         {{ cardDisplay(row, column.field) }}
       </template>
       <template #balance="{ row }">
         <div class="inline-cell">
-          <Tooltip title="点击修改余额">
+          <Tooltip v-if="canManageSimCards" title="点击修改余额">
             <Button
               aria-label="修改余额"
               class="cell-edit-button"
@@ -936,7 +960,14 @@ onMounted(loadInitialData);
               }}
             </Button>
           </Tooltip>
-          <Tooltip title="查余额">
+          <span v-else>
+            {{
+              row.balance
+                ? `${row.balance_currency || ''} ${row.balance}`
+                : '未知'
+            }}
+          </span>
+          <Tooltip v-if="canManageSimCards" title="查余额">
             <Button
               aria-label="查余额"
               class="table-icon-button"
@@ -951,7 +982,7 @@ onMounted(loadInitialData);
         </div>
       </template>
       <template #expiresAt="{ row }">
-        <Tooltip title="点击修改有效期">
+        <Tooltip v-if="canManageSimCards" title="点击修改有效期">
           <Button
             aria-label="修改有效期"
             class="cell-edit-button"
@@ -961,9 +992,10 @@ onMounted(loadInitialData);
             {{ Times.formatUnix(row.expires_at) }}
           </Button>
         </Tooltip>
+        <span v-else>{{ Times.formatUnix(row.expires_at) }}</span>
       </template>
       <template #lifecycleState="{ row }">
-        <Tooltip title="编辑数据库号码资料">
+        <Tooltip v-if="canManageSimCards" title="编辑数据库号码资料">
           <Button
             class="cell-edit-button"
             type="link"
@@ -972,6 +1004,7 @@ onMounted(loadInitialData);
             <StatusTag :status="row.lifecycle_state" />
           </Button>
         </Tooltip>
+        <StatusTag v-else :status="row.lifecycle_state" />
       </template>
       <template #lastSeenAt="{ row }">
         {{ Times.formatUnix(row.last_seen_at) }}
@@ -1125,17 +1158,22 @@ onMounted(loadInitialData);
               定位所在设备
             </Button>
             <Button
+              v-if="canManageSimCards"
               :loading="balanceRefreshingIccid === selectedCard.iccid"
               @click="refreshCardBalance(selectedCard)"
             >
               <template #icon><RotateCw /></template>
               查余额
             </Button>
-            <Button @click="openUpdate(selectedCard)">
+            <Button v-if="canManageSimCards" @click="openUpdate(selectedCard)">
               <template #icon><Settings /></template>
               设备配置
             </Button>
-            <Button type="primary" @click="openSms(selectedCard)">
+            <Button
+              v-if="canManageSimCards"
+              type="primary"
+              @click="openSms(selectedCard)"
+            >
               <template #icon><MessageSquareCode /></template>发短信
             </Button>
             <Button
@@ -1193,18 +1231,36 @@ onMounted(loadInitialData);
                 }}
               </DescriptionsItem>
               <DescriptionsItem label="余额">
-                <Button type="link" @click="openBalance(selectedCard)">
+                <Button
+                  v-if="canManageSimCards"
+                  type="link"
+                  @click="openBalance(selectedCard)"
+                >
                   {{
                     selectedCard.balance
                       ? `${selectedCard.balance_currency} ${selectedCard.balance}`
                       : '未知'
                   }}
                 </Button>
+                <span v-else>
+                  {{
+                    selectedCard.balance
+                      ? `${selectedCard.balance_currency} ${selectedCard.balance}`
+                      : '未知'
+                  }}
+                </span>
               </DescriptionsItem>
               <DescriptionsItem label="卡片有效期">
-                <Button type="link" @click="openExpiry(selectedCard)">
+                <Button
+                  v-if="canManageSimCards"
+                  type="link"
+                  @click="openExpiry(selectedCard)"
+                >
                   {{ Times.formatUnix(selectedCard.expires_at) }}
                 </Button>
+                <span v-else>{{
+                  Times.formatUnix(selectedCard.expires_at)
+                }}</span>
               </DescriptionsItem>
               <DescriptionsItem label="实名">
                 {{ displayValue(selectedCard.real_name) }}
