@@ -9,6 +9,7 @@ import type { SystemUser } from '#/api/system/user';
 
 import { computed, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { IconifyIcon, Plus } from '@vben/icons';
 
@@ -35,6 +36,10 @@ import { SystemUserApi } from '#/api/system/user';
 import { useColumns, useFormSchema } from './data';
 
 const groupModalOpen = ref(false);
+const { hasAccessByCodes } = useAccess();
+const canManageAccess = computed(() =>
+  hasAccessByCodes(['developer_account_access:manage']),
+);
 const relationDrawerOpen = ref(false);
 const saving = ref(false);
 const loadingRelations = ref(false);
@@ -228,14 +233,20 @@ async function loadUserOptions() {
 
     <Grid class="management-grid" table-title="账户权限分组">
       <template #toolbar-tools>
-        <Button type="primary" @click="openCreate">
+        <Button v-if="canManageAccess" type="primary" @click="openCreate">
           <template #icon><Plus /></template>新增分组
         </Button>
       </template>
       <template #groupName="{ row }">
-        <button class="cell-action" type="button" @click="openEdit(row)">
+        <button
+          v-if="canManageAccess"
+          class="cell-action"
+          type="button"
+          @click="openEdit(row)"
+        >
           {{ row.grp_name }}
         </button>
+        <span v-else>{{ row.grp_name }}</span>
       </template>
       <template #accountCount="{ row }">
         <button
@@ -262,6 +273,7 @@ async function loadUserOptions() {
       </template>
       <template #remove="{ row }">
         <Popconfirm
+          v-if="canManageAccess"
           :title="`确认删除账户权限分组 ${row.grp_name}？`"
           cancel-text="取消"
           ok-text="删除"
@@ -323,6 +335,7 @@ async function loadUserOptions() {
       <Select
         v-if="relationMode === 'accounts'"
         v-model:value="selectedAccountIds"
+        :disabled="!canManageAccess"
         class="w-full"
         mode="multiple"
         :options="accountOptions"
@@ -332,6 +345,7 @@ async function loadUserOptions() {
       <Select
         v-else
         v-model:value="selectedUids"
+        :disabled="!canManageAccess"
         class="w-full"
         mode="multiple"
         :options="userOptions"
@@ -350,7 +364,12 @@ async function loadUserOptions() {
       <template #footer>
         <div class="flex justify-end gap-2">
           <Button @click="relationDrawerOpen = false">取消</Button>
-          <Button :loading="saving" type="primary" @click="saveRelations">
+          <Button
+            v-if="canManageAccess"
+            :loading="saving"
+            type="primary"
+            @click="saveRelations"
+          >
             保存
           </Button>
         </div>

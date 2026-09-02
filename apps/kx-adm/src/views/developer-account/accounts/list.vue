@@ -17,6 +17,7 @@ import type { SystemUser } from '#/api/system/user';
 
 import { computed, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { IconifyIcon, Plus, RotateCw } from '@vben/icons';
 
@@ -60,6 +61,16 @@ type FormState = DeveloperAccountWrite & {
 };
 
 const modalOpen = ref(false);
+const { hasAccessByCodes } = useAccess();
+const canUpdateAccount = computed(() =>
+  hasAccessByCodes(['developer-account:update']),
+);
+const canImportApple = computed(() =>
+  hasAccessByCodes(['developer-account:import-apple']),
+);
+const canManageAccess = computed(() =>
+  hasAccessByCodes(['developer_account_access:manage']),
+);
 const saving = ref(false);
 const reindexingSearch = ref(false);
 const subjects = ref<DeveloperSubject[]>([]);
@@ -626,11 +637,13 @@ async function loadAccessUserOptions() {
           >
             <RotateCw class="size-4" />重建搜索索引
           </Button>
-          <BusinessImport
-            button-text="导入 Apple"
-            definition-code="developer_account.apple"
-            @completed="onImportCompleted"
-          />
+          <span v-if="canImportApple">
+            <BusinessImport
+              button-text="导入 Apple"
+              definition-code="developer_account.apple"
+              @completed="onImportCompleted"
+            />
+          </span>
           <Button
             v-access:code="'developer-account:create'"
             type="primary"
@@ -655,72 +668,107 @@ async function loadAccessUserOptions() {
         </button>
       </template>
       <template #subject="{ row }">
-        <button class="cell-action" type="button" @click="openSubjectCell(row)">
+        <button
+          v-if="canUpdateAccount"
+          class="cell-action"
+          type="button"
+          @click="openSubjectCell(row)"
+        >
           {{ subjectLabel(row) }}
         </button>
+        <span v-else>{{ subjectLabel(row) }}</span>
       </template>
       <template #certifierName="{ row }">
         <button
+          v-if="canUpdateAccount"
           class="cell-action"
           type="button"
           @click="openCertifierCell(row)"
         >
           {{ certifierLabel(row) }}
         </button>
+        <span v-else>{{ certifierLabel(row) }}</span>
       </template>
       <template #certifierPhone="{ row }">
         <button
+          v-if="canUpdateAccount"
           class="cell-action"
           type="button"
           @click="openCertifierCell(row)"
         >
           {{ certifierPhone(row) }}
         </button>
+        <span v-else>{{ certifierPhone(row) }}</span>
       </template>
       <template #registeredAt="{ row }">
-        <button class="cell-action" type="button" @click="openEdit(row)">
+        <button
+          v-if="canUpdateAccount"
+          class="cell-action"
+          type="button"
+          @click="openEdit(row)"
+        >
           {{ Times.formatOptionalUnix(row.registered_at) }}
         </button>
+        <span v-else>{{ Times.formatOptionalUnix(row.registered_at) }}</span>
       </template>
       <template #renewalDueAt="{ row }">
-        <button class="cell-action" type="button" @click="openEdit(row)">
+        <button
+          v-if="canUpdateAccount"
+          class="cell-action"
+          type="button"
+          @click="openEdit(row)"
+        >
           {{ Times.formatOptionalUnix(row.renewal_due_at) }}
         </button>
+        <span v-else>{{ Times.formatOptionalUnix(row.renewal_due_at) }}</span>
       </template>
       <template #deviceCount="{ row }">
         <button
+          v-if="canUpdateAccount"
           class="cell-action"
           type="button"
           @click="openEdit(row, 'devices')"
         >
           {{ row.device_count }}
         </button>
+        <span v-else>{{ row.device_count }}</span>
       </template>
       <template #appCount="{ row }">
         <button
+          v-if="canUpdateAccount"
           class="cell-action"
           type="button"
           @click="openEdit(row, 'apps')"
         >
           {{ row.app_count }}
         </button>
+        <span v-else>{{ row.app_count }}</span>
       </template>
       <template #accessScope="{ row }">
         <button
-          v-access:code="'developer_account_access:manage'"
+          v-if="canManageAccess"
           class="cell-action"
           type="button"
           @click="openAccountAccess(row)"
         >
           {{ row.access_group_count }} 个分组 / {{ row.access_user_count }} 人
         </button>
+        <span v-else>
+          {{ row.access_group_count }} 个分组 / {{ row.access_user_count }} 人
+        </span>
       </template>
       <template #status="{ row }">
-        <button type="button" @click="openEdit(row)">
+        <button v-if="canUpdateAccount" type="button" @click="openEdit(row)">
           <Tag :color="row.status.includes('完成') ? 'success' : 'processing'">
             {{ row.status || '未设置' }}
           </Tag>
         </button>
+        <Tag
+          v-else
+          :color="row.status.includes('完成') ? 'success' : 'processing'"
+        >
+          {{ row.status || '未设置' }}
+        </Tag>
       </template>
     </Grid>
 
