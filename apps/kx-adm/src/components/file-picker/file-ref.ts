@@ -48,13 +48,20 @@ export function isFileReference(value: unknown): value is StorageFileReference {
 }
 
 export function normalizeFileId(value: unknown): FileId | undefined {
-  if (isFileReference(value)) return value.file_id;
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (isFileReference(value)) return normalizeFileId(value.file_id);
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
   if (typeof value !== 'string') return undefined;
   const trimmed: string = String(value).trim();
   if (!trimmed || isHttpUrl(trimmed)) return undefined;
   const storageMatch = /^storage:file:(.+)$/i.exec(trimmed);
-  return storageMatch?.[1] || trimmed;
+  const id = storageMatch?.[1] || trimmed;
+  if (/^[1-9]\d*$/u.test(id)) {
+    const numeric = Number(id);
+    if (Number.isSafeInteger(numeric)) return numeric;
+  }
+  return id;
 }
 
 export function fileKindFromExt(ext?: string): StorageFileMediaType {

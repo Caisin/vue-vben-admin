@@ -29,8 +29,9 @@ import {
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
 import { SoftwareApi } from '#/api/software';
 import { FileUrlInput } from '#/components/file-picker';
-import { normalizeFileId } from '#/components/file-picker/file-ref';
+import { requestErrorMessage } from '#/request-errors';
 
+import { normalizeArtifactFileId } from './artifact-upload';
 import {
   providerOptions,
   useColumns,
@@ -214,7 +215,7 @@ function openArtifactUpload(version: SoftwareVersion) {
 async function uploadArtifact() {
   const application = detailApplication.value;
   const version = artifactVersion.value;
-  const fileId = normalizeFileId(artifactFile.value);
+  const fileId = normalizeArtifactFileId(artifactFile.value);
   if (!application || !version || !fileId) {
     message.warning('请选择已上传的版本文件');
     return;
@@ -228,6 +229,8 @@ async function uploadArtifact() {
     });
     artifactOpen.value = false;
     message.success('上传制品已设为该平台当前安装来源');
+  } catch (error) {
+    message.error(requestErrorMessage(error, '平台制品登记失败，请检查文件和目标平台'));
   } finally {
     artifactSaving.value = false;
   }

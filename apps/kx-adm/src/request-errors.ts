@@ -1,4 +1,27 @@
-function messageFrom(value: unknown) {
+function decodeBinaryResponse(value: unknown): unknown {
+  let bytes: Uint8Array | undefined;
+  if (value instanceof ArrayBuffer) {
+    bytes = new Uint8Array(value);
+  } else if (ArrayBuffer.isView(value)) {
+    bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  if (!bytes) return value;
+  const text = new TextDecoder().decode(bytes).trim();
+  const hasInvalidCharacter = [...text].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 8 || (code >= 14 && code <= 31) || code === 65_533;
+  });
+  if (!text || hasInvalidCharacter) return value;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function messageFrom(raw: unknown) {
+  const value = decodeBinaryResponse(raw);
+  if (typeof value === 'string' && value.trim()) return value;
   if (typeof value !== 'object' || value === null || !('msg' in value)) {
     return undefined;
   }

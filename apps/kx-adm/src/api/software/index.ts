@@ -288,7 +288,7 @@ export const SoftwareApi = {
   uploadVersionArtifact: (
     applicationId: number | string,
     versionId: number | string,
-    data: { arch: string; file_id: number | string; platform: string },
+    data: { arch: string; file_id: number; platform: string },
   ) =>
     requestClient.post<SoftwareArtifact>(
       `/software/applications/${applicationId}/versions/${versionId}/artifacts`,

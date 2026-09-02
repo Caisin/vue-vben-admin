@@ -58,7 +58,7 @@ function outputValue(selected: SelectedStorageFile): FileInputValue {
   if (props.valueMode === 'url') return selected.preview_url ?? '';
   if (props.valueMode === 'ref')
     return toFileReference(selected.file) as StorageFileReference;
-  return String(selected.file_id);
+  return normalizeFileId(selected.file_id) ?? selected.file_id;
 }
 
 function onConfirm(files: SelectedStorageFile[]) {

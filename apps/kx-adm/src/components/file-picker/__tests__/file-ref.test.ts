@@ -2,7 +2,11 @@ import type { UploadFile } from '#/api/storage';
 
 import { describe, expect, it } from 'vitest';
 
-import { fileKindFromReference, toFileReference } from '../file-ref';
+import {
+  fileKindFromReference,
+  normalizeFileId,
+  toFileReference,
+} from '../file-ref';
 
 function stored(file_ext: string, file_name = 'sample'): UploadFile {
   return {
@@ -19,6 +23,13 @@ function stored(file_ext: string, file_name = 'sample'): UploadFile {
 }
 
 describe('file reference preview metadata', () => {
+  it('normalizes safe decimal file ids to numbers without losing large ids', () => {
+    expect(normalizeFileId('107')).toBe(107);
+    expect(normalizeFileId('storage:file:108')).toBe(108);
+    expect(normalizeFileId({ file_id: '109' })).toBe(109);
+    expect(normalizeFileId('9007199254740992')).toBe('9007199254740992');
+  });
+
   it('detects image and video references by extension metadata', () => {
     expect(fileKindFromReference({ file_ext: 'png', file_id: 1 })).toBe(
       'image',

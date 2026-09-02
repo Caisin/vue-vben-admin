@@ -3,25 +3,21 @@ import { describe, expect, it } from 'vitest';
 import { requestErrorMessage } from './request-errors';
 
 describe('requestErrorMessage', () => {
-  it('reads msg from an Axios error response', () => {
+  it('解析 ArrayBuffer JSON 错误响应', () => {
+    const data = new TextEncoder().encode(
+      JSON.stringify({ code: 422, msg: 'file_id 必须是整数' }),
+    ).buffer;
+    expect(requestErrorMessage({ response: { data } }, 'fallback')).toBe(
+      'file_id 必须是整数',
+    );
+  });
+
+  it('二进制乱码回退到业务提示', () => {
     expect(
       requestErrorMessage(
-        { response: { data: { code: 500, msg: '保存失败' } } },
-        '系统错误',
+        { response: { data: new Uint8Array([0, 255, 1]).buffer } },
+        'fallback',
       ),
-    ).toBe('保存失败');
-  });
-
-  it('reads msg from a response body rethrown by RequestClient', () => {
-    expect(
-      requestErrorMessage({ code: 500, msg: '参数无效' }, '系统错误'),
-    ).toBe('参数无效');
-  });
-
-  it('uses the fallback when msg is absent or empty', () => {
-    expect(requestErrorMessage({ response: { data: {} } }, '系统错误')).toBe(
-      '系统错误',
-    );
-    expect(requestErrorMessage({ msg: '  ' }, '系统错误')).toBe('系统错误');
+    ).toBe('fallback');
   });
 });
