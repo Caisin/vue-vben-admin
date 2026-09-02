@@ -4,7 +4,7 @@ import type {
   DeveloperAccountListItem,
 } from '#/api/developer-account';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
@@ -55,6 +55,27 @@ const columns = [
   { dataIndex: 'updated_at', title: '更新时间' },
   { key: 'actions', title: '操作' },
 ];
+
+const accountOptions = computed(() =>
+  accounts.value.map((item) => ({
+    label: developerAccountLabel(item),
+    value: Number(item.id),
+  })),
+);
+
+function developerAccountLabel(item: DeveloperAccountListItem) {
+  const account = item.account.trim();
+  const subject = item.subject_name_cn.trim();
+  if (account && subject) return `${account} · ${subject}`;
+  if (account) return account;
+  if (subject) return `未录入账号 · ${subject}`;
+  return `账户 #${item.id}`;
+}
+
+function accountLabelById(id: number) {
+  const account = accounts.value.find((item) => Number(item.id) === id);
+  return account ? developerAccountLabel(account) : '未关联';
+}
 
 async function refresh() {
   loading.value = true;
@@ -174,11 +195,7 @@ onMounted(refresh);
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'developer_account_id'">
-          {{
-            accounts.find(
-              (item) => Number(item.id) === record.developer_account_id,
-            )?.account || '未关联'
-          }}
+          {{ accountLabelById(record.developer_account_id) }}
         </template>
         <template v-else-if="column.dataIndex === 'screenshot_file_id'">
           <Button
@@ -232,12 +249,9 @@ onMounted(refresh);
         <FormItem label="开发者账号" required>
           <Select
             v-model:value="form.developer_account_id"
-            :options="
-              accounts.map((item) => ({
-                label: item.account,
-                value: Number(item.id),
-              }))
-            "
+            :options="accountOptions"
+            option-filter-prop="label"
+            placeholder="选择开发者账号"
             show-search
           />
         </FormItem>

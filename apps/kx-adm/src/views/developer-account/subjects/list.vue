@@ -464,7 +464,7 @@ onMounted(refresh);
           <FormItem label="D-U-N-S">
             <Input v-model:value="form.duns" />
           </FormItem>
-          <FormItem label="公司地址">
+          <FormItem label="注册地址">
             <Input v-model:value="form.company_address" />
           </FormItem>
           <FormItem label="认证官网">

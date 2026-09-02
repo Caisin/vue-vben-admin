@@ -79,15 +79,12 @@ const editing = ref<DeveloperAccountDetail>();
 const detail = ref<DeveloperAccountDetail>();
 const detailSubject = ref<DeveloperSubject>();
 const detailCertifier = ref<DeveloperCertifier>();
+const subjectPreview = ref<DeveloperSubject>();
 const activeEditTab = ref('account');
 const form = reactive<FormState>(emptyForm());
 const registeredAt = ref<Dayjs>();
 const renewalDueAt = ref<Dayjs>();
 const smallBusinessAppliedAt = ref<Dayjs>();
-const subjectModalOpen = ref(false);
-const subjectSaving = ref(false);
-const editingSubjectId = ref<number>();
-const subjectForm = reactive<DeveloperSubjectWrite>(emptySubjectForm());
 const subjectQuickName = ref('');
 const subjectQuickSaving = ref(false);
 const certifierModalOpen = ref(false);
@@ -115,9 +112,6 @@ const accessSaving = ref(false);
 const accessAccount = ref<DeveloperAccountListItem>();
 const accessUids = ref<number[]>([]);
 const accessUserOptions = ref<{ label: string; value: number }[]>([]);
-const selectedFormSubject = computed(() =>
-  subjects.value.find((item) => item.id === form.subject_id),
-);
 const selectedFormCertifier = computed(() =>
   certifiers.value.find((item) => item.id === form.certifier_id),
 );
@@ -214,29 +208,6 @@ function emptySubjectForm(): DeveloperSubjectWrite {
     unified_social_credit_code: '',
     registration_number: '',
     website: '',
-  };
-}
-
-function subjectWriteData(value: DeveloperSubjectWrite): DeveloperSubjectWrite {
-  return {
-    business_license_file_id: value.business_license_file_id,
-    certifier_address: value.certifier_address,
-    certifier_id_no: value.certifier_id_no,
-    certifier_name: value.certifier_name,
-    certifier_phone: value.certifier_phone,
-    company_address: value.company_address,
-    country_or_region: value.country_or_region,
-    duns: value.duns,
-    duns_file_id: value.duns_file_id,
-    enterprise_email: value.enterprise_email,
-    expected_version: value.expected_version,
-    registration_number: value.registration_number,
-    remark: value.remark,
-    subject_name_cn: value.subject_name_cn,
-    subject_name_en: value.subject_name_en,
-    tiktok_us_registered: value.tiktok_us_registered,
-    unified_social_credit_code: value.unified_social_credit_code,
-    website: value.website,
   };
 }
 
@@ -372,56 +343,24 @@ async function openDetailEdit() {
   await openEdit(detail.value);
 }
 
-async function openSubjectEdit(target?: DeveloperAccountListItem) {
-  const subjectId =
-    target?.subject_id ??
-    (modalOpen.value ? form.subject_id : undefined) ??
-    detail.value?.subject_id ??
-    editing.value?.subject_id;
-  if (!subjectId) {
-    message.info('请先为账户关联主体');
-    return;
+function openDetailSubject() {
+  if (detailSubject.value) {
+    subjectPreview.value = detailSubject.value;
   }
-  const subject =
-    (!target && detailSubject.value?.id === subjectId
-      ? detailSubject.value
-      : undefined) ?? (await DeveloperAccountApi.subject(subjectId));
-  editingSubjectId.value = subject.id;
-  Object.assign(subjectForm, subject, { expected_version: subject.updated_at });
-  subjectModalOpen.value = true;
 }
 
-function openSubjectCell(row: DeveloperAccountListItem) {
-  return row.subject_id ? openSubjectEdit(row) : openEdit(row);
+async function openSubjectCell(row: DeveloperAccountListItem) {
+  if (!row.subject_id) {
+    await openEdit(row);
+    return;
+  }
+  subjectPreview.value = await DeveloperAccountApi.subject(row.subject_id);
 }
 
 function subjectLabel(row: DeveloperAccountListItem) {
   if (!row.subject_id) return '未关联主体';
   const subject = subjects.value.find((item) => item.id === row.subject_id);
   return subject?.subject_name_cn || `主体 #${row.subject_id}`;
-}
-
-async function saveSubject() {
-  if (!editingSubjectId.value || !subjectForm.subject_name_cn.trim()) {
-    message.error('请输入主体名称');
-    return;
-  }
-  subjectSaving.value = true;
-  try {
-    await DeveloperAccountApi.updateSubject(
-      editingSubjectId.value,
-      subjectWriteData(subjectForm),
-    );
-    const saved = await DeveloperAccountApi.subject(editingSubjectId.value);
-    if (detail.value?.subject_id === editingSubjectId.value) {
-      detailSubject.value = saved;
-    }
-    subjectModalOpen.value = false;
-    message.success('主体信息已保存');
-    await gridApi.query();
-  } finally {
-    subjectSaving.value = false;
-  }
 }
 
 function openCertifierCell(row: DeveloperAccountListItem) {
@@ -975,37 +914,6 @@ async function loadAccessUserOptions() {
               </FormItem>
             </div>
           </TabPane>
-          <TabPane key="subject" tab="主体信息">
-            <div class="mb-3 flex justify-end">
-              <Button
-                :disabled="!form.subject_id"
-                type="primary"
-                @click="() => openSubjectEdit()"
-              >
-                编辑主体
-              </Button>
-            </div>
-            <div class="grid grid-cols-2 gap-x-4">
-              <FormItem label="中文主体">
-                <Input :value="selectedFormSubject?.subject_name_cn" disabled />
-              </FormItem>
-              <FormItem label="英文主体">
-                <Input :value="selectedFormSubject?.subject_name_en" disabled />
-              </FormItem>
-              <FormItem label="国家或区域">
-                <Input
-                  :value="selectedFormSubject?.country_or_region"
-                  disabled
-                />
-              </FormItem>
-              <FormItem label="公司地址">
-                <Input :value="selectedFormSubject?.company_address" disabled />
-              </FormItem>
-              <FormItem label="D-U-N-S">
-                <Input :value="selectedFormSubject?.duns" disabled />
-              </FormItem>
-            </div>
-          </TabPane>
           <TabPane key="certifier" tab="认证人">
             <div class="mb-4 flex items-end gap-3">
               <FormItem class="mb-0 flex-1" label="关联认证人">
@@ -1118,55 +1026,56 @@ async function loadAccessUserOptions() {
     </Modal>
 
     <Modal
-      v-model:open="subjectModalOpen"
-      :confirm-loading="subjectSaving"
-      title="编辑主体信息"
+      :footer="null"
+      :open="Boolean(subjectPreview)"
+      title="主体信息"
       width="760px"
-      @ok="saveSubject"
+      @cancel="subjectPreview = undefined"
     >
-      <Form layout="vertical">
-        <div class="grid grid-cols-2 gap-x-4">
-          <FormItem label="中文主体" required>
-            <Input v-model:value="subjectForm.subject_name_cn" />
-          </FormItem>
-          <FormItem label="英文主体">
-            <Input v-model:value="subjectForm.subject_name_en" />
-          </FormItem>
-          <FormItem label="国家或区域">
-            <Input v-model:value="subjectForm.country_or_region" />
-          </FormItem>
-          <FormItem label="公司地址">
-            <Input v-model:value="subjectForm.company_address" />
-          </FormItem>
-          <FormItem label="D-U-N-S">
-            <Input v-model:value="subjectForm.duns" />
-          </FormItem>
-          <FormItem label="统一社会信用代码">
-            <Input v-model:value="subjectForm.unified_social_credit_code" />
-          </FormItem>
-          <FormItem label="注册编号">
-            <Input v-model:value="subjectForm.registration_number" />
-          </FormItem>
-          <FormItem label="认证人">
-            <Input v-model:value="subjectForm.certifier_name" />
-          </FormItem>
-          <FormItem label="认证人证件号码">
-            <Input v-model:value="subjectForm.certifier_id_no" />
-          </FormItem>
-          <FormItem label="认证人地址">
-            <Input v-model:value="subjectForm.certifier_address" />
-          </FormItem>
-          <FormItem label="认证人电话">
-            <Input v-model:value="subjectForm.certifier_phone" />
-          </FormItem>
-          <FormItem label="企业邮箱">
-            <Input v-model:value="subjectForm.enterprise_email" />
-          </FormItem>
-          <FormItem label="网站">
-            <Input v-model:value="subjectForm.website" />
-          </FormItem>
-        </div>
-      </Form>
+      <Descriptions v-if="subjectPreview" bordered :column="2" size="small">
+        <DescriptionsItem label="主体中文名称">
+          {{ subjectPreview.subject_name_cn || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="主体英文名称">
+          {{ subjectPreview.subject_name_en || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="国家或区域">
+          {{ subjectPreview.country_or_region || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="法人">
+          {{ subjectPreview.certifier_name || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="注册地址" :span="2">
+          {{ subjectPreview.company_address || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="统一社会信用代码">
+          {{ subjectPreview.unified_social_credit_code || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="注册编号">
+          {{ subjectPreview.registration_number || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="D-U-N-S">
+          {{ subjectPreview.duns || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="认证官网">
+          {{ subjectPreview.website || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="企业邮箱">
+          {{ subjectPreview.enterprise_email || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="法人手机号">
+          {{ subjectPreview.certifier_phone || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="法人证件号码">
+          {{ subjectPreview.certifier_id_no || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="法人地址">
+          {{ subjectPreview.certifier_address || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="备注" :span="2">
+          {{ subjectPreview.remark || '-' }}
+        </DescriptionsItem>
+      </Descriptions>
     </Modal>
 
     <Modal
@@ -1300,6 +1209,16 @@ async function loadAccessUserOptions() {
             <DescriptionsItem label="密码凭证">
               {{ detail.credential_code || '-' }}
             </DescriptionsItem>
+            <DescriptionsItem label="关联主体">
+              <Button
+                v-if="detailSubject"
+                type="link"
+                @click="openDetailSubject"
+              >
+                {{ detailSubject.subject_name_cn }}
+              </Button>
+              <span v-else>-</span>
+            </DescriptionsItem>
             <DescriptionsItem label="账户状态">
               {{ detail.status || '-' }}
             </DescriptionsItem>
@@ -1341,49 +1260,6 @@ async function loadAccessUserOptions() {
             </DescriptionsItem>
             <DescriptionsItem label="备注" :span="2">
               {{ detail.remark || '-' }}
-            </DescriptionsItem>
-          </Descriptions>
-        </TabPane>
-        <TabPane key="subject" tab="主体信息">
-          <Descriptions bordered :column="2" size="small">
-            <DescriptionsItem label="主体 ID">
-              {{ detailSubject?.id ?? detail.subject_id ?? '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="中文主体">
-              {{ detailSubject?.subject_name_cn || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="英文主体">
-              {{ detailSubject?.subject_name_en || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="国家或区域">
-              {{ detailSubject?.country_or_region || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="公司地址">
-              {{ detailSubject?.company_address || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="统一社会信用代码">
-              {{ detailSubject?.unified_social_credit_code || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="注册编号">
-              {{ detailSubject?.registration_number || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="D-U-N-S">
-              {{ detailSubject?.duns || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="营业执照文件 ID">
-              {{ detailSubject?.business_license_file_id ?? '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="邓白氏文件 ID">
-              {{ detailSubject?.duns_file_id ?? '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="企业邮箱">
-              {{ detailSubject?.enterprise_email || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="网站">
-              {{ detailSubject?.website || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="主体备注">
-              {{ detailSubject?.remark || '-' }}
             </DescriptionsItem>
           </Descriptions>
         </TabPane>
