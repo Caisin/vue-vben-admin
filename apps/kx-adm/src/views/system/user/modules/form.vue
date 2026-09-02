@@ -118,12 +118,11 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
         {
           componentProps: {
             allowClear: true,
-            disabled: Boolean(data?.id),
-            placeholder: data?.id
-              ? '请从用户操作菜单重置密码'
-              : '留空则由服务端生成 12 位随机密码',
+            disabled: false,
+            placeholder: '留空则由服务端生成 12 位随机密码',
           },
           fieldName: 'password',
+          hide: Boolean(data?.id),
         },
       ]);
       // Wait for Vue to flush DOM updates (form fields mounted)
@@ -131,6 +130,7 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
       if (data) {
         formApi.setValues(data);
       }
+      await formApi.setFieldValue('password', '');
       await formApi.setFieldValue('permissions', selectedPermissionIds.value);
     }
   },

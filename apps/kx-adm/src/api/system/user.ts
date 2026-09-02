@@ -207,7 +207,8 @@ function toUserWrite(
     is_guest: previous?.is_guest ?? false,
     name: data.name ?? previous?.name ?? '',
     os: previous?.os ?? '',
-    password: data.password,
+    // 编辑用户不能修改密码，避免表单残留值绕过独立的重置密码流程。
+    password: previous ? '' : data.password,
     permission_ids: (data.permissions ?? previous?.permission_ids ?? []).map(
       Number,
     ),
