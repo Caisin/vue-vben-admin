@@ -24,7 +24,6 @@ import {
 } from '@vben/icons';
 import { downloadFileFromBlob } from '@vben/utils';
 
-import { useClipboard } from '@vueuse/core';
 import {
   Button,
   DatePicker,
@@ -34,7 +33,6 @@ import {
   Dropdown,
   Input,
   InputNumber,
-  message,
   Modal,
   Pagination,
   Popover,
@@ -47,6 +45,7 @@ import {
   Tabs,
   Tag,
   Tooltip,
+  useMessage,
 } from 'antdv-next';
 import dayjs from 'dayjs';
 
@@ -102,8 +101,25 @@ const accessLoading = ref(false);
 const accessRows = ref<FileShareAccessView[]>([]);
 const accessPage = ref(1);
 const accessTotal = ref(0);
-const { copy: copyText } = useClipboard({ legacy: true });
+const copyingShareIds = ref(new Set<string>());
+const [messageApi, MessageHolder] = useMessage();
 const generatedPasswords = new Map<string, string>();
+
+async function writeClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('clipboard_write_failed');
+}
 
 const expiryOptions = [
   { label: '+7 天', value: 7 },
@@ -129,16 +145,16 @@ const [CreateModal, createModalApi] = useVbenModal({
   title: '新增文件分享',
   async onConfirm() {
     if (shareUploadRef.value?.isRunning()) {
-      message.warning('文件仍在上传，请等待上传完成');
+      messageApi.warning('文件仍在上传，请等待上传完成');
       return;
     }
     if (selectedFiles.value.length === 0) {
-      message.warning('请选择或上传文件');
+      messageApi.warning('请选择或上传文件');
       return;
     }
     const expiresAt = selectedExpiry();
     if (!expiresAt || expiresAt <= dayjs().unix()) {
-      message.warning('请选择未来的过期时间');
+      messageApi.warning('请选择未来的过期时间');
       return;
     }
     const downloadStartAt = createImmediate.value
@@ -149,12 +165,12 @@ const [CreateModal, createModalApi] = useVbenModal({
       downloadStartAt < 0 ||
       (downloadStartAt > 0 && downloadStartAt >= expiresAt)
     ) {
-      message.warning('开始下载时间必须早于过期时间');
+      messageApi.warning('开始下载时间必须早于过期时间');
       return;
     }
     const downloadLimit = createUnlimited.value ? 0 : createDownloadLimit.value;
     if (downloadLimit < 1 && !createUnlimited.value) {
-      message.warning('下载次数必须大于 0');
+      messageApi.warning('下载次数必须大于 0');
       return;
     }
     const downloadPassword = createPassword.value.trim();
@@ -163,7 +179,7 @@ const [CreateModal, createModalApi] = useVbenModal({
       downloadPassword &&
       !validDownloadPassword(downloadPassword)
     ) {
-      message.warning('下载密码需要 6–32 个字符');
+      messageApi.warning('下载密码需要 6–32 个字符');
       return;
     }
     createModalApi.lock();
@@ -181,7 +197,7 @@ const [CreateModal, createModalApi] = useVbenModal({
         password_required: createPasswordRequired.value,
         show_business_contact: createShowBusinessContact.value,
       });
-      message.success('分享链接已创建');
+      messageApi.success('分享链接已创建');
       createModalApi.close();
       await gridApi.query();
       showGeneratedPassword(created.id, created.download_password);
@@ -294,12 +310,12 @@ async function saveSettings() {
   const share = editingShare.value;
   const expiresAt = editingExpiry.value?.unix();
   if (!share || !expiresAt) {
-    message.warning('请选择过期时间');
+    messageApi.warning('请选择过期时间');
     return;
   }
   const expiryChanged = expiresAt !== Number(share.expires_at);
   if (expiryChanged && expiresAt <= dayjs().unix()) {
-    message.warning('请选择未来的过期时间');
+    messageApi.warning('请选择未来的过期时间');
     return;
   }
   const startAt = policyImmediate.value ? 0 : policyStart.value?.unix();
@@ -308,12 +324,12 @@ async function saveSettings() {
     startAt < 0 ||
     (startAt > 0 && startAt >= expiresAt)
   ) {
-    message.warning('开始下载时间必须早于过期时间');
+    messageApi.warning('开始下载时间必须早于过期时间');
     return;
   }
   const limit = policyUnlimited.value ? 0 : policyLimit.value;
   if (limit > 0 && limit < Number(share.download_count)) {
-    message.warning('总下载次数不能小于已下载次数');
+    messageApi.warning('总下载次数不能小于已下载次数');
     return;
   }
   const customPassword = policyCustomPassword.value.trim();
@@ -321,7 +337,7 @@ async function saveSettings() {
     policyPasswordAction.value === 'custom' &&
     !validDownloadPassword(customPassword)
   ) {
-    message.warning('下载密码需要 6–32 个字符');
+    messageApi.warning('下载密码需要 6–32 个字符');
     return;
   }
 
@@ -343,7 +359,7 @@ async function saveSettings() {
         ...share.business_contact,
       });
   if (!expiryChanged && !policyChanged && !contactChanged) {
-    message.info('没有需要保存的修改');
+    messageApi.info('没有需要保存的修改');
     return;
   }
 
@@ -388,7 +404,7 @@ async function saveSettings() {
       generatedPasswords.delete(String(share.id));
     }
     initializeSettings(updated);
-    message.success('分享设置已保存');
+    messageApi.success('分享设置已保存');
     await gridApi.query();
     showGeneratedPassword(share.id, generatedPassword);
   } finally {
@@ -402,7 +418,7 @@ async function addDownloads(row: FileShareView, count: number) {
     editingShare.value = updated;
     policyLimit.value = Number(updated.download_limit);
   }
-  message.success(`已增加 ${count} 次下载额度`);
+  messageApi.success(`已增加 ${count} 次下载额度`);
   await gridApi.query();
 }
 
@@ -430,7 +446,7 @@ async function loadAccess(page: number) {
 function showGeneratedPassword(id: number | string, password?: string) {
   if (!password) return;
   generatedPasswords.set(String(id), password);
-  void copyText(password).catch(() => undefined);
+  void writeClipboard(password).catch(() => undefined);
   Modal.info({
     content: password,
     okText: '关闭',
@@ -458,7 +474,7 @@ async function showSharePassword(row: FileShareView) {
       title: '当前下载密码',
     });
   } catch {
-    message.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
+    messageApi.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
   }
 }
 
@@ -484,37 +500,58 @@ onMounted(() => {
 async function copyShareText(row: FileShareView, password?: string) {
   const url = absoluteUrl(row.share_url);
   if (!url) {
-    message.warning('分享链接为空');
+    messageApi.warning('分享链接为空');
     return;
   }
   try {
-    await copyText(password ? `分享链接：${url}\n下载密码：${password}` : url);
-    message.success(password ? '分享链接和下载密码已复制' : '分享链接已复制');
+    await writeClipboard(
+      password ? `分享链接：${url}\n下载密码：${password}` : url,
+    );
+    messageApi.success(
+      password ? '分享链接和下载密码已复制' : '分享链接已复制',
+    );
   } catch {
-    message.error('复制失败，请在分享详情中手动复制');
+    messageApi.error('复制失败，请在分享详情中手动复制');
   }
 }
 
 async function copyShareInfo(row: FileShareView) {
-  if (!row.password_required) {
-    await copyShareText(row);
-    return;
-  }
+  const id = String(row.id);
+  if (copyingShareIds.value.has(id)) return;
+  setCopying(id, true);
   try {
+    if (!row.password_required) {
+      await copyShareText(row);
+      return;
+    }
     const password = await currentSharePassword(row);
     await copyShareText(row, password);
   } catch {
-    message.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
+    messageApi.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
+  } finally {
+    setCopying(id, false);
   }
 }
 
 async function copySharePassword(row: FileShareView) {
+  const id = String(row.id);
+  if (copyingShareIds.value.has(id)) return;
+  setCopying(id, true);
   try {
     const password = await currentSharePassword(row);
     await copyPasswordText(password, '下载密码已复制');
   } catch {
-    message.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
+    messageApi.error('当前密码无法揭秘，请在分享设置中指定一次新密码');
+  } finally {
+    setCopying(id, false);
   }
+}
+
+function setCopying(id: string, copying: boolean) {
+  const next = new Set(copyingShareIds.value);
+  if (copying) next.add(id);
+  else next.delete(id);
+  copyingShareIds.value = next;
 }
 
 function resetSharePassword(row: FileShareView) {
@@ -563,7 +600,7 @@ function confirmDelete(row: FileShareView) {
   Modal.confirm({
     async onOk() {
       await StorageFileShareApi.remove(row.id);
-      message.success('分享已删除');
+      messageApi.success('分享已删除');
       await gridApi.query();
     },
     okText: '删除',
@@ -610,10 +647,10 @@ function validDownloadPassword(value: string) {
 
 async function copyPasswordText(password: string, successMessage: string) {
   try {
-    await copyText(password);
-    message.success(successMessage);
+    await writeClipboard(password);
+    messageApi.success(successMessage);
   } catch {
-    message.error('复制失败，请在分享详情中手动复制');
+    messageApi.error('复制失败，请在分享详情中手动复制');
   }
 }
 
@@ -658,6 +695,7 @@ function disablePastDate(current: Dayjs) {
     content-class="management-content"
     title="文件分享"
   >
+    <component :is="MessageHolder" />
     <CreateModal>
       <div class="share-form">
         <div class="form-field">
@@ -821,7 +859,11 @@ function disablePastDate(current: Dayjs) {
               <div class="detail-link">
                 <span>{{ absoluteUrl(editingShare.share_url) }}</span>
                 <Space size="small">
-                  <Button size="small" @click="copyShareInfo(editingShare)">
+                  <Button
+                    :loading="copyingShareIds.has(String(editingShare.id))"
+                    size="small"
+                    @click="copyShareInfo(editingShare)"
+                  >
                     <Copy class="size-4" />
                     复制分享信息
                   </Button>
@@ -1162,6 +1204,7 @@ function disablePastDate(current: Dayjs) {
           <Tooltip v-if="row.password_required" title="复制下载密码">
             <Button
               class="password-copy"
+              :loading="copyingShareIds.has(String(row.id))"
               size="small"
               @click.stop="copySharePassword(row)"
             >
@@ -1214,6 +1257,7 @@ function disablePastDate(current: Dayjs) {
           <Tooltip title="复制分享信息">
             <Button
               aria-label="复制分享信息"
+              :loading="copyingShareIds.has(String(row.id))"
               size="small"
               type="text"
               @click.stop="copyShareInfo(row)"
