@@ -16,6 +16,7 @@ export const formModelPropNameMap = {
   FileUrlsInput: 'modelValue',
   JsonEditor: 'modelValue',
   Radio: 'checked',
+  SimCardSelect: 'modelValue',
   Switch: 'checked',
   Upload: 'fileList',
 } as const;

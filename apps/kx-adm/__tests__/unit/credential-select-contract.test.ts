@@ -8,6 +8,7 @@ import { credentialSelectOptions } from '../../src/components/credential/credent
 describe('credential select contract', () => {
   it('uses the model prop expected by the custom component', () => {
     expect(formModelPropNameMap.CredentialSelect).toBe('modelValue');
+    expect(formModelPropNameMap.SimCardSelect).toBe('modelValue');
   });
 
   it('maps credential responses to Ant Select label and value fields', () => {
