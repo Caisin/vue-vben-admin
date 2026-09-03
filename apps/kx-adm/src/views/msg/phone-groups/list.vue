@@ -8,11 +8,20 @@ import type {
 import type { SystemUser } from '#/api/system/user';
 
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { Page, useVbenDrawer } from '@vben/common-ui';
-import { Bell, Plus, X } from '@vben/icons';
+import { ExternalLink, Plus, RotateCw, X } from '@vben/icons';
 
-import { Button, message, Popconfirm, Select, Space } from 'antdv-next';
+import {
+  Button,
+  message,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+} from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { PhoneGroupApi } from '#/api/msg';
@@ -28,17 +37,54 @@ import PopupDrawer from './modules/popup-drawer.vue';
 const simDrawerOpen = ref(false);
 const userDrawerOpen = ref(false);
 const notificationDrawerOpen = ref(false);
+const simAddOpen = ref(false);
+const userAddOpen = ref(false);
 const assignLoading = ref(false);
 const selectedGroup = ref<PhoneGroup>();
 const selectedIccids = ref<string[]>([]);
 const selectedUids = ref<number[]>([]);
+const pendingIccids = ref<string[]>([]);
+const pendingUids = ref<number[]>([]);
 const selectedNotificationChannelIds = ref<number[]>([]);
 const notificationChannelOptions = ref<PhoneGroupNotificationChannelOption[]>(
   [],
 );
 const groupSims = ref<SimCard[]>([]);
+const users = ref<SystemUser[]>([]);
 const userOptions = ref<{ label: string; value: number }[]>([]);
+const router = useRouter();
 const groupSortFields = ['grp_code', 'grp_name', 'order_no'];
+const tablePagination = { pageSize: 10, showSizeChanger: true };
+
+const simColumns = [
+  { dataIndex: 'phone_number', title: '号码' },
+  { dataIndex: 'iccid', title: 'ICCID' },
+  { dataIndex: 'carrier', title: '运营商' },
+  { dataIndex: 'real_name', title: '实名' },
+  { key: 'actions', title: '操作', width: 80 },
+];
+const userColumns = [
+  { dataIndex: 'name', title: '用户' },
+  { dataIndex: 'tel', title: '手机号' },
+  { dataIndex: 'email', title: '邮箱' },
+  { key: 'actions', title: '操作', width: 80 },
+];
+const selectedUsers = computed(() => {
+  const byId = new Map(users.value.map((user) => [Number(user.id), user]));
+  return selectedUids.value.map((uid) => {
+    const user = byId.get(uid);
+    return {
+      email: user?.email ?? '',
+      id: uid,
+      name: user?.name || `用户 #${uid}`,
+      tel: user?.tel ?? '',
+    };
+  });
+});
+const availableUserOptions = computed(() => {
+  const selected = new Set(selectedUids.value);
+  return userOptions.value.filter((option) => !selected.has(option.value));
+});
 
 const [FormDrawer, formDrawerApi] = useVbenDrawer({
   connectedComponent: Form,
@@ -139,20 +185,41 @@ async function openSims(row: PhoneGroup) {
   }
 }
 
-async function saveSims() {
+async function replaceSims(iccids: string[], successMessage: string) {
   if (!selectedGroup.value) return;
   assignLoading.value = true;
   try {
-    await PhoneGroupApi.replaceSims(
+    const result = await PhoneGroupApi.replaceSims(
       selectedGroup.value.id,
-      selectedIccids.value,
+      iccids,
     );
-    message.success('分组号码已更新');
-    simDrawerOpen.value = false;
+    selectedIccids.value = result.iccids;
+    groupSims.value = result.items;
+    message.success(successMessage);
     await gridApi.query();
   } finally {
     assignLoading.value = false;
   }
+}
+
+function openAddSims() {
+  pendingIccids.value = [];
+  simAddOpen.value = true;
+}
+
+async function addSims() {
+  const iccids = [
+    ...new Set([...selectedIccids.value, ...pendingIccids.value]),
+  ];
+  await replaceSims(iccids, '号码已添加');
+  simAddOpen.value = false;
+}
+
+async function removeSim(iccid: string) {
+  await replaceSims(
+    selectedIccids.value.filter((value) => value !== iccid),
+    '号码已移除',
+  );
 }
 
 async function openUsers(row: PhoneGroup) {
@@ -169,20 +236,38 @@ async function openUsers(row: PhoneGroup) {
   }
 }
 
-async function saveUsers() {
+async function replaceUsers(uids: number[], successMessage: string) {
   if (!selectedGroup.value) return;
   assignLoading.value = true;
   try {
-    await PhoneGroupApi.replaceUsers(
+    const result = await PhoneGroupApi.replaceUsers(
       selectedGroup.value.id,
-      selectedUids.value,
+      uids,
     );
-    message.success('授权用户已更新');
-    userDrawerOpen.value = false;
+    selectedUids.value = result.uids;
+    message.success(successMessage);
     await gridApi.query();
   } finally {
     assignLoading.value = false;
   }
+}
+
+function openAddUsers() {
+  pendingUids.value = [];
+  userAddOpen.value = true;
+}
+
+async function addUsers() {
+  const uids = [...new Set([...selectedUids.value, ...pendingUids.value])];
+  await replaceUsers(uids, '用户已添加');
+  userAddOpen.value = false;
+}
+
+async function removeUser(uid: number) {
+  await replaceUsers(
+    selectedUids.value.filter((value) => value !== uid),
+    '用户已移除',
+  );
 }
 
 async function loadUserOptions() {
@@ -198,10 +283,36 @@ async function loadUserOptions() {
     if (result.items.length === 0) break;
     page += 1;
   }
+  users.value = loaded;
   userOptions.value = loaded.map((user) => ({
     label: `${user.name || user.id}（${user.id}）`,
     value: Number(user.id),
   }));
+}
+
+async function refreshNotificationChannels() {
+  if (!selectedGroup.value) return;
+  assignLoading.value = true;
+  try {
+    const result = await PhoneGroupApi.notificationChannels(
+      selectedGroup.value.id,
+    );
+    selectedNotificationChannelIds.value = result.channel_ids;
+    notificationChannelOptions.value = result.options;
+    message.success('通知群列表已刷新');
+  } finally {
+    assignLoading.value = false;
+  }
+}
+
+function openNotifyChannelPage(create = false) {
+  const href = router.resolve({
+    path: '/notify/channels',
+    query: create
+      ? { action: 'create', channel_type: 'dingtalk_custom_robot' }
+      : undefined,
+  }).href;
+  window.open(href, '_blank', 'noopener,noreferrer');
 }
 
 async function openNotificationChannels(row: PhoneGroup) {
@@ -305,47 +416,21 @@ async function saveNotificationChannels() {
         </Button>
       </template>
       <template #actions="{ row }">
-        <Space size="small">
+        <Popconfirm
+          :title="`确认删除号码分组 ${row.grp_name}？`"
+          cancel-text="取消"
+          ok-text="删除"
+          @confirm="remove(row)"
+        >
           <Button
             v-access:code="'phone_groups:manage'"
+            danger
             size="small"
             type="link"
-            @click.stop="openSims(row)"
           >
-            号码
+            <template #icon><X /></template>删除
           </Button>
-          <Button
-            v-access:code="'phone_groups:manage'"
-            size="small"
-            type="link"
-            @click.stop="openUsers(row)"
-          >
-            用户
-          </Button>
-          <Button
-            v-access:code="'phone_groups:manage'"
-            size="small"
-            type="link"
-            @click.stop="openNotificationChannels(row)"
-          >
-            <template #icon><Bell /></template>通知
-          </Button>
-          <Popconfirm
-            :title="`确认删除号码分组 ${row.grp_name}？`"
-            cancel-text="取消"
-            ok-text="删除"
-            @confirm="remove(row)"
-          >
-            <Button
-              v-access:code="'phone_groups:manage'"
-              danger
-              size="small"
-              type="link"
-            >
-              <template #icon><X /></template>删除
-            </Button>
-          </Popconfirm>
-        </Space>
+        </Popconfirm>
       </template>
     </Grid>
 
@@ -354,73 +439,112 @@ async function saveNotificationChannels() {
       class="w-full max-w-180"
       :title="simDrawerTitle"
     >
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <Button @click="simDrawerOpen = false">取消</Button>
-          <Button
-            v-access:code="'phone_groups:manage'"
-            :loading="assignLoading"
-            type="primary"
-            @click="saveSims"
-          >
-            保存
-          </Button>
-        </div>
-      </template>
-      <div class="space-y-4">
-        <SimCardSelect
-          v-model="selectedIccids"
-          mode="multiple"
-          placeholder="选择要归入该分组的号码"
-        />
-        <div class="text-sm text-gray-500">
-          已选 {{ selectedIccids.length }} 个号码
-        </div>
-        <div v-if="groupSims.length" class="space-y-2">
-          <div
-            v-for="sim in groupSims"
-            :key="sim.iccid"
-            class="rounded border p-2 text-sm"
-          >
-            <div>{{ displayValue(sim.phone_number) }} / {{ sim.iccid }}</div>
-            <div class="text-gray-500">
-              {{ sim.carrier || '-' }} · {{ sim.real_name || '-' }}
-            </div>
-          </div>
-        </div>
+      <div class="mb-3 flex justify-end">
+        <Button
+          v-access:code="'phone_groups:manage'"
+          type="primary"
+          @click="openAddSims"
+        >
+          <template #icon><Plus /></template>添加号码
+        </Button>
       </div>
+      <Table
+        :columns="simColumns"
+        :data-source="groupSims"
+        :loading="assignLoading"
+        :pagination="tablePagination"
+        row-key="iccid"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'phone_number'">
+            {{ displayValue(record.phone_number) }}
+          </template>
+          <template v-else-if="column.key === 'actions'">
+            <Popconfirm
+              :title="`确认从分组移除 ${record.phone_number || record.iccid}？`"
+              @confirm="removeSim(record.iccid)"
+            >
+              <Button danger size="small" type="link">移除</Button>
+            </Popconfirm>
+          </template>
+        </template>
+      </Table>
     </PopupDrawer>
+
+    <Modal
+      v-model:open="simAddOpen"
+      :confirm-loading="assignLoading"
+      ok-text="添加"
+      :ok-button-props="{ disabled: pendingIccids.length === 0 }"
+      title="添加号码"
+      :z-index="3000"
+      @ok="addSims"
+    >
+      <SimCardSelect
+        v-model="pendingIccids"
+        mode="multiple"
+        placeholder="搜索并选择要添加的号码"
+      />
+    </Modal>
 
     <PopupDrawer
       v-model:open="userDrawerOpen"
-      class="w-full max-w-160"
+      class="w-full max-w-180"
       :title="userDrawerTitle"
     >
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <Button @click="userDrawerOpen = false">取消</Button>
-          <Button
-            v-access:code="'phone_groups:manage'"
-            :loading="assignLoading"
-            type="primary"
-            @click="saveUsers"
-          >
-            保存
-          </Button>
-        </div>
-      </template>
+      <div class="mb-3 flex justify-end">
+        <Button
+          v-access:code="'phone_groups:manage'"
+          type="primary"
+          @click="openAddUsers"
+        >
+          <template #icon><Plus /></template>添加用户
+        </Button>
+      </div>
+      <Table
+        :columns="userColumns"
+        :data-source="selectedUsers"
+        :loading="assignLoading"
+        :pagination="tablePagination"
+        row-key="id"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'tel'">
+            {{ displayValue(record.tel) }}
+          </template>
+          <template v-else-if="column.dataIndex === 'email'">
+            {{ displayValue(record.email) }}
+          </template>
+          <template v-else-if="column.key === 'actions'">
+            <Popconfirm
+              :title="`确认移除用户 ${record.name}？`"
+              @confirm="removeUser(record.id)"
+            >
+              <Button danger size="small" type="link">移除</Button>
+            </Popconfirm>
+          </template>
+        </template>
+      </Table>
+    </PopupDrawer>
+
+    <Modal
+      v-model:open="userAddOpen"
+      :confirm-loading="assignLoading"
+      ok-text="添加"
+      :ok-button-props="{ disabled: pendingUids.length === 0 }"
+      title="添加用户"
+      :z-index="3000"
+      @ok="addUsers"
+    >
       <Select
-        v-model:value="selectedUids"
+        v-model:value="pendingUids"
         class="w-full"
         mode="multiple"
-        :options="userOptions"
-        placeholder="选择可访问该号码分组的用户"
+        :options="availableUserOptions"
+        placeholder="搜索并选择要添加的用户"
         show-search
       />
-      <div class="mt-3 text-sm text-gray-500">
-        已授权 {{ selectedUids.length }} 个用户
-      </div>
-    </PopupDrawer>
+    </Modal>
 
     <PopupDrawer
       v-model:open="notificationDrawerOpen"
@@ -457,6 +581,23 @@ async function saveNotificationChannels() {
         placeholder="选择收到短信时通知的钉钉群"
         show-search
       />
+      <Space class="mt-3" wrap>
+        <Button
+          v-access:code="'notify:channel:write'"
+          @click="openNotifyChannelPage(true)"
+        >
+          <template #icon><Plus /></template>新增钉钉通知群
+        </Button>
+        <Button :loading="assignLoading" @click="refreshNotificationChannels">
+          <template #icon><RotateCw /></template>刷新
+        </Button>
+        <Button
+          v-access:code="'notify:channel:write'"
+          @click="openNotifyChannelPage()"
+        >
+          <template #icon><ExternalLink /></template>维护通知通道
+        </Button>
+      </Space>
       <div class="mt-3 text-sm text-gray-500">
         同一号码属于多个分组时，会通知所有分组绑定的不同钉钉群。
       </div>

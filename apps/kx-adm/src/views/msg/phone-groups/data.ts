@@ -74,7 +74,7 @@ export function useColumns(
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 220,
+      width: 90,
     },
   ];
 }

@@ -30,6 +30,7 @@ export interface DeveloperAccountListItem {
   platform: DeveloperPlatform;
   registered_at: number;
   renewal_due_at: number;
+  small_business_status: string;
   subject_id?: null | number;
   status: string;
   subject_name_cn: string;
@@ -42,6 +43,7 @@ export interface DeveloperAccountDetail {
   account: string;
   apps: string[];
   certifier_id?: null | number;
+  certifier_phone: string;
   created_at: number | string;
   created_by: number | string;
   credential_code: string;
@@ -53,6 +55,7 @@ export interface DeveloperAccountDetail {
   renewal_due_at: number;
   small_business_status: string;
   small_business_applied_at: string;
+  tiktok_us_registered: boolean;
   subject_id?: null | number;
   remark: string;
   screen_share_account: string;
@@ -86,7 +89,6 @@ export interface DeveloperSubject {
   enterprise_email: string;
   business_license_file_id?: null | number;
   duns_file_id?: null | number;
-  tiktok_us_registered: boolean;
   remark: string;
   created_at: number;
   updated_at: number;
@@ -125,7 +127,7 @@ export interface DeveloperCertifierWrite {
 
 export interface AppleDevice extends DeveloperDevice {
   id: number;
-  developer_account_id: number;
+  developer_account_id?: null | number;
   remark: string;
   created_at: number;
   updated_at: number;
@@ -345,7 +347,7 @@ export const DeveloperAccountApi = {
       params,
     }),
   createAppleDevice: (data: {
-    developer_account_id: number;
+    developer_account_id?: null | number;
     device_no: string;
     model?: string;
     name?: string;
@@ -358,7 +360,7 @@ export const DeveloperAccountApi = {
   updateAppleDevice: (
     id: number | string,
     data: {
-      developer_account_id: number;
+      developer_account_id?: null | number;
       device_no: string;
       model?: string;
       name?: string;
@@ -374,6 +376,11 @@ export const DeveloperAccountApi = {
     ),
   removeAppleDevice: (id: number | string) =>
     requestClient.delete<boolean>(`/developer-account/apple-devices/${id}`),
+  uploadAppleDeviceScreenshot: (file: File) =>
+    plaintextRequestClient.upload<FileUploadView>(
+      '/developer-account/apple-devices/screenshot',
+      { file },
+    ),
   create: (data: DeveloperAccountWrite) =>
     requestClient.post<DeveloperAccountDetail>(
       '/developer-account/accounts',
@@ -387,6 +394,7 @@ export const DeveloperAccountApi = {
     params?: PageQuery & {
       keyword?: string;
       platform?: DeveloperPlatform;
+      small_business_status?: string;
       status?: string;
     },
   ) =>

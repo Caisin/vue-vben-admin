@@ -9,6 +9,7 @@ import type {
 } from '#/api';
 
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
 import { Ellipsis, Plus } from '@vben/icons';
@@ -58,6 +59,7 @@ const channelSortFields = [
   'updated_at',
   'created_at',
 ];
+const route = useRoute();
 const drawerOpen = ref(false);
 const drawerSaving = ref(false);
 const editingId = ref<number | string>();
@@ -198,6 +200,14 @@ const [Grid, gridApi] = useVbenVxeGrid<NotifyChannel>({
 
 onMounted(async () => {
   await loadProviderOptions();
+  if (route.query.action === 'create') {
+    const requestedType = String(route.query.channel_type ?? '');
+    openCreate(
+      requestedType === 'dingtalk_group_bot'
+        ? 'dingtalk_group_bot'
+        : 'dingtalk_custom_robot',
+    );
+  }
 });
 
 watch(activeTab, async (tab) => {
@@ -253,9 +263,18 @@ function resetForm(row?: NotifyChannel) {
   applySingleProviderDefault();
 }
 
-function openCreate() {
+function openCreate(channelType?: NotifyChannelType) {
   resetForm();
+  if (channelType) {
+    form.channel_type = channelType;
+    form.provider_code = '';
+    applySingleProviderDefault();
+  }
   drawerOpen.value = true;
+}
+
+function openCreateFromToolbar() {
+  openCreate();
 }
 
 function openEdit(row: NotifyChannel) {
@@ -383,7 +402,7 @@ function showChannelMessages(row: NotifyChannel) {
               <Button
                 v-access:code="'notify:channel:write'"
                 type="primary"
-                @click="openCreate"
+                @click="openCreateFromToolbar"
               >
                 <template #icon><Plus /></template>创建通道
               </Button>

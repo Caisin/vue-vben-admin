@@ -7,7 +7,7 @@ import type {
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { Plus } from '@vben/icons';
+import { ArrowUpToLine, Plus, X } from '@vben/icons';
 
 import {
   Button,
@@ -19,6 +19,7 @@ import {
   Select,
   Space,
   Table,
+  Upload,
 } from 'antdv-next';
 
 import { DeveloperAccountApi } from '#/api/developer-account';
@@ -30,6 +31,7 @@ const rows = ref<AppleDevice[]>([]);
 const accounts = ref<DeveloperAccountListItem[]>([]);
 const loading = ref(false);
 const saving = ref(false);
+const screenshotUploading = ref(false);
 const open = ref(false);
 const editingId = ref<number>();
 const previewFileId = ref<number>();
@@ -72,7 +74,8 @@ function developerAccountLabel(item: DeveloperAccountListItem) {
   return `账户 #${item.id}`;
 }
 
-function accountLabelById(id: number) {
+function accountLabelById(id?: null | number) {
+  if (!id) return '未关联';
   const account = accounts.value.find((item) => Number(item.id) === id);
   return account ? developerAccountLabel(account) : '未关联';
 }
@@ -126,21 +129,20 @@ function openEdit(row: AppleDevice) {
 }
 
 async function save() {
-  if (!form.developer_account_id || !form.device_no.trim()) {
-    message.error('请选择开发者账号并填写设备号');
+  if (!form.device_no.trim()) {
+    message.error('请填写设备号');
     return;
   }
-  const developerAccountId = form.developer_account_id;
   saving.value = true;
   try {
     await (editingId.value
       ? DeveloperAccountApi.updateAppleDevice(editingId.value, {
           ...form,
-          developer_account_id: developerAccountId,
+          developer_account_id: form.developer_account_id ?? null,
         })
       : DeveloperAccountApi.createAppleDevice({
           ...form,
-          developer_account_id: developerAccountId,
+          developer_account_id: form.developer_account_id ?? null,
         }));
     open.value = false;
     message.success('设备已保存');
@@ -148,6 +150,19 @@ async function save() {
   } finally {
     saving.value = false;
   }
+}
+
+async function uploadScreenshot(file: File) {
+  screenshotUploading.value = true;
+  try {
+    const uploaded =
+      await DeveloperAccountApi.uploadAppleDeviceScreenshot(file);
+    form.screenshot_file_id = Number(uploaded.file.file_id);
+    message.success('设备截图已上传');
+  } finally {
+    screenshotUploading.value = false;
+  }
+  return false;
 }
 
 function remove(row: AppleDevice) {
@@ -246,12 +261,13 @@ onMounted(refresh);
       @ok="save"
     >
       <Form layout="vertical">
-        <FormItem label="开发者账号" required>
+        <FormItem label="开发者账号">
           <Select
             v-model:value="form.developer_account_id"
+            allow-clear
             :options="accountOptions"
             option-filter-prop="label"
-            placeholder="选择开发者账号"
+            placeholder="可选，留空表示未关联"
             show-search
           />
         </FormItem>
@@ -269,6 +285,35 @@ onMounted(refresh);
         </FormItem>
         <FormItem label="使用者">
           <Input v-model:value="form.user" />
+        </FormItem>
+        <FormItem label="设备号截图">
+          <div class="grid gap-3">
+            <FileRefPreview
+              v-if="form.screenshot_file_id"
+              :value="form.screenshot_file_id"
+            />
+            <Space>
+              <Upload
+                accept="image/*,.heic"
+                :before-upload="uploadScreenshot"
+                :file-list="[]"
+                :max-count="1"
+              >
+                <Button :loading="screenshotUploading">
+                  <template #icon><ArrowUpToLine /></template>
+                  {{ form.screenshot_file_id ? '替换截图' : '上传截图' }}
+                </Button>
+              </Upload>
+              <Button
+                v-if="form.screenshot_file_id"
+                danger
+                @click="form.screenshot_file_id = undefined"
+              >
+                <template #icon><X /></template>
+                清空
+              </Button>
+            </Space>
+          </div>
         </FormItem>
         <FormItem label="备注">
           <Input.TextArea v-model:value="form.remark" :rows="2" />

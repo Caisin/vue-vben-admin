@@ -22,7 +22,6 @@ import {
   Modal,
   Select,
   Space,
-  Switch,
   Table,
   Upload,
 } from 'antdv-next';
@@ -122,7 +121,6 @@ function emptyForm(): DeveloperSubjectWrite {
     remark: '',
     subject_name_cn: '',
     subject_name_en: '',
-    tiktok_us_registered: false,
     website: '',
     duns_file_id: undefined,
   };
@@ -145,7 +143,6 @@ function writeData(value: DeveloperSubjectWrite): DeveloperSubjectWrite {
     remark: value.remark,
     subject_name_cn: value.subject_name_cn,
     subject_name_en: value.subject_name_en,
-    tiktok_us_registered: value.tiktok_us_registered,
     unified_social_credit_code: value.unified_social_credit_code,
     website: value.website,
   };
@@ -464,8 +461,8 @@ onMounted(refresh);
           <FormItem label="D-U-N-S">
             <Input v-model:value="form.duns" />
           </FormItem>
-          <FormItem label="注册地址">
-            <Input v-model:value="form.company_address" />
+          <FormItem class="col-span-2" label="注册地址">
+            <Input.TextArea v-model:value="form.company_address" :rows="2" />
           </FormItem>
           <FormItem label="认证官网">
             <Input v-model:value="form.website" />
@@ -486,9 +483,6 @@ onMounted(refresh);
               </FormItem>
               <FormItem label="企业邮箱">
                 <Input v-model:value="form.enterprise_email" />
-              </FormItem>
-              <FormItem label="已注册美区 TikTok">
-                <Switch v-model:checked="form.tiktok_us_registered" />
               </FormItem>
               <FormItem class="col-span-2" label="营业执照资料">
                 <Space wrap>

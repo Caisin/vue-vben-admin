@@ -49,15 +49,40 @@ export interface PhoneGroupNotificationChannelsView {
   options: PhoneGroupNotificationChannelOption[];
 }
 
+type PhoneGroupCountFields = Pick<
+  PhoneGroup,
+  'notification_channel_count' | 'sim_count' | 'user_count'
+>;
+type PhoneGroupEntity = Omit<PhoneGroup, keyof PhoneGroupCountFields>;
+type PhoneGroupRow =
+  | PhoneGroup
+  | (PhoneGroupCountFields & { group: PhoneGroupEntity });
+
+function normalizePhoneGroup(row: PhoneGroupRow): PhoneGroup {
+  if (!('group' in row)) return row;
+  const { group, ...counts } = row;
+  return { ...group, ...counts };
+}
+
 export const PhoneGroupApi = {
-  list: (params: ListParams = {}) =>
-    requestClient.get<PageResult<PhoneGroup>>('/msg/phone-groups', {
-      params,
-    }),
+  list: async (params: ListParams = {}) => {
+    const result = await requestClient.get<PageResult<PhoneGroupRow>>(
+      '/msg/phone-groups',
+      {
+        params,
+      },
+    );
+    return {
+      ...result,
+      items: result.items.map(normalizePhoneGroup),
+    };
+  },
   options: () =>
     requestClient.get<PhoneGroupOption[]>('/msg/phone-groups/options'),
-  detail: (id: number) =>
-    requestClient.get<PhoneGroup>(`/msg/phone-groups/${id}`),
+  detail: async (id: number) =>
+    normalizePhoneGroup(
+      await requestClient.get<PhoneGroupRow>(`/msg/phone-groups/${id}`),
+    ),
   create: (data: PhoneGroupWrite) =>
     requestClient.post<PhoneGroup>('/msg/phone-groups', data),
   update: (id: number, data: PhoneGroupWrite) =>

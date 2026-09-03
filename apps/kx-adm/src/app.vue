@@ -8,6 +8,8 @@ import { App, ConfigProvider, StyleProvider, theme } from 'antdv-next';
 
 import { antdLocale } from '#/locales';
 
+import RequestErrorNotifier from './components/request-error-notifier.vue';
+
 defineOptions({ name: 'App' });
 
 const { isDark } = usePreferences();
@@ -43,6 +45,7 @@ watch(
   <StyleProvider layer>
     <ConfigProvider :locale="antdLocale" :theme="tokenTheme">
       <App class="kx-admin-shell">
+        <RequestErrorNotifier />
         <RouterView />
       </App>
     </ConfigProvider>

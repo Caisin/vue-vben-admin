@@ -19,7 +19,6 @@ import {
   addApiSecurityInterceptors,
   addPlaintextHttpSourceInterceptors,
 } from '@kx/admin-core';
-import { message } from 'antdv-next';
 import JSONBigInt from 'json-bigint';
 
 import { AuthApi } from '#/api/core';
@@ -50,6 +49,12 @@ export interface Page<T> {
   };
   total: number;
   total_pages: number;
+}
+
+let requestErrorNotifier: ((content: string) => void) | undefined;
+
+export function setRequestErrorNotifier(notifier?: (content: string) => void) {
+  requestErrorNotifier = notifier;
 }
 
 export interface PageFetchParams extends PageQuery {
@@ -106,7 +111,12 @@ function addKxAxumResponseInterceptor(client: RequestClient) {
 function addErrorMessageInterceptor(client: RequestClient) {
   client.addResponseInterceptor(
     errorMessageResponseInterceptor((msg: string, error) => {
-      message.error(requestErrorMessage(error, msg));
+      const content = requestErrorMessage(error, msg);
+      if (requestErrorNotifier) {
+        requestErrorNotifier(content);
+      } else {
+        console.error(content);
+      }
     }),
   );
 }

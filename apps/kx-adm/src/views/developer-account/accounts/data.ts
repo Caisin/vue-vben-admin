@@ -31,6 +31,16 @@ export function useGridFormSchema(): VbenFormSchema[] {
       fieldName: 'status',
       label: '状态',
     },
+    {
+      component: 'DicSelect',
+      componentProps: {
+        allowClear: true,
+        autoSelect: false,
+        code: 'developer_account_small_business_status',
+      },
+      fieldName: 'small_business_status',
+      label: '小企业状态',
+    },
   ];
 }
 
@@ -59,7 +69,7 @@ export function useColumns(): VxeTableGridColumns<DeveloperAccountListItem> {
       field: 'certifier_phone',
       minWidth: 140,
       slots: { default: 'certifierPhone' },
-      title: '认证手机号',
+      title: '认证电话',
     },
     {
       field: 'registered_at',
@@ -90,6 +100,12 @@ export function useColumns(): VxeTableGridColumns<DeveloperAccountListItem> {
       minWidth: 110,
       slots: { default: 'accessScope' },
       title: '授权范围',
+    },
+    {
+      field: 'small_business_status',
+      minWidth: 130,
+      slots: { default: 'smallBusinessStatus' },
+      title: '小企业状态',
     },
     {
       field: 'status',

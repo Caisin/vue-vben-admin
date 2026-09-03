@@ -19,7 +19,7 @@ import { computed, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
-import { IconifyIcon, Plus, RotateCw } from '@vben/icons';
+import { ArrowUpToLine, IconifyIcon, Plus, RotateCw, X } from '@vben/icons';
 
 import {
   Button,
@@ -30,13 +30,15 @@ import {
   Form,
   FormItem,
   Input,
-  message,
   Modal,
   Select,
   Space,
+  Switch,
   TabPane,
   Tabs,
   Tag,
+  Upload,
+  useMessage,
 } from 'antdv-next';
 import dayjs from 'dayjs';
 
@@ -45,6 +47,7 @@ import { DeveloperAccountApi } from '#/api/developer-account';
 import { SystemUserApi } from '#/api/system/user';
 import { CredentialSelect } from '#/components/credential';
 import { DicLabel, DicSelect } from '#/components/dictionary';
+import { FileRefPreview } from '#/components/file-picker';
 import { BusinessImport } from '#/components/import-export';
 import { ReferenceSelect } from '#/components/management';
 import { Times } from '#/times';
@@ -61,6 +64,7 @@ type FormState = DeveloperAccountWrite & {
 };
 
 const modalOpen = ref(false);
+const [messageApi, MessageHolder] = useMessage();
 const { hasAccessByCodes } = useAccess();
 const canUpdateAccount = computed(() =>
   hasAccessByCodes(['developer-account:update']),
@@ -77,6 +81,7 @@ const subjects = ref<DeveloperSubject[]>([]);
 const certifiers = ref<DeveloperCertifier[]>([]);
 const editing = ref<DeveloperAccountDetail>();
 const detail = ref<DeveloperAccountDetail>();
+const returnToDetailId = ref<number | string>();
 const detailSubject = ref<DeveloperSubject>();
 const detailCertifier = ref<DeveloperCertifier>();
 const subjectPreview = ref<DeveloperSubject>();
@@ -95,6 +100,7 @@ const certifierQuickName = ref('');
 const certifierQuickSaving = ref(false);
 const deviceModalOpen = ref(false);
 const deviceSaving = ref(false);
+const deviceScreenshotUploading = ref(false);
 const editingDeviceId = ref<number>();
 const deviceForm = reactive({
   developer_account_id: 0,
@@ -135,6 +141,8 @@ const [Grid, gridApi] = useVbenVxeGrid<DeveloperAccountListItem>({
               | DeveloperPlatform
               | undefined,
             size: page.pageSize,
+            small_business_status:
+              String(values.small_business_status ?? '').trim() || undefined,
             status: String(values.status ?? '').trim() || undefined,
           }),
       },
@@ -154,7 +162,7 @@ async function reindexSearch() {
   reindexingSearch.value = true;
   try {
     const result = await DeveloperAccountApi.reindexSearch();
-    message.success(`账户搜索索引已重建，共 ${result.indexed} 条`);
+    messageApi.success(`账户搜索索引已重建，共 ${result.indexed} 条`);
     await gridApi.query();
   } finally {
     reindexingSearch.value = false;
@@ -167,6 +175,7 @@ function emptyForm(): FormState {
     apps: [],
     apps_text: '',
     certifier_id: undefined,
+    certifier_phone: '',
     credential_code: '',
     device_model: '',
     device_name: '',
@@ -180,6 +189,7 @@ function emptyForm(): FormState {
     renewal_due_at: 0,
     small_business_applied_at: '',
     small_business_status: '',
+    tiktok_us_registered: false,
     remark: '',
     screen_share_account: '',
     screen_share_ip: '',
@@ -204,7 +214,6 @@ function emptySubjectForm(): DeveloperSubjectWrite {
     remark: '',
     subject_name_cn: '',
     subject_name_en: '',
-    tiktok_us_registered: false,
     unified_social_credit_code: '',
     registration_number: '',
     website: '',
@@ -249,6 +258,7 @@ function certifierWriteData(
 }
 
 async function openCreate() {
+  returnToDetailId.value = undefined;
   await loadSubjects();
   await loadCertifiers();
   editing.value = undefined;
@@ -271,7 +281,7 @@ async function loadCertifiers() {
 async function createSubjectQuick(complete: (value?: number) => void) {
   const name = subjectQuickName.value.trim();
   if (!name) {
-    message.warning('请输入主体名称');
+    messageApi.warning('请输入主体名称');
     return;
   }
   subjectQuickSaving.value = true;
@@ -283,7 +293,7 @@ async function createSubjectQuick(complete: (value?: number) => void) {
     await loadSubjects();
     complete(saved.id);
     subjectQuickName.value = '';
-    message.success('主体已创建并选中');
+    messageApi.success('主体已创建并选中');
   } finally {
     subjectQuickSaving.value = false;
   }
@@ -292,7 +302,7 @@ async function createSubjectQuick(complete: (value?: number) => void) {
 async function createCertifierQuick(complete: (value?: number) => void) {
   const name = certifierQuickName.value.trim();
   if (!name) {
-    message.warning('请输入认证人姓名');
+    messageApi.warning('请输入认证人姓名');
     return;
   }
   certifierQuickSaving.value = true;
@@ -304,7 +314,7 @@ async function createCertifierQuick(complete: (value?: number) => void) {
     await loadCertifiers();
     complete(saved.id);
     certifierQuickName.value = '';
-    message.success('认证人已创建并选中');
+    messageApi.success('认证人已创建并选中');
   } finally {
     certifierQuickSaving.value = false;
   }
@@ -313,7 +323,9 @@ async function createCertifierQuick(complete: (value?: number) => void) {
 async function openEdit(
   row: { id: number | string },
   tab: 'account' | 'apps' | 'certifier' | 'devices' = 'account',
+  returnToDetail = false,
 ) {
+  returnToDetailId.value = returnToDetail ? row.id : undefined;
   await loadSubjects();
   await loadCertifiers();
   const value = await DeveloperAccountApi.detail(row.id);
@@ -339,8 +351,25 @@ async function openEdit(
 }
 
 async function openDetailEdit() {
-  if (!detail.value) return;
-  await openEdit(detail.value);
+  const current = detail.value;
+  if (!current) return;
+  closeDetail();
+  await openEdit(current, 'account', true);
+}
+
+function closeDetail() {
+  detail.value = undefined;
+  detailSubject.value = undefined;
+  detailCertifier.value = undefined;
+}
+
+async function cancelEdit() {
+  modalOpen.value = false;
+  const detailId = returnToDetailId.value;
+  returnToDetailId.value = undefined;
+  if (detailId !== undefined) {
+    await showDetail({ id: detailId });
+  }
 }
 
 function openDetailSubject() {
@@ -379,11 +408,7 @@ function certifierLabel(row: DeveloperAccountListItem) {
 }
 
 function certifierPhone(row: DeveloperAccountListItem) {
-  if (!row.certifier_id) return '-';
-  const certifier = certifiers.value.find(
-    (item) => item.id === row.certifier_id,
-  );
-  return maskPhone(certifier?.phone ?? row.certifier_phone);
+  return maskPhone(row.certifier_phone);
 }
 
 function maskPhone(value: string | undefined) {
@@ -399,7 +424,7 @@ async function openCertifierEdit(target?: DeveloperAccountListItem) {
     detail.value?.certifier_id ??
     editing.value?.certifier_id;
   if (!certifierId) {
-    message.info('请先为账户关联认证人');
+    messageApi.info('请先为账户关联认证人');
     return;
   }
   const certifier =
@@ -415,7 +440,7 @@ async function openCertifierEdit(target?: DeveloperAccountListItem) {
 
 async function saveCertifier() {
   if (!certifierForm.name.trim()) {
-    message.error('请输入认证人姓名');
+    messageApi.error('请输入认证人姓名');
     return;
   }
   certifierSaving.value = true;
@@ -432,7 +457,7 @@ async function saveCertifier() {
     form.certifier_id = saved.id;
     await loadCertifiers();
     certifierModalOpen.value = false;
-    message.success(
+    messageApi.success(
       editingCertifierId.value ? '认证人信息已保存' : '认证人已创建',
     );
     await gridApi.query();
@@ -460,7 +485,7 @@ function openDeviceEdit(device?: DeveloperDevice) {
 
 async function saveDevice() {
   if (!deviceForm.developer_account_id || !deviceForm.device_no.trim()) {
-    message.error('请输入设备号');
+    messageApi.error('请输入设备号');
     return;
   }
   deviceSaving.value = true;
@@ -478,13 +503,26 @@ async function saveDevice() {
       ];
     }
     deviceModalOpen.value = false;
-    message.success('设备信息已保存');
+    messageApi.success('设备信息已保存');
   } finally {
     deviceSaving.value = false;
   }
 }
 
-async function showDetail(row: DeveloperAccountListItem) {
+async function uploadDeviceScreenshot(file: File) {
+  deviceScreenshotUploading.value = true;
+  try {
+    const uploaded =
+      await DeveloperAccountApi.uploadAppleDeviceScreenshot(file);
+    deviceForm.screenshot_file_id = Number(uploaded.file.file_id);
+    messageApi.success('设备截图已上传');
+  } finally {
+    deviceScreenshotUploading.value = false;
+  }
+  return false;
+}
+
+async function showDetail(row: { id: number | string }) {
   detail.value = await DeveloperAccountApi.detail(row.id);
   detailSubject.value = detail.value.subject_id
     ? await DeveloperAccountApi.subject(detail.value.subject_id)
@@ -498,13 +536,33 @@ async function showDetail(row: DeveloperAccountListItem) {
   detail.value.devices = devices;
 }
 
+function removeAccount(row?: { account: string; id: number | string }) {
+  if (!row) return;
+  Modal.confirm({
+    title: '删除开发者账户',
+    content: row.account || `账户 #${row.id}`,
+    okButtonProps: { danger: true },
+    zIndex: 1100,
+    onOk: async () => {
+      await DeveloperAccountApi.remove(row.id);
+      if (detail.value?.id === row.id) {
+        detail.value = undefined;
+        detailSubject.value = undefined;
+        detailCertifier.value = undefined;
+      }
+      messageApi.success('开发者账户已删除');
+      await gridApi.query();
+    },
+  });
+}
+
 async function save() {
   if (!editing.value && !form.account.trim()) {
-    message.error('请输入开发者账户');
+    messageApi.error('请输入开发者账户');
     return;
   }
   if (!form.credential_code.trim()) {
-    message.error('请选择开发者账号密码凭证');
+    messageApi.error('请选择开发者账号密码凭证');
     return;
   }
   saving.value = true;
@@ -516,9 +574,10 @@ async function save() {
         .map((value) => value.trim())
         .filter(Boolean),
       certifier_id: form.certifier_id,
+      certifier_phone: form.certifier_phone,
       credential_code: form.credential_code,
       // 设备和主体由各自的独立编辑接口维护，账户保存只保留当前关联 ID。
-      devices: editing.value?.devices ?? [],
+      devices: [],
       expected_version: form.expected_version,
       payment_account: form.payment_account,
       platform: form.platform,
@@ -532,32 +591,26 @@ async function save() {
       small_business_status: form.small_business_status,
       status: form.status,
       subject_id: form.subject_id,
+      tiktok_us_registered: form.tiktok_us_registered,
     };
     await (editing.value
       ? DeveloperAccountApi.update(editing.value.id, data)
       : DeveloperAccountApi.create(data));
-    if (editing.value && detail.value?.id === editing.value.id) {
-      detail.value = await DeveloperAccountApi.detail(editing.value.id);
-      detailSubject.value = detail.value.subject_id
-        ? await DeveloperAccountApi.subject(detail.value.subject_id)
-        : undefined;
-      detailCertifier.value = detail.value.certifier_id
-        ? await DeveloperAccountApi.certifier(detail.value.certifier_id)
-        : undefined;
-      detail.value.devices = await DeveloperAccountApi.appleDevices({
-        developer_account_id: Number(editing.value.id),
-      });
-    }
     modalOpen.value = false;
-    message.success('开发者账户已保存');
+    messageApi.success('开发者账户已保存');
     await gridApi.query();
+    const detailId = returnToDetailId.value;
+    returnToDetailId.value = undefined;
+    if (detailId !== undefined) {
+      await showDetail({ id: detailId });
+    }
   } finally {
     saving.value = false;
   }
 }
 
 async function onImportCompleted() {
-  message.success('Apple 开发者账号导入完成');
+  messageApi.success('Apple 开发者账号导入完成');
   await gridApi.query();
 }
 
@@ -583,7 +636,7 @@ async function saveAccountAccess() {
       accessUids.value,
     );
     accessDrawerOpen.value = false;
-    message.success('账户直接授权已更新');
+    messageApi.success('账户直接授权已更新');
     await gridApi.query();
   } finally {
     accessSaving.value = false;
@@ -615,6 +668,7 @@ async function loadAccessUserOptions() {
     class="management-page"
     content-class="management-content"
   >
+    <component :is="MessageHolder" />
     <Grid class="management-grid" table-title="开发者账户">
       <template #toolbar-tools>
         <Space>
@@ -682,7 +736,7 @@ async function loadAccessUserOptions() {
           v-if="canUpdateAccount"
           class="cell-action"
           type="button"
-          @click="openCertifierCell(row)"
+          @click="openEdit(row)"
         >
           {{ certifierPhone(row) }}
         </button>
@@ -758,6 +812,12 @@ async function loadAccessUserOptions() {
           {{ row.status || '未设置' }}
         </Tag>
       </template>
+      <template #smallBusinessStatus="{ row }">
+        <DicLabel
+          code="developer_account_small_business_status"
+          :value="row.small_business_status"
+        />
+      </template>
     </Grid>
 
     <Modal
@@ -765,6 +825,8 @@ async function loadAccessUserOptions() {
       :confirm-loading="saving"
       :title="editing ? '编辑开发者账户' : '新增开发者账户'"
       width="920px"
+      :z-index="1100"
+      @cancel="cancelEdit"
       @ok="save"
     >
       <Form layout="vertical">
@@ -862,6 +924,9 @@ async function loadAccessUserOptions() {
                   </template>
                 </ReferenceSelect>
               </FormItem>
+              <FormItem label="认证电话">
+                <Input v-model:value="form.certifier_phone" />
+              </FormItem>
               <FormItem label="账户状态">
                 <DicSelect
                   v-model="form.status"
@@ -870,6 +935,9 @@ async function loadAccessUserOptions() {
                   creatable
                   create-placeholder="输入新账户状态"
                 />
+              </FormItem>
+              <FormItem label="已注册美区 TikTok">
+                <Switch v-model:checked="form.tiktok_us_registered" />
               </FormItem>
               <FormItem label="注册时间">
                 <DatePicker
@@ -909,8 +977,11 @@ async function loadAccessUserOptions() {
               <FormItem label="屏幕共享账号">
                 <Input v-model:value="form.screen_share_account" />
               </FormItem>
-              <FormItem label="收款账户">
-                <Input v-model:value="form.payment_account" />
+              <FormItem class="col-span-2" label="收款账户">
+                <Input.TextArea
+                  v-model:value="form.payment_account"
+                  :rows="3"
+                />
               </FormItem>
             </div>
           </TabPane>
@@ -1030,6 +1101,7 @@ async function loadAccessUserOptions() {
       :open="Boolean(subjectPreview)"
       title="主体信息"
       width="760px"
+      :z-index="1200"
       @cancel="subjectPreview = undefined"
     >
       <Descriptions v-if="subjectPreview" bordered :column="2" size="small">
@@ -1083,6 +1155,7 @@ async function loadAccessUserOptions() {
       :confirm-loading="certifierSaving"
       title="编辑认证人"
       width="680px"
+      :z-index="1200"
       @ok="saveCertifier"
     >
       <Form layout="vertical">
@@ -1117,6 +1190,7 @@ async function loadAccessUserOptions() {
       :confirm-loading="deviceSaving"
       title="编辑认证设备"
       width="620px"
+      :z-index="1200"
       @ok="saveDevice"
     >
       <Form layout="vertical">
@@ -1136,8 +1210,36 @@ async function loadAccessUserOptions() {
           <FormItem label="使用人">
             <Input v-model:value="deviceForm.user" />
           </FormItem>
-          <FormItem label="截图文件 ID">
-            <Input v-model:value="deviceForm.screenshot_file_id" />
+          <FormItem class="col-span-2" label="设备号截图">
+            <div class="grid gap-3">
+              <FileRefPreview
+                v-if="deviceForm.screenshot_file_id"
+                :value="deviceForm.screenshot_file_id"
+              />
+              <Space>
+                <Upload
+                  accept="image/*,.heic"
+                  :before-upload="uploadDeviceScreenshot"
+                  :file-list="[]"
+                  :max-count="1"
+                >
+                  <Button :loading="deviceScreenshotUploading">
+                    <template #icon><ArrowUpToLine /></template>
+                    {{
+                      deviceForm.screenshot_file_id ? '替换截图' : '上传截图'
+                    }}
+                  </Button>
+                </Upload>
+                <Button
+                  v-if="deviceForm.screenshot_file_id"
+                  danger
+                  @click="deviceForm.screenshot_file_id = undefined"
+                >
+                  <template #icon><X /></template>
+                  清空
+                </Button>
+              </Space>
+            </div>
           </FormItem>
         </div>
         <FormItem label="备注">
@@ -1182,20 +1284,25 @@ async function loadAccessUserOptions() {
       :open="Boolean(detail)"
       title="开发者账户详情"
       :size="760"
-      @close="
-        detail = undefined;
-        detailSubject = undefined;
-        detailCertifier = undefined;
-      "
+      @close="closeDetail"
     >
       <template #extra>
-        <Button
-          v-access:code="'developer-account:update'"
-          type="primary"
-          @click="openDetailEdit"
-        >
-          <IconifyIcon class="size-4" icon="lucide:edit" />编辑
-        </Button>
+        <Space>
+          <Button
+            v-access:code="'developer-account:delete'"
+            danger
+            @click="removeAccount(detail)"
+          >
+            <IconifyIcon class="size-4" icon="lucide:trash-2" />删除
+          </Button>
+          <Button
+            v-access:code="'developer-account:update'"
+            type="primary"
+            @click="openDetailEdit"
+          >
+            <IconifyIcon class="size-4" icon="lucide:edit" />编辑
+          </Button>
+        </Space>
       </template>
       <Tabs v-if="detail" class="developer-account-detail-tabs">
         <TabPane key="account" tab="账户信息">
@@ -1221,6 +1328,12 @@ async function loadAccessUserOptions() {
             </DescriptionsItem>
             <DescriptionsItem label="账户状态">
               {{ detail.status || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="认证电话">
+              {{ maskPhone(detail.certifier_phone) }}
+            </DescriptionsItem>
+            <DescriptionsItem label="已注册美区 TikTok">
+              {{ detail.tiktok_us_registered ? '是' : '否' }}
             </DescriptionsItem>
             <DescriptionsItem label="注册时间">
               {{ Times.formatUnix(detail.registered_at) }}
