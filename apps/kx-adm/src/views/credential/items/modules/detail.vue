@@ -225,13 +225,7 @@ function closeAndEmit(
             >
               更换类型与材料
             </Button>
-            <Button
-              v-if="hasAccessByCodes(['credential:reveal'])"
-              danger
-              @click="closeAndEmit('reveal')"
-            >
-              查看明文
-            </Button>
+            <Button danger @click="closeAndEmit('reveal')"> 查看明文 </Button>
             <Button
               v-if="
                 credential.state !== 'retired' &&

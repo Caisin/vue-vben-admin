@@ -20,6 +20,7 @@ import {
   Dropdown,
   Menu,
   MenuItem,
+  Modal,
   Segmented,
   Select,
   Space,
@@ -63,6 +64,12 @@ const ownerScope = ref<OwnerScope>('all');
 const selectedOwnerUid = ref<number | string>();
 const ownerLoading = ref(false);
 const ownerOptions = ref<{ label: string; value: number | string }[]>([]);
+const viewerOpen = ref(false);
+const viewerSaving = ref(false);
+const viewerCredential = ref<CredentialView>();
+const viewerLoading = ref(false);
+const viewerUids = ref<Array<number | string>>([]);
+const viewerOptions = ref<{ label: string; value: number | string }[]>([]);
 
 async function loadOwnerOptions(keyword = '') {
   if (!isAdmin.value) return;
@@ -211,6 +218,64 @@ function openBindings(row: CredentialView) {
   bindingsDrawerApi.setData(row).open();
 }
 
+async function openViewers(row: CredentialView) {
+  viewerCredential.value = row;
+  const viewers = await CredentialApi.viewers(row.code);
+  viewerUids.value = viewers.uids;
+  await loadViewerOptions();
+  viewerOpen.value = true;
+}
+
+async function loadViewerOptions(keyword = '') {
+  viewerLoading.value = true;
+  try {
+    const value = keyword.trim();
+    const users = await AdminUserApi.list({
+      name_prefix: /^\+?\d+$/.test(value) ? undefined : value || undefined,
+      page: 1,
+      size: 100,
+      tel_prefix: /^\+?\d+$/.test(value) ? value : undefined,
+    });
+    const next = users.items.map((user) => ({
+      label: `${user.name}${user.tel ? `（${user.tel}）` : ''}（#${user.id}）`,
+      value: user.id,
+    }));
+    const selected = new Set(viewerUids.value.map(String));
+    const preserved = viewerOptions.value.filter((option) =>
+      selected.has(String(option.value)),
+    );
+    viewerOptions.value = [
+      ...preserved,
+      ...next.filter(
+        (option) =>
+          !preserved.some(
+            (current) => String(current.value) === String(option.value),
+          ),
+      ),
+    ];
+  } finally {
+    viewerLoading.value = false;
+  }
+}
+
+const searchViewers = useDebounceFn((keyword: string) => {
+  void loadViewerOptions(keyword);
+}, 300);
+
+async function saveViewers() {
+  if (!viewerCredential.value) return;
+  viewerSaving.value = true;
+  try {
+    await CredentialApi.replaceViewers(
+      viewerCredential.value.code,
+      viewerUids.value,
+    );
+    viewerOpen.value = false;
+  } finally {
+    viewerSaving.value = false;
+  }
+}
+
 function toggleState(row: CredentialView) {
   statusModalApi.setData(row).open();
 }
@@ -304,7 +369,6 @@ function retire(row: CredentialView) {
       <template #operation="{ row }">
         <Space>
           <Button
-            v-access:code="'credential:reveal'"
             size="small"
             title="查看明文"
             type="text"
@@ -328,6 +392,18 @@ function retire(row: CredentialView) {
               <Menu>
                 <MenuItem key="bindings" @click="openBindings(row)">
                   使用位置
+                </MenuItem>
+                <MenuItem
+                  v-if="
+                    isAdmin ||
+                    Number(row.created_by) ===
+                      Number(userStore.userInfo?.userId)
+                  "
+                  v-access:code="'credential:update'"
+                  key="viewers"
+                  @click="openViewers(row)"
+                >
+                  查看授权
                 </MenuItem>
                 <MenuItem
                   v-if="row.state !== 'retired'"
@@ -392,5 +468,23 @@ function retire(row: CredentialView) {
         </Space>
       </template>
     </Grid>
+    <Modal
+      v-model:open="viewerOpen"
+      :confirm-loading="viewerSaving"
+      title="授权查看凭证"
+      @ok="saveViewers"
+    >
+      <Select
+        v-model:value="viewerUids"
+        class="w-full"
+        :filter-option="false"
+        :loading="viewerLoading"
+        mode="multiple"
+        :options="viewerOptions"
+        placeholder="按姓名或手机号搜索用户"
+        show-search
+        @search="searchViewers"
+      />
+    </Modal>
   </Page>
 </template>

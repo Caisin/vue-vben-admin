@@ -298,6 +298,10 @@ export interface CredentialBindingView {
   updated_at: number | string;
 }
 
+export interface CredentialViewerView {
+  uids: Array<number | string>;
+}
+
 function stepUpHeaders(stepUpToken: string) {
   return { headers: { 'X-Kx-Step-Up-Token': stepUpToken } };
 }
@@ -346,6 +350,15 @@ export const CredentialApi = {
       stepUpHeaders(stepUpToken),
     ),
   types: () => requestClient.get<CredentialTypesView>('/credential/types'),
+  viewers: (code: string) =>
+    requestClient.get<CredentialViewerView>(
+      `/credential/items/${code}/viewers`,
+    ),
+  replaceViewers: (code: string, uids: Array<number | string>) =>
+    requestClient.put<CredentialViewerView>(
+      `/credential/items/${code}/viewers`,
+      { uids },
+    ),
   update: (code: string, data: CredentialUpdateWrite) =>
     requestClient.put<CredentialView>(`/credential/items/${code}`, data),
 };

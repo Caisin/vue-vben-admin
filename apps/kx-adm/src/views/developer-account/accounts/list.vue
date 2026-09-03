@@ -2,6 +2,7 @@
 import type { Dayjs } from 'dayjs';
 
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
+import type { CredentialView } from '#/api/credential';
 import type {
   DeveloperAccountDetail,
   DeveloperAccountListItem,
@@ -18,7 +19,7 @@ import type { SystemUser } from '#/api/system/user';
 import { computed, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
-import { Page } from '@vben/common-ui';
+import { Page, useVbenModal } from '@vben/common-ui';
 import { ArrowUpToLine, IconifyIcon, Plus, RotateCw, X } from '@vben/icons';
 
 import {
@@ -43,6 +44,7 @@ import {
 import dayjs from 'dayjs';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
+import { CredentialApi } from '#/api/credential';
 import { DeveloperAccountApi } from '#/api/developer-account';
 import { SystemUserApi } from '#/api/system/user';
 import { CredentialSelect } from '#/components/credential';
@@ -52,6 +54,7 @@ import { BusinessImport } from '#/components/import-export';
 import { ReferenceSelect } from '#/components/management';
 import { Times } from '#/times';
 
+import CredentialReveal from '../../credential/items/modules/reveal.vue';
 import { platformOptions, useColumns, useGridFormSchema } from './data';
 
 type FormState = DeveloperAccountWrite & {
@@ -94,6 +97,7 @@ const subjectQuickName = ref('');
 const subjectQuickSaving = ref(false);
 const certifierModalOpen = ref(false);
 const certifierSaving = ref(false);
+const certifierDocumentUploading = ref(false);
 const editingCertifierId = ref<number>();
 const certifierForm = reactive<DeveloperCertifierWrite>(emptyCertifierForm());
 const certifierQuickName = ref('');
@@ -121,6 +125,11 @@ const accessUserOptions = ref<{ label: string; value: number }[]>([]);
 const selectedFormCertifier = computed(() =>
   certifiers.value.find((item) => item.id === form.certifier_id),
 );
+const [CredentialRevealModal, credentialRevealModalApi] =
+  useVbenModal<CredentialView>({
+    connectedComponent: CredentialReveal,
+    destroyOnClose: true,
+  });
 
 void loadSubjects();
 void loadCertifiers();
@@ -522,6 +531,27 @@ async function uploadDeviceScreenshot(file: File) {
   return false;
 }
 
+async function uploadCertifierDocument(file: File) {
+  certifierDocumentUploading.value = true;
+  try {
+    const [uploaded] = await DeveloperAccountApi.uploadSubjectDocument(file);
+    if (uploaded) {
+      certifierForm.document_file_id = Number(uploaded.file.file_id);
+      messageApi.success('认证资料已上传');
+    }
+  } finally {
+    certifierDocumentUploading.value = false;
+  }
+  return Upload.LIST_IGNORE;
+}
+
+async function revealAccountCredential() {
+  const code = detail.value?.credential_code.trim();
+  if (!code) return;
+  const credential = await CredentialApi.detail(code);
+  credentialRevealModalApi.setData(credential).open();
+}
+
 async function showDetail(row: { id: number | string }) {
   detail.value = await DeveloperAccountApi.detail(row.id);
   detailSubject.value = detail.value.subject_id
@@ -669,6 +699,7 @@ async function loadAccessUserOptions() {
     content-class="management-content"
   >
     <component :is="MessageHolder" />
+    <CredentialRevealModal />
     <Grid class="management-grid" table-title="开发者账户">
       <template #toolbar-tools>
         <Space>
@@ -1175,8 +1206,29 @@ async function loadAccessUserOptions() {
           <FormItem class="col-span-2" label="地址">
             <Input v-model:value="certifierForm.address" />
           </FormItem>
-          <FormItem label="认证资料文件 ID">
-            <Input v-model:value="certifierForm.document_file_id" />
+          <FormItem class="col-span-2" label="认证资料">
+            <div class="flex items-center gap-3">
+              <FileRefPreview
+                v-if="certifierForm.document_file_id"
+                :value="certifierForm.document_file_id"
+              />
+              <Upload
+                :before-upload="uploadCertifierDocument"
+                :show-upload-list="false"
+              >
+                <Button :loading="certifierDocumentUploading">
+                  <ArrowUpToLine class="size-4" />
+                  {{ certifierForm.document_file_id ? '替换资料' : '上传资料' }}
+                </Button>
+              </Upload>
+              <Button
+                v-if="certifierForm.document_file_id"
+                type="link"
+                @click="certifierForm.document_file_id = undefined"
+              >
+                移除
+              </Button>
+            </div>
           </FormItem>
           <FormItem class="col-span-2" label="备注">
             <Input.TextArea v-model:value="certifierForm.remark" :rows="3" />
@@ -1314,7 +1366,18 @@ async function loadAccessUserOptions() {
               {{ detail.account }}
             </DescriptionsItem>
             <DescriptionsItem label="密码凭证">
-              {{ detail.credential_code || '-' }}
+              <Space v-if="detail.credential_code">
+                <span>{{ detail.credential_code }}</span>
+                <Button
+                  aria-label="查看开发者账户密码"
+                  size="small"
+                  type="text"
+                  @click="revealAccountCredential"
+                >
+                  <IconifyIcon class="size-4" icon="lucide:eye" />
+                </Button>
+              </Space>
+              <span v-else>-</span>
             </DescriptionsItem>
             <DescriptionsItem label="关联主体">
               <Button
@@ -1393,8 +1456,12 @@ async function loadAccessUserOptions() {
             <DescriptionsItem label="企业邮箱">
               {{ detailCertifier?.enterprise_email || '-' }}
             </DescriptionsItem>
-            <DescriptionsItem label="认证资料文件 ID">
-              {{ detailCertifier?.document_file_id ?? '-' }}
+            <DescriptionsItem label="认证资料">
+              <FileRefPreview
+                v-if="detailCertifier?.document_file_id"
+                :value="detailCertifier.document_file_id"
+              />
+              <span v-else>-</span>
             </DescriptionsItem>
             <DescriptionsItem label="地址" :span="2">
               {{ detailCertifier?.address || '-' }}

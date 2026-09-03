@@ -58,7 +58,9 @@ export interface AdminUserPageQuery extends PageQuery {
   dept_id?: number | string;
   enabled?: boolean;
   ids?: Array<number | string>;
+  keyword?: string;
   name_prefix?: string;
+  tel_prefix?: string;
 }
 
 export interface AdminRole {

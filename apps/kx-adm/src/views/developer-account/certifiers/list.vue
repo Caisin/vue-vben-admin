@@ -8,21 +8,22 @@ import { computed, onMounted, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
-import { Plus } from '@vben/icons';
+import { ArrowUpToLine, Plus } from '@vben/icons';
 
 import {
   Button,
   Form,
   FormItem,
   Input,
-  InputNumber,
   message,
   Modal,
   Space,
   Table,
+  Upload,
 } from 'antdv-next';
 
 import { DeveloperAccountApi } from '#/api/developer-account';
+import { FileRefPreview } from '#/components/file-picker';
 import { Times } from '#/times';
 
 const { hasAccessByCodes } = useAccess();
@@ -38,6 +39,7 @@ const canDelete = computed(() =>
 const rows = ref<DeveloperCertifier[]>([]);
 const loading = ref(false);
 const saving = ref(false);
+const documentUploading = ref(false);
 const open = ref(false);
 const keyword = ref('');
 const editing = ref<DeveloperCertifier>();
@@ -105,6 +107,22 @@ async function save() {
   } finally {
     saving.value = false;
   }
+}
+
+async function uploadDocument(file: File) {
+  documentUploading.value = true;
+  try {
+    const [uploaded] = await DeveloperAccountApi.uploadSubjectDocument(file);
+    if (!uploaded) {
+      message.error('认证资料上传失败');
+      return Upload.LIST_IGNORE;
+    }
+    form.document_file_id = Number(uploaded.file.file_id);
+    message.success('认证资料已上传');
+  } finally {
+    documentUploading.value = false;
+  }
+  return Upload.LIST_IGNORE;
 }
 
 function remove(row: DeveloperCertifier) {
@@ -183,12 +201,26 @@ onMounted(refresh);
           <FormItem class="col-span-2" label="地址">
             <Input v-model:value="form.address" />
           </FormItem>
-          <FormItem label="认证资料文件 ID">
-            <InputNumber
-              v-model:value="form.document_file_id"
-              class="w-full"
-              :min="1"
-            />
+          <FormItem class="col-span-2" label="认证资料">
+            <div class="flex items-center gap-3">
+              <FileRefPreview
+                v-if="form.document_file_id"
+                :value="form.document_file_id"
+              />
+              <Upload :before-upload="uploadDocument" :show-upload-list="false">
+                <Button :loading="documentUploading">
+                  <ArrowUpToLine class="size-4" />
+                  {{ form.document_file_id ? '替换资料' : '上传资料' }}
+                </Button>
+              </Upload>
+              <Button
+                v-if="form.document_file_id"
+                type="link"
+                @click="form.document_file_id = undefined"
+              >
+                移除
+              </Button>
+            </div>
           </FormItem>
           <FormItem class="col-span-2" label="备注">
             <Input.TextArea v-model:value="form.remark" :rows="3" />
