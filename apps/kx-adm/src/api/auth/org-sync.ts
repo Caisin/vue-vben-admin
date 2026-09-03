@@ -106,6 +106,11 @@ export interface OrgUserHistoryQuery extends PageQuery {
   event?: OrgSnapshotEvent;
 }
 
+export interface OrgUserSystemSyncResult {
+  created: boolean;
+  uid: number | string;
+}
+
 export const OrgSyncApi = {
   dingtalk_operators: (appKey: string, params?: DingtalkOperatorQuery) =>
     requestClient.get<Page<DingtalkOperatorOption>>(
@@ -127,5 +132,9 @@ export const OrgSyncApi = {
     requestClient.get<Page<OrgSnapshotRecord>>(
       `/auth/org-sync/users/${id}/history`,
       { params },
+    ),
+  sync_system_user: (id: number | string) =>
+    requestClient.post<OrgUserSystemSyncResult>(
+      `/auth/org-sync/users/${id}/sync-system-user`,
     ),
 };

@@ -37,6 +37,18 @@ export interface PhoneGroupUsersView {
   uids: number[];
 }
 
+export interface PhoneGroupNotificationChannelOption {
+  channel_code: string;
+  channel_id: number;
+  channel_name: string;
+  channel_type: 'dingtalk_custom_robot' | 'dingtalk_group_bot';
+}
+
+export interface PhoneGroupNotificationChannelsView {
+  channel_ids: number[];
+  options: PhoneGroupNotificationChannelOption[];
+}
+
 export const PhoneGroupApi = {
   list: (params: ListParams = {}) =>
     requestClient.get<PageResult<PhoneGroup>>('/msg/phone-groups', {
@@ -69,4 +81,13 @@ export const PhoneGroupApi = {
     requestClient.put<PhoneGroupUsersView>(`/msg/phone-groups/${id}/users`, {
       uids,
     }),
+  notificationChannels: (id: number) =>
+    requestClient.get<PhoneGroupNotificationChannelsView>(
+      `/msg/phone-groups/${id}/notification-channels`,
+    ),
+  replaceNotificationChannels: (id: number, channelIds: number[]) =>
+    requestClient.put<PhoneGroupNotificationChannelsView>(
+      `/msg/phone-groups/${id}/notification-channels`,
+      { channel_ids: channelIds },
+    ),
 };

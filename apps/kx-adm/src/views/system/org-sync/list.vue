@@ -59,6 +59,7 @@ const selectedSourceKey = ref<string>();
 const syncing = ref(false);
 const contactOpen = ref(false);
 const selectedContactUser = ref<OrgUserLink>();
+const syncingUserIds = ref(new Set<string>());
 let taskPollTimer: number | undefined;
 
 const sourceOptions = computed(() =>
@@ -227,6 +228,24 @@ function openContact(row: OrgUserLink) {
   contactOpen.value = true;
 }
 
+async function syncSystemUser(row: OrgUserLink) {
+  const key = String(row.id);
+  syncingUserIds.value = new Set(syncingUserIds.value).add(key);
+  try {
+    const result = await OrgSyncApi.sync_system_user(row.id);
+    message.success(
+      result.created
+        ? `已创建系统用户 #${result.uid}`
+        : `已更新系统用户 #${result.uid}`,
+    );
+    await userGridApi.reload();
+  } finally {
+    const next = new Set(syncingUserIds.value);
+    next.delete(key);
+    syncingUserIds.value = next;
+  }
+}
+
 onMounted(async () => {
   await loadSources();
   refreshForSource();
@@ -382,6 +401,18 @@ onBeforeUnmount(() => {
           </template>
           <template #leftAt="{ row }">
             {{ row.left_at ? Times.formatUnix(row.left_at) : '-' }}
+          </template>
+          <template #actions="{ row }">
+            <Button
+              v-if="row.active"
+              v-access:code="'org_sync:sync-user'"
+              :loading="syncingUserIds.has(String(row.id))"
+              size="small"
+              type="link"
+              @click="syncSystemUser(row)"
+            >
+              {{ Number(row.uid) > 0 ? '重新同步' : '同步到用户' }}
+            </Button>
           </template>
         </UserGrid>
       </TabPane>

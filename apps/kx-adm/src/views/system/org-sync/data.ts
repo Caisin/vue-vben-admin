@@ -201,6 +201,13 @@ export function userColumns(): VxeTableGridColumns<OrgUserLink> {
       title: '再入职次数',
       width: 120,
     },
+    {
+      field: 'actions',
+      fixed: 'right',
+      slots: { default: 'actions' },
+      title: '操作',
+      width: 130,
+    },
   ];
 }
 

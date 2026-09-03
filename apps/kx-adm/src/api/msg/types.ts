@@ -343,6 +343,7 @@ export interface PhoneGroup {
   grp_code: string;
   grp_name: string;
   id: number;
+  notification_channel_count: number;
   order_no: number;
   remark: string;
   sim_count: number;

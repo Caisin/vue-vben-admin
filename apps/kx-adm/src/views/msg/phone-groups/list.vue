@@ -1,12 +1,16 @@
 <script lang="ts" setup>
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
-import type { PhoneGroup, SimCard } from '#/api/msg';
+import type {
+  PhoneGroup,
+  PhoneGroupNotificationChannelOption,
+  SimCard,
+} from '#/api/msg';
 import type { SystemUser } from '#/api/system/user';
 
 import { computed, ref } from 'vue';
 
 import { Page, useVbenDrawer } from '@vben/common-ui';
-import { Plus, X } from '@vben/icons';
+import { Bell, Plus, X } from '@vben/icons';
 
 import { Button, message, Popconfirm, Select, Space } from 'antdv-next';
 
@@ -23,10 +27,15 @@ import PopupDrawer from './modules/popup-drawer.vue';
 
 const simDrawerOpen = ref(false);
 const userDrawerOpen = ref(false);
+const notificationDrawerOpen = ref(false);
 const assignLoading = ref(false);
 const selectedGroup = ref<PhoneGroup>();
 const selectedIccids = ref<string[]>([]);
 const selectedUids = ref<number[]>([]);
+const selectedNotificationChannelIds = ref<number[]>([]);
+const notificationChannelOptions = ref<PhoneGroupNotificationChannelOption[]>(
+  [],
+);
 const groupSims = ref<SimCard[]>([]);
 const userOptions = ref<{ label: string; value: number }[]>([]);
 const groupSortFields = ['grp_code', 'grp_name', 'order_no'];
@@ -79,6 +88,11 @@ const userDrawerTitle = computed(() =>
   selectedGroup.value
     ? `授权用户：${selectedGroup.value.grp_name}`
     : '授权用户',
+);
+const notificationDrawerTitle = computed(() =>
+  selectedGroup.value
+    ? `短信通知群：${selectedGroup.value.grp_name}`
+    : '短信通知群',
 );
 
 function onRefresh() {
@@ -189,6 +203,37 @@ async function loadUserOptions() {
     value: Number(user.id),
   }));
 }
+
+async function openNotificationChannels(row: PhoneGroup) {
+  selectedGroup.value = row;
+  selectedNotificationChannelIds.value = [];
+  notificationChannelOptions.value = [];
+  notificationDrawerOpen.value = true;
+  assignLoading.value = true;
+  try {
+    const result = await PhoneGroupApi.notificationChannels(row.id);
+    selectedNotificationChannelIds.value = result.channel_ids;
+    notificationChannelOptions.value = result.options;
+  } finally {
+    assignLoading.value = false;
+  }
+}
+
+async function saveNotificationChannels() {
+  if (!selectedGroup.value) return;
+  assignLoading.value = true;
+  try {
+    await PhoneGroupApi.replaceNotificationChannels(
+      selectedGroup.value.id,
+      selectedNotificationChannelIds.value,
+    );
+    message.success('短信通知群已更新');
+    notificationDrawerOpen.value = false;
+    await gridApi.query();
+  } finally {
+    assignLoading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -248,6 +293,17 @@ async function loadUserOptions() {
           {{ row.user_count }} 个用户
         </Button>
       </template>
+      <template #notificationChannelCount="{ row }">
+        <Button
+          v-access:code="'phone_groups:manage'"
+          class="px-0"
+          size="small"
+          type="link"
+          @click.stop="openNotificationChannels(row)"
+        >
+          {{ row.notification_channel_count }} 个群
+        </Button>
+      </template>
       <template #actions="{ row }">
         <Space size="small">
           <Button
@@ -265,6 +321,14 @@ async function loadUserOptions() {
             @click.stop="openUsers(row)"
           >
             用户
+          </Button>
+          <Button
+            v-access:code="'phone_groups:manage'"
+            size="small"
+            type="link"
+            @click.stop="openNotificationChannels(row)"
+          >
+            <template #icon><Bell /></template>通知
           </Button>
           <Popconfirm
             :title="`确认删除号码分组 ${row.grp_name}？`"
@@ -355,6 +419,46 @@ async function loadUserOptions() {
       />
       <div class="mt-3 text-sm text-gray-500">
         已授权 {{ selectedUids.length }} 个用户
+      </div>
+    </PopupDrawer>
+
+    <PopupDrawer
+      v-model:open="notificationDrawerOpen"
+      class="w-full max-w-160"
+      :title="notificationDrawerTitle"
+    >
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button @click="notificationDrawerOpen = false">取消</Button>
+          <Button
+            v-access:code="'phone_groups:manage'"
+            :loading="assignLoading"
+            type="primary"
+            @click="saveNotificationChannels"
+          >
+            保存
+          </Button>
+        </div>
+      </template>
+      <Select
+        v-model:value="selectedNotificationChannelIds"
+        class="w-full"
+        mode="multiple"
+        :options="
+          notificationChannelOptions.map((channel) => ({
+            label: `${channel.channel_name}（${
+              channel.channel_type === 'dingtalk_custom_robot'
+                ? '自定义机器人'
+                : '企业群机器人'
+            }）`,
+            value: Number(channel.channel_id),
+          }))
+        "
+        placeholder="选择收到短信时通知的钉钉群"
+        show-search
+      />
+      <div class="mt-3 text-sm text-gray-500">
+        同一号码属于多个分组时，会通知所有分组绑定的不同钉钉群。
       </div>
     </PopupDrawer>
   </Page>

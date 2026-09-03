@@ -10,7 +10,7 @@ import type {
 } from '#/api/system/shared';
 import type { TaskRun } from '#/api/task';
 
-import { requestClient } from '#/api/request';
+import { plaintextRequestClient, requestClient } from '#/api/request';
 import {
   enabledFromStatus,
   pageParams,
@@ -296,7 +296,7 @@ export const SystemUserApi = {
       { password },
     ),
   weekly_report_template: (data: UserWeeklyReportTemplateRequest) =>
-    requestClient.download<Blob>(
+    plaintextRequestClient.download<Blob>(
       '/auth/user-admin/actions/weekly-report-template',
       { data, method: 'POST' },
     ),

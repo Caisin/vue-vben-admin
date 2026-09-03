@@ -48,6 +48,12 @@ export function useColumns(
       width: 110,
     },
     {
+      field: 'notification_channel_count',
+      slots: { default: 'notificationChannelCount' },
+      title: '通知群',
+      width: 100,
+    },
+    {
       cellRender: {
         attrs: {
           auth: 'phone_groups:manage',
@@ -68,7 +74,7 @@ export function useColumns(
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 170,
+      width: 220,
     },
   ];
 }
