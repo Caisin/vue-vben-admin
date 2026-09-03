@@ -195,6 +195,7 @@ export interface SimCard {
   lifecycle_state: string;
   management_note: string;
   note: string;
+  ownership: string;
   phone_number: string;
   real_name: string;
   updated_at: number;
@@ -222,6 +223,7 @@ export interface SimCardFilterOptions {
   carriers: string[];
   devices: Array<{ label: string; value: string }>;
   lifecycle_states: Array<{ label: string; value: string }>;
+  ownerships: string[];
   phone_regions: PhoneRegionOption[];
   real_names: string[];
   slot_codes: string[];

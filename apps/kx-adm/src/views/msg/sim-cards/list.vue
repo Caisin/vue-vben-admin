@@ -109,6 +109,7 @@ const profileForm = reactive({
   appleDeveloperRegistered: false,
   lifecycleState: 'active',
   managementNote: '',
+  ownership: '',
   realName: '',
 });
 const filterOptions = ref<SimCardFilterOptions>({
@@ -116,6 +117,7 @@ const filterOptions = ref<SimCardFilterOptions>({
   devices: [],
   phone_regions: [],
   lifecycle_states: [],
+  ownerships: [],
   real_names: [],
   software_versions: [],
   slot_codes: [],
@@ -213,6 +215,7 @@ async function loadFilterOptions() {
     carriers: options.carriers ?? [],
     devices: options.devices ?? [],
     lifecycle_states: options.lifecycle_states ?? [],
+    ownerships: options.ownerships ?? [],
     phone_regions: options.phone_regions ?? [],
     real_names: options.real_names ?? [],
     software_versions: options.software_versions ?? [],
@@ -558,6 +561,7 @@ function openProfile(card: SimCardView) {
   profileForm.appleDeveloperRegistered = card.apple_developer_registered;
   profileForm.lifecycleState = card.lifecycle_state || 'active';
   profileForm.managementNote = card.management_note;
+  profileForm.ownership = card.ownership;
   profileForm.realName = card.real_name;
   profileOpen.value = true;
 }
@@ -571,6 +575,7 @@ async function submitProfile() {
       apple_developer_registered: profileForm.appleDeveloperRegistered,
       lifecycle_state: profileForm.lifecycleState,
       management_note: profileForm.managementNote.trim(),
+      ownership: profileForm.ownership.trim(),
       real_name: profileForm.realName.trim(),
     });
     Object.assign(card, updated);
@@ -957,9 +962,15 @@ onMounted(loadInitialData);
         </Tag>
       </template>
       <template #profileField="{ column, row }">
-        <Tooltip v-if="canManageSimCards" title="编辑实名和备注">
+        <Tooltip v-if="canManageSimCards" title="编辑实名、归属和备注">
           <Button
-            :aria-label="column.field === 'real_name' ? '编辑实名' : '编辑备注'"
+            :aria-label="
+              column.field === 'real_name'
+                ? '编辑实名'
+                : column.field === 'ownership'
+                  ? '编辑归属'
+                  : '编辑备注'
+            "
             class="cell-edit-button"
             type="link"
             @click="openProfile(row)"
@@ -1294,6 +1305,9 @@ onMounted(loadInitialData);
               <DescriptionsItem label="实名">
                 {{ displayValue(selectedCard.real_name) }}
               </DescriptionsItem>
+              <DescriptionsItem label="归属">
+                {{ displayValue(selectedCard.ownership) }}
+              </DescriptionsItem>
               <DescriptionsItem label="管理备注">
                 {{ displayValue(selectedCard.management_note) }}
               </DescriptionsItem>
@@ -1464,6 +1478,14 @@ onMounted(loadInitialData);
           <Select
             v-model:value="profileForm.lifecycleState"
             :options="lifecycleOptions()"
+          />
+        </FormItem>
+        <FormItem label="归属">
+          <AutoComplete
+            v-model:value="profileForm.ownership"
+            :maxlength="100"
+            :options="textSelectOptions(filterOptions.ownerships)"
+            placeholder="电话卡业务归属"
           />
         </FormItem>
         <FormItem label="苹果开发者账号">

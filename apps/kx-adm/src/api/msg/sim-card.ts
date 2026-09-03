@@ -11,7 +11,7 @@ import type {
 
 import type { TaskRun } from '#/api/task';
 
-import { requestClient } from '#/api/request';
+import { plaintextRequestClient, requestClient } from '#/api/request';
 
 export interface BatchSmsRequest {
   content: string;
@@ -60,6 +60,7 @@ export interface UpdateSimProfileRequest {
   apple_developer_registered?: boolean;
   lifecycle_state?: string;
   management_note: string;
+  ownership: string;
   phone_number?: string;
   real_name: string;
 }
@@ -71,6 +72,7 @@ export interface SimRealNameImportItem {
   phone_number: string;
   raw_phone_number: string;
   real_name: string;
+  ownership: string;
   row_number: number;
   status: string;
 }
@@ -101,15 +103,21 @@ export const SimCardApi = {
       params: { q },
     }),
   createRealNameImport: (file: File) =>
-    requestClient.upload<SimRealNameImport>(
+    plaintextRequestClient.upload<SimRealNameImport>(
       '/msg/sim-cards/real-name-imports',
       { file },
     ),
   realNameImportTemplate: () =>
-    requestClient.download<Blob>('/msg/sim-cards/real-name-imports/template'),
+    plaintextRequestClient.download<Blob>(
+      '/msg/sim-cards/real-name-imports/template',
+    ),
   realNameImportDetail: (id: number | string) =>
     requestClient.get<SimRealNameImport>(
       `/msg/sim-cards/real-name-imports/${id}`,
+    ),
+  realNameImportResult: (id: number | string) =>
+    plaintextRequestClient.download<Blob>(
+      `/msg/sim-cards/real-name-imports/${id}/result`,
     ),
   repairPhoneNumbers: () =>
     requestClient.post<{ status: string }>(

@@ -27,12 +27,14 @@ const file = ref<File>();
 const detail = ref<SimRealNameImport>();
 const loading = ref(false);
 const downloading = ref(false);
+const downloadingResult = ref(false);
 
 const columns = [
   { dataIndex: 'row_number', title: '行号', width: 72 },
   { dataIndex: 'raw_phone_number', title: '上传号码', width: 150 },
   { dataIndex: 'phone_number', title: '规范号码', width: 160 },
   { dataIndex: 'real_name', title: '实名人', width: 120 },
+  { dataIndex: 'ownership', title: '归属', width: 120 },
   { dataIndex: 'iccid', title: 'ICCID', width: 190 },
   { dataIndex: 'status', title: '状态', width: 100 },
   { dataIndex: 'error_message', title: '处理结果', minWidth: 190 },
@@ -87,8 +89,8 @@ const [Modal, modalApi] = useVbenModal<{ import_id?: number | string }>({
 });
 
 function selectFile(selected: File) {
-  if (!selected.name.toLowerCase().endsWith('.csv')) {
-    message.warning('只支持 CSV 文件');
+  if (!/\.(csv|xlsx)$/i.test(selected.name)) {
+    message.warning('只支持 XLSX 或 CSV 文件');
     return Upload.LIST_IGNORE;
   }
   file.value = selected;
@@ -100,7 +102,7 @@ async function downloadTemplate() {
   try {
     const blob = await SimCardApi.realNameImportTemplate();
     downloadFileFromBlob({
-      fileName: '电话卡实名导入模板.csv',
+      fileName: '电话卡实名导入模板.xlsx',
       source: blob,
     });
   } finally {
@@ -115,6 +117,20 @@ async function loadDetail(id: number | string | undefined = detail.value?.id) {
     detail.value = await SimCardApi.realNameImportDetail(id);
   } finally {
     loading.value = false;
+  }
+}
+
+async function downloadResult() {
+  if (!detail.value || !terminal.value) return;
+  downloadingResult.value = true;
+  try {
+    const blob = await SimCardApi.realNameImportResult(detail.value.id);
+    downloadFileFromBlob({
+      fileName: `电话卡实名导入结果-${detail.value.id}.xlsx`,
+      source: blob,
+    });
+  } finally {
+    downloadingResult.value = false;
   }
 }
 
@@ -137,7 +153,7 @@ function statusColor(status: string) {
       <template v-if="!detail">
         <Space wrap>
           <Upload
-            accept=".csv,text/csv"
+            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
             :before-upload="selectFile"
             :file-list="[]"
             :max-count="1"
@@ -160,10 +176,20 @@ function statusColor(status: string) {
           <Tag :color="statusColor(detail.status)">
             {{ statusText[detail.status] ?? detail.status }}
           </Tag>
-          <Button :loading="loading" @click="loadDetail()">
-            <template #icon><RotateCw /></template>
-            刷新结果
-          </Button>
+          <Space>
+            <Button
+              v-if="terminal"
+              :loading="downloadingResult"
+              @click="downloadResult"
+            >
+              <template #icon><Download /></template>
+              下载结果
+            </Button>
+            <Button :loading="loading" @click="loadDetail()">
+              <template #icon><RotateCw /></template>
+              刷新结果
+            </Button>
+          </Space>
         </div>
         <Descriptions bordered :column="3" size="small">
           <DescriptionsItem label="文件">
@@ -205,6 +231,12 @@ function statusColor(status: string) {
             >
               {{ statusText[record.status] ?? record.status }}
             </Tag>
+            <span v-else-if="column.dataIndex === 'error_message'">
+              {{
+                record.error_message ||
+                (record.status === 'succeeded' ? '导入成功' : '-')
+              }}
+            </span>
           </template>
         </Table>
         <Empty v-else description="暂无逐行结果" />

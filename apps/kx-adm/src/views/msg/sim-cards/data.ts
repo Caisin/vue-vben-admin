@@ -43,7 +43,7 @@ export function useFormSchema(
       component: 'Input',
       componentProps: {
         allowClear: true,
-        placeholder: 'ICCID / IMSI / 号码 / 实名 / 设备 / 卡槽',
+        placeholder: 'ICCID / IMSI / 号码 / 实名 / 归属 / 设备 / 卡槽',
       },
       fieldName: 'keyword',
       label: '全文搜索',
@@ -115,6 +115,16 @@ export function useFormSchema(
       },
       fieldName: 'lifecycle_state',
       label: '生命周期',
+    },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: textSelectOptions(filterOptions.ownerships),
+        showSearch: true,
+      },
+      fieldName: 'ownership',
+      label: '归属',
     },
   ];
 }
@@ -207,6 +217,12 @@ export function useCardColumns(): VxeTableGridColumns<SimCardView> {
       slots: { default: 'profileField' },
       title: '实名',
       width: 140,
+    },
+    {
+      field: 'ownership',
+      slots: { default: 'profileField' },
+      title: '归属',
+      width: 150,
     },
     {
       field: 'management_note',
