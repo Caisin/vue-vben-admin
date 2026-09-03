@@ -2,19 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SimCardApi } from './sim-card';
 
-const { download, upload } = vi.hoisted(() => ({
+const { download, post, upload } = vi.hoisted(() => ({
   download: vi.fn(),
+  post: vi.fn(),
   upload: vi.fn(),
 }));
 
 vi.mock('#/api/request', () => ({
   plaintextRequestClient: { download, upload },
-  requestClient: {},
+  requestClient: { post },
 }));
 
 describe('simCardApi', () => {
   beforeEach(() => {
     download.mockReset();
+    post.mockReset();
     upload.mockReset();
   });
 
@@ -38,5 +40,18 @@ describe('simCardApi', () => {
       2,
       '/msg/sim-cards/real-name-imports/7/result',
     );
+  });
+
+  it('单卡发送短信只在 path 传 ICCID', async () => {
+    post.mockResolvedValueOnce({ job_key: 'job-1' });
+    const payload = {
+      content: '测试',
+      idempotency_key: 'send-1',
+      target_number: '13800000000',
+    };
+
+    await SimCardApi.sendSms('898600123', payload);
+
+    expect(post).toHaveBeenCalledWith('/msg/sim-cards/898600123/sms', payload);
   });
 });

@@ -5,6 +5,9 @@ import type {
   TransferRunStatus,
 } from '#/api/import-export';
 
+import { onMounted } from 'vue';
+import { useRoute } from 'vue-router';
+
 import { Page } from '@vben/common-ui';
 import { Download } from '@vben/icons';
 import { downloadFileFromBlob } from '@vben/utils';
@@ -16,7 +19,9 @@ import { ImportExportApi } from '#/api/import-export';
 
 import { columns, formSchema, statusColor, statusLabel } from './data';
 
-const [Grid] = useVbenVxeGrid<TransferRunListItem>({
+const route = useRoute();
+
+const [Grid, gridApi] = useVbenVxeGrid<TransferRunListItem>({
   formOptions: { schema: formSchema(), submitOnChange: true },
   gridOptions: {
     columns: columns(),
@@ -52,6 +57,23 @@ const [Grid] = useVbenVxeGrid<TransferRunListItem>({
       zoom: true,
     },
   } as VxeTableGridOptions<TransferRunListItem>,
+});
+
+onMounted(async () => {
+  const definitionCode =
+    typeof route.query.definition_code === 'string'
+      ? route.query.definition_code
+      : undefined;
+  const direction =
+    route.query.direction === 'import' || route.query.direction === 'export'
+      ? route.query.direction
+      : undefined;
+  if (!definitionCode && !direction) return;
+  await gridApi.formApi.setValues({
+    definition_code: definitionCode,
+    direction,
+  });
+  await gridApi.query();
 });
 
 function expired(row: TransferRunListItem) {

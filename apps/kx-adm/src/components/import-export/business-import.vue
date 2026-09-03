@@ -4,8 +4,9 @@ import type { UploadFile } from 'antdv-next';
 import type { ImportExportDefinition, TransferRun } from '#/api/import-export';
 
 import { computed, onBeforeUnmount, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
-import { ArrowUpToLine, Download, RotateCw } from '@vben/icons';
+import { ArrowUpToLine, Download, ExternalLink, RotateCw } from '@vben/icons';
 import { downloadFileFromBlob } from '@vben/utils';
 
 import {
@@ -44,10 +45,12 @@ const open = ref(false);
 const loading = ref(false);
 const submitting = ref(false);
 const downloading = ref(false);
+const resultDownloading = ref(false);
 const definition = ref<ImportExportDefinition>();
 const file = ref<File>();
 const run = ref<TransferRun>();
 let pollTimer: number | undefined;
+const router = useRouter();
 
 const terminal = computed(() =>
   [
@@ -115,6 +118,28 @@ async function downloadTemplate() {
   } finally {
     downloading.value = false;
   }
+}
+
+async function downloadResult() {
+  if (!run.value?.has_result) return;
+  resultDownloading.value = true;
+  try {
+    const blob = await ImportExportApi.runFile(run.value.id, 'result');
+    downloadFileFromBlob({
+      fileName: `${definition.value?.display_name ?? '导入'}结果-${run.value.id}.xlsx`,
+      source: blob,
+    });
+  } finally {
+    resultDownloading.value = false;
+  }
+}
+
+function openHistory() {
+  const href = router.resolve({
+    path: '/system/import-export-runs',
+    query: { definition_code: props.definitionCode, direction: 'import' },
+  }).href;
+  window.open(href, '_blank', 'noopener,noreferrer');
 }
 
 async function submit() {
@@ -205,11 +230,23 @@ onBeforeUnmount(clearPoll);
       </template>
 
       <template v-else>
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-3">
           <Tag :color="statusColor(run.status)">{{ run.status }}</Tag>
-          <Button v-if="!terminal" type="text" @click="refreshRun">
-            <RotateCw class="size-4" />刷新
-          </Button>
+          <Space>
+            <Button
+              v-if="run.has_result"
+              :loading="resultDownloading"
+              @click="downloadResult"
+            >
+              <Download class="size-4" />下载结果
+            </Button>
+            <Button v-if="!terminal" type="text" @click="refreshRun">
+              <RotateCw class="size-4" />刷新
+            </Button>
+            <Button type="link" @click="openHistory">
+              <ExternalLink class="size-4" />导入记录
+            </Button>
+          </Space>
         </div>
         <Descriptions bordered :column="3" size="small">
           <DescriptionsItem label="总数">

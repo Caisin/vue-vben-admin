@@ -2,6 +2,7 @@
 import type { QuickFilter } from './data';
 
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
+import type { TransferRun } from '#/api/import-export';
 import type {
   Device,
   DeviceSlot,
@@ -13,19 +14,21 @@ import type {
   SmsMessage,
 } from '#/api/msg';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import {
   Copy,
+  Download,
   Link2,
   MessageSquareCode,
   Pin,
   RotateCw,
   Settings,
 } from '@vben/icons';
+import { downloadFileFromBlob } from '@vben/utils';
 
 import {
   AutoComplete,
@@ -50,6 +53,7 @@ import {
 } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
+import { ImportExportApi } from '#/api/import-export';
 import {
   DeviceApi,
   DeviceLocateError,
@@ -79,6 +83,12 @@ import PopupDrawer from './modules/popup-drawer.vue';
 import PopupModal from './modules/popup-modal.vue';
 
 const repairLoading = ref(false);
+const ownershipBatchOpen = ref(false);
+const ownershipBatchSubmitting = ref(false);
+const ownershipResultDownloading = ref(false);
+const ownershipBatchRun = ref<TransferRun>();
+const ownershipBatchForm = reactive({ ownership: '', phoneNumbers: '' });
+let ownershipPollTimer: number | undefined;
 const exportOptions = ref<Record<string, unknown>>({});
 const addGroupOpen = ref(false);
 const addGroupLoading = ref(false);
@@ -139,6 +149,15 @@ const canManagePhoneGroups = computed(() =>
 );
 const canViewPhoneAccounts = computed(() =>
   hasAccessByCodes(['phone_accounts:view']),
+);
+const ownershipBatchTerminal = computed(() =>
+  [
+    'cancelled',
+    'failed',
+    'partially_succeeded',
+    'submit_failed',
+    'succeeded',
+  ].includes(ownershipBatchRun.value?.status ?? ''),
 );
 
 const drawerOpen = ref(false);
@@ -232,6 +251,97 @@ async function loadInitialData() {
 
 async function refreshAfterRealNameImport() {
   await Promise.all([loadFilterOptions(), gridApi.query()]);
+}
+
+function openOwnershipBatch() {
+  ownershipBatchForm.ownership = '';
+  ownershipBatchForm.phoneNumbers = '';
+  ownershipBatchRun.value = undefined;
+  ownershipBatchOpen.value = true;
+}
+
+function ownershipPhoneNumbers() {
+  return [
+    ...new Set(
+      ownershipBatchForm.phoneNumbers
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function csvCell(value: string) {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+async function submitOwnershipBatch() {
+  const ownership = ownershipBatchForm.ownership.trim();
+  const phoneNumbers = ownershipPhoneNumbers();
+  if (!ownership || phoneNumbers.length === 0) {
+    message.warning('请选择归属并填写至少一个号码');
+    return;
+  }
+  ownershipBatchSubmitting.value = true;
+  try {
+    const csv = [
+      'phone,ownership',
+      ...phoneNumbers.map((phone) => `${csvCell(phone)},${csvCell(ownership)}`),
+    ].join('\n');
+    ownershipBatchRun.value = await ImportExportApi.createImportRun(
+      'msg.sim.ownership',
+      new File([`\uFEFF${csv}`], '批量修改电话卡归属.csv', {
+        type: 'text/csv;charset=utf-8',
+      }),
+    );
+    message.success('批量修改归属任务已提交');
+    scheduleOwnershipPoll();
+  } finally {
+    ownershipBatchSubmitting.value = false;
+  }
+}
+
+function clearOwnershipPoll() {
+  if (ownershipPollTimer !== undefined) window.clearTimeout(ownershipPollTimer);
+  ownershipPollTimer = undefined;
+}
+
+function scheduleOwnershipPoll() {
+  clearOwnershipPoll();
+  if (!ownershipBatchRun.value || ownershipBatchTerminal.value) return;
+  ownershipPollTimer = window.setTimeout(refreshOwnershipRun, 1000);
+}
+
+async function refreshOwnershipRun() {
+  if (!ownershipBatchRun.value) return;
+  try {
+    ownershipBatchRun.value = await ImportExportApi.importRun(
+      'msg.sim.ownership',
+      ownershipBatchRun.value.id,
+    );
+    if (ownershipBatchTerminal.value) {
+      await Promise.all([loadFilterOptions(), gridApi.query()]);
+    }
+  } finally {
+    scheduleOwnershipPoll();
+  }
+}
+
+async function downloadOwnershipResult() {
+  if (!ownershipBatchRun.value?.has_result) return;
+  ownershipResultDownloading.value = true;
+  try {
+    const blob = await ImportExportApi.runFile(
+      ownershipBatchRun.value.id,
+      'result',
+    );
+    downloadFileFromBlob({
+      fileName: `批量修改电话卡归属结果-${ownershipBatchRun.value.id}.xlsx`,
+      source: blob,
+    });
+  } finally {
+    ownershipResultDownloading.value = false;
+  }
 }
 
 function firstQueryValue(value: unknown) {
@@ -772,6 +882,7 @@ async function submitUpdate() {
 }
 
 onMounted(loadInitialData);
+onBeforeUnmount(clearOwnershipPoll);
 </script>
 
 <template>
@@ -809,6 +920,12 @@ onMounted(loadInitialData);
           @click="openAddCurrentQueryToGroup"
         >
           <template #icon><Link2 /></template>加入分组
+        </Button>
+        <Button
+          v-access:code="['sim_cards:batch-ownership', 'sim_cards:manage']"
+          @click="openOwnershipBatch"
+        >
+          <template #icon><Settings /></template>批量修改归属
         </Button>
         <Button
           v-if="canManageSimCards"
@@ -1050,6 +1167,76 @@ onMounted(loadInitialData);
         {{ Times.formatUnix(row.last_seen_at) }}
       </template>
     </Grid>
+
+    <PopupModal
+      v-model:open="ownershipBatchOpen"
+      :confirm-loading="ownershipBatchSubmitting"
+      :ok-button-props="{
+        disabled: Boolean(ownershipBatchRun && !ownershipBatchTerminal),
+      }"
+      :ok-text="ownershipBatchRun ? '关闭' : '提交'"
+      title="批量修改归属"
+      width="720px"
+      @ok="
+        ownershipBatchRun
+          ? (ownershipBatchOpen = false)
+          : submitOwnershipBatch()
+      "
+    >
+      <template v-if="!ownershipBatchRun">
+        <Form layout="vertical">
+          <FormItem label="归属" required>
+            <AutoComplete
+              v-model:value="ownershipBatchForm.ownership"
+              :options="textSelectOptions(filterOptions.ownerships)"
+              placeholder="选择或输入归属"
+            />
+          </FormItem>
+          <FormItem label="号码" required>
+            <TextArea
+              v-model:value="ownershipBatchForm.phoneNumbers"
+              placeholder="一行一个号码"
+              :rows="12"
+            />
+            <div class="muted form-tip">
+              已输入
+              {{ ownershipPhoneNumbers().length }} 个号码，重复号码会自动合并。
+            </div>
+          </FormItem>
+        </Form>
+      </template>
+      <template v-else>
+        <Descriptions bordered :column="3" size="small">
+          <DescriptionsItem label="状态" :span="3">
+            {{ ownershipBatchRun.status }}
+          </DescriptionsItem>
+          <DescriptionsItem label="总数">
+            {{ ownershipBatchRun.total_count ?? '-' }}
+          </DescriptionsItem>
+          <DescriptionsItem label="成功号码">
+            {{ ownershipBatchRun.succeeded_count }}
+          </DescriptionsItem>
+          <DescriptionsItem label="失败号码">
+            {{ ownershipBatchRun.failed_count }}
+          </DescriptionsItem>
+          <DescriptionsItem label="处理结果" :span="3">
+            {{ ownershipBatchRun.error_message || ownershipBatchRun.message }}
+          </DescriptionsItem>
+        </Descriptions>
+        <Space class="mt-4">
+          <Button
+            v-if="ownershipBatchRun.has_result"
+            :loading="ownershipResultDownloading"
+            @click="downloadOwnershipResult"
+          >
+            <template #icon><Download /></template>下载逐条结果
+          </Button>
+          <Button v-if="!ownershipBatchTerminal" @click="refreshOwnershipRun">
+            <template #icon><RotateCw /></template>刷新结果
+          </Button>
+        </Space>
+      </template>
+    </PopupModal>
 
     <PopupModal
       v-model:open="addGroupOpen"

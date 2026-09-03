@@ -81,6 +81,7 @@ import {
   useDeviceColumns,
   useFormSchema,
 } from './data';
+import { deviceBackendUrl } from './device-backend-url';
 import PopupDrawer from './modules/popup-drawer.vue';
 import PopupModal from './modules/popup-modal.vue';
 
@@ -423,17 +424,6 @@ async function submitSlotUpdate() {
     }
   } finally {
     cardUpdateSubmitting.value = false;
-  }
-}
-
-function deviceBackendUrl(device: Device) {
-  const value = device.base_url.trim();
-  if (!value) return undefined;
-  try {
-    const url = new URL(value);
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : undefined;
-  } catch {
-    return undefined;
   }
 }
 
