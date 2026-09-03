@@ -305,7 +305,7 @@ async function submitSlotSms() {
       idempotency_key: createIdempotencyKey(),
       target_number: smsForm.to.trim(),
     });
-    message.success(`短信任务 ${result.job_key} 已受理`);
+    message.success(`短信任务 #${result.id} 已提交`);
     smsOpen.value = false;
   } finally {
     smsSubmitting.value = false;
@@ -317,7 +317,7 @@ async function refreshSlotBalance(slot: DeviceSlot) {
   balanceRefreshingIccid.value = slot.current_sim_iccid;
   try {
     const result = await SimCardApi.refreshBalance(slot.current_sim_iccid);
-    message.success(`余额查询任务 ${result.job_key} 已受理`);
+    message.success(`余额查询任务 #${result.id} 已提交`);
   } finally {
     balanceRefreshingIccid.value = '';
   }
@@ -1434,7 +1434,7 @@ onMounted(loadInitialDevices);
         <FormItem label="号码备注">
           <Input
             v-model:value="cardUpdateForm.note"
-            ::maxlength="8"
+            :maxlength="8"
             show-count
           />
         </FormItem>

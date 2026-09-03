@@ -277,26 +277,6 @@ export interface SmsReprocessResult {
   skipped: number;
 }
 
-export interface SmsJob {
-  attempt_count: number;
-  content: string;
-  created_at: number;
-  device_code: string;
-  finished_at: number;
-  idempotency_key: string;
-  last_error_code: string;
-  last_error_message: string;
-  mqtt_payload?: string;
-  mqtt_topic?: string;
-  requested_by: string;
-  sim_iccid: string;
-  slot_key: string;
-  started_at: number;
-  status: string;
-  target_number: string;
-  upstream_message: string;
-}
-
 export interface StorageConfig {
   access_key_id_configured: boolean;
   bucket: string;

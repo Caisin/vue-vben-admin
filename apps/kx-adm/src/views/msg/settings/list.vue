@@ -474,7 +474,10 @@ onMounted(load);
               />
             </FormItem>
             <FormItem label="单设备短信间隔（秒）">
-              <InputNumber v-model:value="s2.sms_send_interval_secs" :min="1" />
+              <InputNumber
+                v-model:value="s2.sms_send_interval_secs"
+                :min="15"
+              />
             </FormItem>
           </div>
           <FormItem label="短信回执 Topic">

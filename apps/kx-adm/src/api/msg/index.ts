@@ -7,6 +7,5 @@ export * from './overview';
 export * from './phone-account';
 export * from './phone-group';
 export * from './sim-card';
-export * from './sms-job';
 export * from './sms-message';
 export * from './types';

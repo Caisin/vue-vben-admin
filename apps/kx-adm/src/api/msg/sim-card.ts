@@ -15,7 +15,6 @@ import { plaintextRequestClient, requestClient } from '#/api/request';
 
 export interface BatchSmsRequest {
   content: string;
-  requested_by?: string;
   sender_carrier?: string;
   sender_iccids?: string[];
   target_number: string;
@@ -30,13 +29,11 @@ export interface SendSmsRequest {
 export interface DiscoverPhoneNumberRequest {
   overwrite_known?: boolean;
   receiver_phone_number: string;
-  requested_by?: string;
 }
 
 export interface BatchDiscoverPhoneNumbersRequest {
   only_unknown?: boolean;
   receiver_phone_number: string;
-  requested_by?: string;
   target_iccids?: string[];
 }
 
@@ -126,19 +123,21 @@ export const SimCardApi = {
   refreshBalances: () =>
     requestClient.post<TaskRun>('/msg/sim-cards/actions/refresh-balances'),
   refreshBalance: (iccid: string) =>
-    requestClient.post<{ job_key: string; status: string }>(
+    requestClient.post<TaskRun>(
       `/msg/sim-cards/${iccid}/actions/refresh-balance`,
     ),
   discoverPhoneNumber: (iccid: string, data: DiscoverPhoneNumberRequest) =>
-    requestClient.post<{ job_key: string; status: string }>(
+    requestClient.post<TaskRun>(
       `/msg/sim-cards/${iccid}/actions/discover-phone-number`,
       data,
     ),
   discoverPhoneNumbers: (data: BatchDiscoverPhoneNumbersRequest) =>
-    requestClient.post<{ status: string }>(
+    requestClient.post<TaskRun>(
       '/msg/sim-cards/actions/discover-phone-numbers',
       data,
     ),
+  reindexSearch: () =>
+    requestClient.post<TaskRun>('/msg/sim-cards/actions/reindex-search'),
   updateBalance: (iccid: string, data: UpdateSimBalanceRequest) =>
     requestClient.put<SimCard>(`/msg/sim-cards/${iccid}/balance`, data),
   updateExpiry: (iccid: string, data: UpdateSimExpiryRequest) =>
@@ -154,15 +153,9 @@ export const SimCardApi = {
   messages: (iccid: string) =>
     requestClient.get<SmsMessage[]>(`/msg/sim-cards/${iccid}/messages`),
   sendSms: (iccid: string, data: SendSmsRequest) =>
-    requestClient.post<{ job_key: string; status: string }>(
-      `/msg/sim-cards/${iccid}/sms`,
-      data,
-    ),
+    requestClient.post<TaskRun>(`/msg/sim-cards/${iccid}/sms`, data),
   sendSmsBatch: (data: BatchSmsRequest) =>
-    requestClient.post<{ status: string }>(
-      '/msg/sim-cards/actions/send-sms',
-      data,
-    ),
+    requestClient.post<TaskRun>('/msg/sim-cards/actions/send-sms', data),
   updateDevice: (iccid: string, data: UpdateDeviceCardRequest) =>
     requestClient.post<{ status: string }>(
       `/msg/sim-cards/${iccid}/actions/update-device`,

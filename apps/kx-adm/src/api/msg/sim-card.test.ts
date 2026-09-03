@@ -43,7 +43,7 @@ describe('simCardApi', () => {
   });
 
   it('单卡发送短信只在 path 传 ICCID', async () => {
-    post.mockResolvedValueOnce({ job_key: 'job-1' });
+    post.mockResolvedValueOnce({ id: 1 });
     const payload = {
       content: '测试',
       idempotency_key: 'send-1',

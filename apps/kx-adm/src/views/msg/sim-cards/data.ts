@@ -126,6 +126,18 @@ export function useFormSchema(
       fieldName: 'ownership',
       label: '归属',
     },
+    {
+      component: 'SimCardSelect',
+      componentProps: { placeholder: '选择或搜索 ICCID', valueField: 'iccid' },
+      fieldName: 'iccid',
+      label: 'ICCID',
+    },
+    {
+      component: 'Input',
+      componentProps: { allowClear: true, placeholder: '输入完整号码' },
+      fieldName: 'phone_number',
+      label: '号码',
+    },
   ];
 }
 

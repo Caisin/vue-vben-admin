@@ -83,6 +83,7 @@ import PopupDrawer from './modules/popup-drawer.vue';
 import PopupModal from './modules/popup-modal.vue';
 
 const repairLoading = ref(false);
+const searchReindexLoading = ref(false);
 const ownershipBatchOpen = ref(false);
 const ownershipBatchSubmitting = ref(false);
 const ownershipResultDownloading = ref(false);
@@ -360,8 +361,10 @@ function hydrateFiltersFromRoute() {
     carrier: queryString('carrier'),
     device_code: queryString('device_code'),
     expires_within_days: Number.isFinite(days) && days >= 0 ? days : 30,
+    iccid: queryString('iccid'),
     lifecycle_state: queryString('lifecycle_state'),
     online_state: queryString('online_state'),
+    ownership: queryString('ownership'),
     phone_number: queryString('phone_number'),
     phone_region: queryString('phone_region'),
     quick_filter: inferQuickFilterFromRoute(),
@@ -402,12 +405,28 @@ function inferQuickFilterFromRoute(): QuickFilter {
 function currentQueryParams(formValues: Record<string, unknown>) {
   return {
     ...quickFilterParams(formValues),
+    carrier: String(formValues.carrier ?? '').trim() || undefined,
+    device_code: String(formValues.device_code ?? '').trim() || undefined,
+    iccid: String(formValues.iccid ?? '').trim() || undefined,
     keyword: String(formValues.keyword ?? '').trim() || undefined,
     lifecycle_state: String(formValues.lifecycle_state ?? '') || undefined,
     online_state: String(formValues.online_state ?? '') || undefined,
+    ownership: String(formValues.ownership ?? '').trim() || undefined,
+    phone_number: String(formValues.phone_number ?? '').trim() || undefined,
     phone_region: String(formValues.phone_region ?? '') || undefined,
+    real_name: String(formValues.real_name ?? '').trim() || undefined,
     slot_code: String(formValues.slot_code ?? '') || undefined,
   };
+}
+
+async function reindexSearch() {
+  searchReindexLoading.value = true;
+  try {
+    const task = await SimCardApi.reindexSearch();
+    message.success(`全文索引更新任务 #${task.id} 已提交`);
+  } finally {
+    searchReindexLoading.value = false;
+  }
 }
 
 function accountAlertLabel(card: SimCardView) {
@@ -564,17 +583,15 @@ async function submitDiscovery() {
       const result = await SimCardApi.discoverPhoneNumber(iccid, {
         overwrite_known: discoveryForm.overwriteKnown,
         receiver_phone_number: receiverPhoneNumber,
-        requested_by: 'admin',
       });
-      message.success(`号码查询任务 ${result.job_key} 已受理`);
+      message.success(`号码查询任务 #${result.id} 已提交`);
     } else {
-      await SimCardApi.discoverPhoneNumbers({
+      const task = await SimCardApi.discoverPhoneNumbers({
         only_unknown: discoveryForm.onlyUnknown,
         receiver_phone_number: receiverPhoneNumber,
-        requested_by: 'admin',
         target_iccids: discoveryTargetIccids.value,
       });
-      message.success('批量号码查询后台任务已提交，请稍后刷新列表');
+      message.success(`批量号码查询任务 #${task.id} 已提交`);
     }
     discoveryOpen.value = false;
   } finally {
@@ -585,7 +602,7 @@ async function submitDiscovery() {
 function refreshAllBalances() {
   Modal.confirm({
     content:
-      '系统将为当前可见且在槽的中国电信卡创建持久化余额查询任务。香港和海外卡根据运营商短信更新余额与预警。',
+      '系统将为当前可见且在槽、已配置查询协议的电话卡创建持久化余额查询任务；同一设备两次短信至少间隔 15 秒。',
     okText: '开始查询',
     title: '确认批量查询余额',
     async onOk() {
@@ -604,7 +621,7 @@ async function refreshCardBalance(card: SimCardView) {
   balanceRefreshingIccid.value = card.iccid;
   try {
     const result = await SimCardApi.refreshBalance(card.iccid);
-    message.success(`余额查询任务 ${result.job_key} 已受理`);
+    message.success(`余额查询任务 #${result.id} 已提交`);
   } finally {
     balanceRefreshingIccid.value = '';
   }
@@ -841,7 +858,7 @@ async function submitSms() {
       idempotency_key: createIdempotencyKey(),
       target_number: smsForm.to.trim(),
     });
-    message.success(`短信任务 ${result.job_key} 已受理`);
+    message.success(`短信任务 #${result.id} 已提交`);
     smsOpen.value = false;
   } finally {
     smsSubmitting.value = false;
@@ -940,6 +957,13 @@ onBeforeUnmount(clearOwnershipPoll);
           @click="repairAllPhoneNumbers"
         >
           <template #icon><RotateCw /></template>批量修复号码格式
+        </Button>
+        <Button
+          v-if="canManageSimCards"
+          :loading="searchReindexLoading"
+          @click="reindexSearch"
+        >
+          <template #icon><RotateCw /></template>更新全文索引
         </Button>
       </Space>
     </header>
@@ -1773,7 +1797,7 @@ onBeforeUnmount(clearOwnershipPoll);
           />
         </FormItem>
         <FormItem label="号码备注">
-          <Input v-model:value="updateForm.note" ::maxlength="8" show-count />
+          <Input v-model:value="updateForm.note" :maxlength="8" show-count />
         </FormItem>
         <FormItem label="来电操作" required>
           <Select
