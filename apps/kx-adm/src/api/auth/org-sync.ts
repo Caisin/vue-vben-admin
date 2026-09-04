@@ -65,7 +65,7 @@ export interface OrgUserLink {
 
 export interface OrgUserLinkQuery extends PageQuery {
   active?: boolean;
-  display_name_prefix?: string;
+  keyword?: string;
   source?: string;
 }
 

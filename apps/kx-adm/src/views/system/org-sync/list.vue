@@ -123,8 +123,7 @@ const [UserGrid, userGridApi] = useVbenVxeGrid<OrgUserLink>({
           const { page } = params;
           const result = await OrgSyncApi.users({
             active: formValues.active as boolean | undefined,
-            display_name_prefix:
-              String(formValues.display_name_prefix ?? '').trim() || undefined,
+            keyword: String(formValues.keyword ?? '').trim() || undefined,
             page: page.currentPage,
             ...vxeSortParams(params, userSortFields),
             size: page.pageSize,

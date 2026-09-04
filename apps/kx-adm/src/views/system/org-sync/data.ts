@@ -41,7 +41,15 @@ export function useRunFormSchema(): VbenFormSchema[] {
 
 export function useUserFormSchema(): VbenFormSchema[] {
   return [
-    { component: 'Input', fieldName: 'display_name_prefix', label: '人员姓名' },
+    {
+      component: 'Input',
+      componentProps: {
+        allowClear: true,
+        placeholder: '姓名、手机号、邮箱或外部用户 ID',
+      },
+      fieldName: 'keyword',
+      label: '全文检索',
+    },
     {
       component: 'Select',
       componentProps: {
