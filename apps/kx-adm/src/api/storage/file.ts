@@ -6,6 +6,7 @@ import { resolveFileAccessUrl as resolveAccessUrl } from './file-url';
 
 export interface UploadFile {
   created_at: number | string;
+  created_by: number | string;
   file_ext: string;
   file_id: number | string;
   file_name: string;
@@ -19,6 +20,7 @@ export interface UploadFile {
 export type UploadFileKind = 'file' | 'image' | 'video';
 
 export interface UploadFilePageQuery extends PageQuery {
+  created_by?: number | string;
   file_kind?: UploadFileKind;
   md5_hash?: string;
   name_prefix?: string;

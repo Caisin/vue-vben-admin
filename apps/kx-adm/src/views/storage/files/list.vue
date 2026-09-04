@@ -3,13 +3,15 @@ import type { MenuProps } from 'antdv-next';
 
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { UploadFile } from '#/api';
+import type { SystemUser } from '#/api/system/user';
 import type {
   FilePickerExpose,
   SelectedStorageFile,
 } from '#/components/file-picker';
 
-import { nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Link2, Plus } from '@vben/icons';
 import { downloadFileFromBlob } from '@vben/utils';
@@ -27,6 +29,7 @@ import {
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { StorageConfigApi, StorageFileApi } from '#/api';
+import { SystemUserApi } from '#/api/system/user';
 import { FilePicker } from '#/components/file-picker';
 import { useVxeRowContextMenu } from '#/views/_shared/use-vxe-row-context-menu';
 import { vxeSortParams } from '#/vxe-sort';
@@ -35,9 +38,15 @@ import { useColumns, useFormSchema } from './data';
 import ContentModal from './modules/modal.vue';
 
 const fileSortFields = ['file_id', 'file_name', 'size', 'created_at'];
+const { hasAccessByCodes } = useAccess();
+const canViewAllFiles = computed(() =>
+  hasAccessByCodes(['storage:files:view-all']),
+);
 
 const storage_code = ref<string>();
 const storage_options = ref<Array<{ label: string; value: string }>>([]);
+const userOptions = ref<Array<{ label: string; value: number }>>([]);
+const userLabelMap = ref(new Map<string, string>());
 const filePickerRef = ref<FilePickerExpose>();
 const fileContextMenuItems: MenuProps['items'] = [
   { danger: true, key: 'delete', label: '删除' },
@@ -87,11 +96,13 @@ const [RemoteModal, remoteModalApi] = useVbenModal({
 
 const [Grid, gridApi] = useVbenVxeGrid<UploadFile>({
   formOptions: {
-    schema: useFormSchema(),
+    schema: useFormSchema(canViewAllFiles.value),
     submitOnChange: true,
   },
   gridOptions: {
-    columns: useColumns(),
+    columns: useColumns(
+      (uid) => userLabelMap.value.get(String(uid)) ?? `用户 #${uid}`,
+    ),
     height: 'auto',
     pagerConfig: {
       pageSize: 20,
@@ -103,6 +114,10 @@ const [Grid, gridApi] = useVbenVxeGrid<UploadFile>({
           const { page } = params;
           const result = await StorageFileApi.list({
             ...formValues,
+            created_by:
+              Number(formValues.created_by) > 0
+                ? Number(formValues.created_by)
+                : undefined,
             ...vxeSortParams(params, fileSortFields),
             page: page.currentPage,
             size: page.pageSize,
@@ -185,7 +200,30 @@ async function handleFilesSelected(files: SelectedStorageFile[]) {
   await gridApi.query();
 }
 
+async function loadUserOptions() {
+  if (!canViewAllFiles.value) return;
+  const users: SystemUser[] = [];
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+  while (users.length < total) {
+    const result = await SystemUserApi.options({ page, pageSize: 100 });
+    users.push(...result.items);
+    total = result.total;
+    if (result.items.length === 0) break;
+    page += 1;
+  }
+  userOptions.value = users.map((user) => ({
+    label: `${user.name || user.id}（${user.id}）`,
+    value: Number(user.id),
+  }));
+  userLabelMap.value = new Map(
+    users.map((user) => [String(user.id), user.name || `用户 #${user.id}`]),
+  );
+  await gridApi.formApi.updateSchema(useFormSchema(true, userOptions.value));
+}
+
 onMounted(async () => {
+  await loadUserOptions();
   const result = await StorageConfigApi.list({ page: 1, size: 100 });
   storage_options.value = result.items.map((item) => ({
     label: item.storage_name,

@@ -11,6 +11,7 @@ import {
 function stored(file_ext: string, file_name = 'sample'): UploadFile {
   return {
     created_at: 0,
+    created_by: 7,
     file_ext,
     file_id: 1,
     file_name,
