@@ -110,7 +110,6 @@ export function useDeviceColumns(): VxeTableGridColumns<ForwardConfigDeviceView>
     },
     {
       field: 'snapshot_received_at',
-      sortable: true,
       slots: { default: 'snapshotAt' },
       title: '快照时间',
       width: 170,
@@ -123,7 +122,6 @@ export function useDeviceColumns(): VxeTableGridColumns<ForwardConfigDeviceView>
     },
     {
       field: 'last_apply_at',
-      sortable: true,
       slots: { default: 'applyAt' },
       title: '下发时间',
       width: 170,

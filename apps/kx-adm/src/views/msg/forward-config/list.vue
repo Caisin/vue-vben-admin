@@ -95,10 +95,8 @@ const options = ref<ForwardConfigOptions>({
 
 const forwardConfigSortFields = [
   'device_code',
-  'last_apply_at',
   'last_seen_at',
   'online_state',
-  'snapshot_received_at',
   'software_version',
 ];
 
