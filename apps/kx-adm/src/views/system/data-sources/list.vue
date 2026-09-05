@@ -2,18 +2,40 @@
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { DataSourceView, DataSourceWrite } from '#/api/system';
 
-import { computed, reactive, ref } from 'vue';
+import { computed, nextTick, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { Plus } from '@vben/icons';
+import { createIconifyIcon, Plus } from '@vben/icons';
 
-import { Button, Drawer, message, Modal, Tag } from 'antdv-next';
+import {
+  Button,
+  Checkbox,
+  Drawer,
+  Input,
+  message,
+  Modal,
+  Tag,
+  Tooltip,
+} from 'antdv-next';
 
 import { useVbenForm } from '#/adapter/form';
-import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { DataSourceApi } from '#/api/system';
 
-import { useColumns, useFormSchema, useSearchSchema } from './data';
+import {
+  useColumns,
+  useFormSchema,
+  useSearchSchema,
+  writeValues,
+} from './data';
+
+const Edit = createIconifyIcon('lucide:pencil');
+const Eye = createIconifyIcon('lucide:eye');
+const Plug = createIconifyIcon('lucide:plug-zap');
+const Trash = createIconifyIcon('lucide:trash-2');
+const probeTarget = ref<DataSourceView>();
+const probing = ref(false);
+const probeOptions = reactive({ allow_insecure: false, warehouse: '' });
 
 const open = ref(false);
 const saving = ref(false);
@@ -55,29 +77,15 @@ const [Grid, gridApi] = useVbenVxeGrid<DataSourceView>({
 const title = computed(() => (editing.value ? '编辑数据源' : '新增数据源'));
 
 async function edit(row?: DataSourceView) {
+  if (row?.ds_code === 'base') return;
   editing.value = row;
-  Object.assign(
-    form,
-    row
-      ? { ...row }
-      : {
-          db_type: 'postgres',
-          ds_code: '',
-          name: '',
-          db_host: '',
-          db_name: '',
-          user_name: '',
-          credential_code: '',
-          cur_schema: '',
-          time_zone: '',
-          port: 0,
-          state: true,
-          remark: '',
-        },
-  );
+  Object.assign(form, writeValues(row));
   await formApi.setState({ schema: useFormSchema(Boolean(row)) });
-  await formApi.setValues(form);
+  // setValues 会等待 Form 挂载，必须先打开惰性挂载的 Drawer。
   open.value = true;
+  await nextTick();
+  await formApi.resetForm();
+  await formApi.setValues(form);
 }
 
 async function save() {
@@ -85,7 +93,7 @@ async function save() {
   if (!valid) return;
   saving.value = true;
   try {
-    const values = (await formApi.getValues()) as DataSourceWrite;
+    const values = writeValues((await formApi.getValues()) as DataSourceWrite);
     if (editing.value) {
       const { ds_code: _code, ...data } = values;
       await DataSourceApi.update(editing.value.ds_code, data);
@@ -99,10 +107,28 @@ async function save() {
 }
 
 async function probe(row: DataSourceView) {
-  const result = await DataSourceApi.probe(row.ds_code);
-  result.reachable
-    ? message.success(result.message)
-    : message.error(result.message);
+  if (row.db_type === 'databend') {
+    Object.assign(probeOptions, { allow_insecure: false, warehouse: '' });
+    probeTarget.value = row;
+    return;
+  }
+  await testConnection(row);
+}
+
+async function testConnection(row: DataSourceView) {
+  probing.value = true;
+  try {
+    const result = await DataSourceApi.probe(
+      row.ds_code,
+      row.db_type === 'databend' ? { ...probeOptions } : {},
+    );
+    if (result.reachable) {
+      message.success(result.message);
+      probeTarget.value = undefined;
+    } else message.error(result.message);
+  } finally {
+    probing.value = false;
+  }
 }
 
 function remove(row: DataSourceView) {
@@ -148,32 +174,52 @@ function showDetail(row: DataSourceView) {
         </Tag>
       </template>
       <template #operation="{ row }">
-        <VbenTableAction
-          :actions="[
-            {
-              icon: 'lucide:eye',
-              onClick: () => showDetail(row),
-              tooltip: '详情',
-            },
-            {
-              icon: 'lucide:plug-zap',
-              onClick: () => probe(row),
-              tooltip: '测试连接',
-            },
-          ]"
-          :dropdown-actions="[
-            { icon: 'lucide:edit', onClick: () => edit(row), text: '编辑' },
-            {
-              danger: true,
-              icon: 'lucide:trash-2',
-              onClick: () => remove(row),
-              text: '删除',
-            },
-          ]"
-        />
+        <div class="flex items-center gap-1">
+          <Tooltip title="详情">
+            <Button type="text" aria-label="详情" @click="showDetail(row)">
+              <Eye class="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="编辑">
+            <Button
+              type="text"
+              aria-label="编辑"
+              :disabled="row.ds_code === 'base'"
+              @click="edit(row)"
+            >
+              <Edit class="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="测试连接">
+            <Button
+              type="text"
+              aria-label="测试连接"
+              :disabled="probing"
+              @click="probe(row)"
+            >
+              <Plug class="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="删除">
+            <Button
+              type="text"
+              danger
+              aria-label="删除"
+              :disabled="row.ds_code === 'base'"
+              @click="remove(row)"
+            >
+              <Trash class="size-4" />
+            </Button>
+          </Tooltip>
+        </div>
       </template>
     </Grid>
-    <Drawer v-model:open="open" :title="title" :width="720" destroy-on-close>
+    <Drawer
+      v-model:open="open"
+      :title="title"
+      size="min(720px, 100vw)"
+      destroy-on-hidden
+    >
       <Form />
       <template #footer>
         <Button @click="open = false">取消</Button><Button :loading="saving" type="primary" @click="save"> 保存 </Button>
@@ -182,7 +228,7 @@ function showDetail(row: DataSourceView) {
     <Drawer
       :open="Boolean(detail)"
       title="数据源详情"
-      :width="520"
+      size="min(520px, 100vw)"
       @close="detail = undefined"
     >
       <template v-if="detail">
@@ -227,5 +273,25 @@ function showDetail(row: DataSourceView) {
         </dl>
       </template>
     </Drawer>
+    <Modal
+      :open="!!probeTarget"
+      title="测试 Databend 连接"
+      ok-text="开始测试"
+      :confirm-loading="probing"
+      @ok="probeTarget && testConnection(probeTarget)"
+      @cancel="probeTarget = undefined"
+    >
+      <p class="mb-4">
+        {{ probeTarget?.db_host }}:{{ probeTarget?.port || 8000 }} /
+        {{ probeTarget?.db_name }}
+      </p>
+      <label class="mb-4 flex flex-col gap-2">计算仓库<Input
+          v-model:value="probeOptions.warehouse"
+          placeholder="默认仓库"
+      /></label>
+      <Checkbox v-model:checked="probeOptions.allow_insecure">
+        允许 HTTP 测试连接
+      </Checkbox>
+    </Modal>
   </Page>
 </template>

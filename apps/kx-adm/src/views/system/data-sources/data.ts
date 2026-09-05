@@ -1,6 +1,6 @@
 import type { VbenFormSchema } from '#/adapter/form';
 import type { VxeTableGridColumns } from '#/adapter/vxe-table';
-import type { DataSourceView } from '#/api/system';
+import type { DataSourceView, DataSourceWrite } from '#/api/system';
 
 const typeOptions = [
   { label: 'PostgreSQL', value: 'postgres' },
@@ -8,6 +8,26 @@ const typeOptions = [
   { label: 'SQLite', value: 'sqlite' },
   { label: 'Databend', value: 'databend' },
 ];
+
+export function writeValues(
+  row?: DataSourceWrite | Partial<DataSourceView>,
+): DataSourceWrite {
+  return {
+    ds_code: row?.ds_code ?? '',
+    name: row?.name ?? '',
+    db_type:
+      row?.db_type === 'postgresql' ? 'postgres' : (row?.db_type ?? 'postgres'),
+    db_host: row?.db_host ?? '',
+    port: row?.port ?? 0,
+    db_name: row?.db_name ?? '',
+    user_name: row?.user_name ?? '',
+    credential_code: row?.credential_code ?? '',
+    cur_schema: row?.cur_schema ?? '',
+    time_zone: row?.time_zone ?? '',
+    state: row?.state ?? true,
+    remark: row?.remark ?? '',
+  };
+}
 
 export function useSearchSchema(): VbenFormSchema[] {
   return [
@@ -47,7 +67,12 @@ export function useFormSchema(editing: boolean): VbenFormSchema[] {
     { component: 'Input', fieldName: 'db_host', label: '主机 / SQLite 路径' },
     {
       component: 'InputNumber',
-      componentProps: { class: 'w-full', min: 0 },
+      componentProps: {
+        class: 'w-full',
+        min: 0,
+        max: 65_535,
+        placeholder: '0 使用默认端口；Databend 默认 8000，Cloud 通常 443',
+      },
       fieldName: 'port',
       label: '端口',
     },
@@ -90,8 +115,13 @@ export function useColumns(): VxeTableGridColumns<DataSourceView> {
     { field: 'db_host', minWidth: 180, title: '主机' },
     { field: 'db_name', minWidth: 150, title: '数据库' },
     { field: 'user_name', title: '用户名', width: 130 },
-    { field: 'credential_configured', title: '密码凭证', width: 110 },
-    { field: 'state', title: '状态', width: 90 },
+    {
+      field: 'credential_configured',
+      title: '密码凭证',
+      width: 110,
+      slots: { default: 'credential_configured' },
+    },
+    { field: 'state', title: '状态', width: 90, slots: { default: 'state' } },
     {
       field: 'operation',
       fixed: 'right',
