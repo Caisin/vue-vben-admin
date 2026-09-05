@@ -94,6 +94,7 @@ export interface WeeklyReportPublish {
   knowledge_target_id: number | string;
   last_checked_at?: null | number | string;
   last_reminded_at?: null | number | string;
+  last_reminder_task_run_id?: null | number | string;
   notification_style?: null | WeeklyReportNotificationStyle;
   notify_message_id?: null | number | string;
   publish_key: string;
@@ -103,6 +104,7 @@ export interface WeeklyReportPublish {
   sheet_id?: null | string;
   status: WeeklyReportPublishStatus;
   task_run_id?: null | number | string;
+  task_run?: null | TaskRun;
   title: string;
   updated_at: number | string;
   week_no: number;
@@ -310,16 +312,17 @@ export const SystemUserApi = {
       '/auth/user-admin/weekly-report-publishes',
       { params: pageParams(params ?? {}) },
     ),
-  weekly_report_publish: (id: number | string) =>
+  weekly_report_publish: (id: number | string, task_run_id?: number | string) =>
     requestClient.get<WeeklyReportPublish>(
       `/auth/user-admin/weekly-report-publishes/${id}`,
+      { params: task_run_id === undefined ? undefined : { task_run_id } },
     ),
   weekly_report_participants: (id: number | string) =>
     requestClient.get<WeeklyReportParticipant[]>(
       `/auth/user-admin/weekly-report-publishes/${id}/participants`,
     ),
   weekly_report_preview_missing: (id: number | string) =>
-    requestClient.post<WeeklyReportParticipant[]>(
+    requestClient.post<TaskRun>(
       `/auth/user-admin/weekly-report-publishes/${id}/actions/preview-missing`,
     ),
   weekly_report_remind_missing: (id: number | string) =>

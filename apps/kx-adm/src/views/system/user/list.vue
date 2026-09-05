@@ -15,7 +15,7 @@ import type {
 } from '#/api';
 import type { StatusValue } from '#/api/system/shared';
 
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -34,12 +34,12 @@ import {
   InputNumber,
   InputPassword,
   InputSearch,
-  message,
   Modal,
   Segmented,
   Select,
   Space,
   Spin,
+  useMessage,
 } from 'antdv-next';
 import dayjs from 'dayjs';
 
@@ -59,6 +59,7 @@ import Detail from './modules/detail.vue';
 import UserForm from './modules/form.vue';
 import PopupModal from './modules/popup-modal.vue';
 import WeeklyReportRepublish from './modules/weekly-report-republish.vue';
+import { waitForWeeklyReportCheck } from './weekly-report-check';
 
 interface UserSearchFormValues extends Record<string, unknown> {
   createTime?: [Dayjs, Dayjs];
@@ -80,6 +81,7 @@ const userSearchCodec = Times.createDateRangeCodec<UserSearchFormValues>()({
   startField: 'startTime',
 });
 const { hasAccessByCodes } = useAccess();
+const [message, MessageHolder] = useMessage();
 const canEditUsers = computed(() =>
   hasAccessByCodes(['AC_100100', 'users:delegate-roles']),
 );
@@ -111,7 +113,14 @@ const weeklyReportPublishLoading = ref(false);
 const weeklyReportParticipantLoading = ref(false);
 const weeklyReportPublishes = ref<WeeklyReportPublish[]>([]);
 const weeklyReportParticipants = ref<WeeklyReportParticipant[]>([]);
+const weeklyReportCheckError = ref('');
 let weeklyReportParticipantRequest = 0;
+watch(weeklyReportPublishOpen, (open) => {
+  if (!open) weeklyReportParticipantRequest++;
+});
+onBeforeUnmount(() => {
+  weeklyReportParticipantRequest++;
+});
 const weeklyReportNotificationStyleOptions = [
   { label: '链接卡片', value: 'link_card' },
   { label: '按钮卡片', value: 'action_card' },
@@ -589,9 +598,11 @@ async function loadWeeklyReportPublishes(
   }
 }
 
-async function selectWeeklyReportPublish(id: number | string) {
+async function selectWeeklyReportPublish(id: number | string, remind = false) {
   const request = ++weeklyReportParticipantRequest;
   selectedWeeklyReportPublishId.value = id;
+  weeklyReportParticipants.value = [];
+  weeklyReportCheckError.value = '';
   const publish = selectedWeeklyReportPublish.value;
   if (!canRefreshWeeklyReport(publish)) {
     weeklyReportParticipants.value = [];
@@ -600,9 +611,29 @@ async function selectWeeklyReportPublish(id: number | string) {
   }
   weeklyReportParticipantLoading.value = true;
   try {
-    const participants = await SystemUserApi.weekly_report_preview_missing(id);
+    const task = remind
+      ? await SystemUserApi.weekly_report_remind_missing(id)
+      : await SystemUserApi.weekly_report_preview_missing(id);
+    const result = await waitForWeeklyReportCheck(
+      id,
+      task,
+      () => request === weeklyReportParticipantRequest,
+    );
+    if (!result) return;
+    weeklyReportParticipants.value = result.participants;
+    weeklyReportPublishes.value = weeklyReportPublishes.value.map((item) =>
+      String(item.id) === String(id) ? result.publish : item,
+    );
+    if (remind)
+      message.success(
+        result.participants.length > 0
+          ? '未填写人员提醒已入队'
+          : '本周工作内容已全部填写',
+      );
+  } catch (error) {
     if (request === weeklyReportParticipantRequest) {
-      weeklyReportParticipants.value = participants;
+      weeklyReportCheckError.value =
+        error instanceof Error ? error.message : '周报检查失败，请重试';
     }
   } finally {
     if (request === weeklyReportParticipantRequest) {
@@ -613,10 +644,7 @@ async function selectWeeklyReportPublish(id: number | string) {
 
 async function remindWeeklyReportMissing() {
   if (!selectedWeeklyReportPublishId.value) return;
-  const publishId = selectedWeeklyReportPublishId.value;
-  const task = await SystemUserApi.weekly_report_remind_missing(publishId);
-  message.success(`周报填写检查已提交：#${task.id}`);
-  await loadWeeklyReportPublishes(publishId);
+  await selectWeeklyReportPublish(selectedWeeklyReportPublishId.value, true);
 }
 
 async function republishWeeklyReport() {
@@ -686,6 +714,7 @@ watch(selectedDeptId, (value) => {
     class="management-page user-page"
     content-class="management-content user-content"
   >
+    <component :is="MessageHolder" />
     <FormDrawer @success="onUserSaved" />
     <DetailDrawer @success="onRefresh" />
     <WeeklyReportRepublishModal @success="onWeeklyReportRepublished" />
@@ -906,8 +935,9 @@ watch(selectedDeptId, (value) => {
           </button>
         </div>
         <div class="weekly-participant-list">
-          <Space class="mb-2">
+          <Space wrap class="mb-2">
             <Button
+              v-if="hasAccessByCodes(['user:weekly-report-dingtalk'])"
               :disabled="!canRemindSelectedWeeklyReport"
               :loading="weeklyReportParticipantLoading"
               type="primary"
@@ -920,7 +950,7 @@ watch(selectedDeptId, (value) => {
               }}
             </Button>
             <Button
-              :disabled="!selectedWeeklyReportPublishId"
+              :disabled="!canRefreshWeeklyReport(selectedWeeklyReportPublish)"
               :loading="weeklyReportParticipantLoading"
               @click="
                 selectedWeeklyReportPublishId &&
@@ -946,12 +976,23 @@ watch(selectedDeptId, (value) => {
           </Space>
           <Spin :spinning="weeklyReportParticipantLoading">
             <div
+              v-if="weeklyReportCheckError"
+              class="text-destructive"
+              role="alert"
+            >
+              {{ weeklyReportCheckError }}
+            </div>
+            <div
               v-for="(participant, index) in weeklyReportParticipants"
               :key="participant.id"
               class="weekly-participant-item"
             >
               <span>{{ index + 1 }}. {{ participant.display_name }}</span>
-              <span>未填写</span>
+              <span>{{
+                participant.status === 'mapping_invalid'
+                  ? '人员映射异常'
+                  : '未填写'
+              }}</span>
               <span>{{
                 Times.formatOptionalUnix(participant.last_checked_at)
               }}</span>
@@ -960,6 +1001,7 @@ watch(selectedDeptId, (value) => {
             <div
               v-if="
                 !weeklyReportParticipantLoading &&
+                !weeklyReportCheckError &&
                 !weeklyReportParticipants.length
               "
               class="weekly-empty"
