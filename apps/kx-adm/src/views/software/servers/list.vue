@@ -6,20 +6,23 @@ import type {
   SoftwareServer,
 } from '#/api/software';
 
-import { nextTick, reactive, ref } from 'vue';
+import { nextTick, onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { Plus } from '@vben/icons';
+import { createIconifyIcon, Plus } from '@vben/icons';
 
 import {
   Button,
   Drawer,
+  Empty,
   Form,
   FormItem,
   Input,
   InputNumber,
   message,
   Modal,
+  Pagination,
+  Segmented,
   Select,
   Tag,
 } from 'antdv-next';
@@ -28,6 +31,7 @@ import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
 import { SoftwareApi } from '#/api/software';
 import { CredentialSelect } from '#/components/credential';
 
+import DetectSoftware from '../installations/detect-software.vue';
 import { useColumns, useGridFormSchema, useInstallationColumns } from './data';
 
 const saving = ref(false);
@@ -35,6 +39,32 @@ const open = ref(false);
 const editing = ref<SoftwareServer>();
 const distributionServer = ref<SoftwareServer>();
 const distributionLoading = ref(false);
+const viewMode = ref('cards');
+const cardRows = ref<SoftwareServer[]>([]);
+const cardPage = ref(1);
+const cardTotal = ref(0);
+const cardKeyword = ref('');
+const cardLoading = ref(false);
+const ServerIcon = createIconifyIcon('lucide:server');
+let cardRequest = 0;
+async function loadCards() {
+  const request = ++cardRequest;
+  cardLoading.value = true;
+  try {
+    const result = await SoftwareApi.servers({
+      page: cardPage.value,
+      size: 12,
+      keyword: cardKeyword.value || undefined,
+    });
+    if (request === cardRequest) {
+      cardRows.value = result.items;
+      cardTotal.value = result.total;
+    }
+  } finally {
+    if (request === cardRequest) cardLoading.value = false;
+  }
+}
+onMounted(loadCards);
 const form = reactive<ServerWrite>({
   access_kind: 'local',
   code: '',
@@ -132,6 +162,7 @@ async function save() {
     open.value = false;
     message.success('服务器已保存');
     await gridApi.query();
+    await loadCards();
   } finally {
     saving.value = false;
   }
@@ -163,6 +194,7 @@ async function probe(row: SoftwareServer, trustHostKey = false) {
     `${row.access_kind === 'local' ? '本机环境' : '连接'}探测成功：${result.os}/${result.arch}，运行用户 ${result.run_user}`,
   );
   await gridApi.query();
+  await loadCards();
 }
 
 async function showInstallations(row: SoftwareServer) {
@@ -185,7 +217,111 @@ async function showInstallations(row: SoftwareServer) {
     content-class="management-content"
     title="服务器管理"
   >
-    <Grid class="management-grid" table-title="服务器管理">
+    <div class="software-card-toolbar">
+      <Segmented
+        v-model:value="viewMode"
+        :options="[
+          { label: '卡片', value: 'cards' },
+          { label: '表格', value: 'table' },
+        ]"
+        aria-label="服务器展示方式"
+      />
+      <template v-if="viewMode === 'cards'">
+        <Input.Search
+          v-model:value="cardKeyword"
+          class="max-w-80"
+          placeholder="搜索服务器"
+          @search="
+            cardPage = 1;
+            loadCards();
+          "
+        />
+        <Button
+          v-access:code="'software:server:edit'"
+          type="primary"
+          @click="edit()"
+        >
+          <Plus class="size-4" />新增服务器
+        </Button>
+      </template>
+    </div>
+    <div
+      v-if="viewMode === 'cards'"
+      class="software-card-grid"
+      :aria-busy="cardLoading"
+    >
+      <article
+        v-for="row in cardRows"
+        :key="row.id"
+        class="software-resource-card"
+      >
+        <header>
+          <ServerIcon class="size-8 text-emerald-600" />
+          <div class="min-w-0 flex-1">
+            <h3>{{ row.name }}</h3>
+            <div class="resource-code">{{ row.code }}</div>
+          </div>
+          <Tag :color="row.state === 'enabled' ? 'success' : 'default'">
+            {{ row.state === 'enabled' ? '启用' : '停用' }}
+          </Tag>
+        </header>
+        <dl>
+          <dt>连接</dt>
+          <dd>
+            {{
+              row.access_kind === 'local' ? '本机' : `${row.host}:${row.port}`
+            }}
+          </dd>
+          <dt>平台</dt>
+          <dd>{{ row.os ? `${row.os} / ${row.arch}` : '未探测' }}</dd>
+          <dt>服务管理</dt>
+          <dd>{{ row.service_manager || '-' }}</dd>
+          <dt>连接校验</dt>
+          <dd>
+            {{
+              row.access_kind === 'local'
+                ? '本地执行'
+                : row.host_key_fingerprint
+                  ? '指纹已确认'
+                  : '待确认指纹'
+            }}
+          </dd>
+        </dl>
+        <footer>
+          <Button
+            v-access:code="'software:server:probe'"
+            size="small"
+            @click="probe(row)"
+          >
+            连接测试
+</Button><Button size="small" @click="showInstallations(row)">已装应用</Button><Button
+            v-access:code="'software:server:edit'"
+            size="small"
+            @click="edit(row)"
+          >
+            编辑
+          </Button>
+        </footer>
+      </article>
+      <Empty v-if="!cardLoading && !cardRows.length" description="暂无服务器" />
+    </div>
+    <div v-if="viewMode === 'cards'" class="software-card-pagination">
+      <Pagination
+        :current="cardPage"
+        :page-size="12"
+        :total="cardTotal"
+        :show-size-changer="false"
+        @change="
+          cardPage = $event;
+          loadCards();
+        "
+      />
+    </div>
+    <Grid
+      v-show="viewMode === 'table'"
+      class="management-grid"
+      table-title="服务器管理"
+    >
       <template #toolbar-tools>
         <Button
           v-access:code="'software:server:edit'"
@@ -311,6 +447,12 @@ async function showInstallations(row: SoftwareServer) {
       :size="820"
       @close="distributionServer = undefined"
     >
+      <div v-access:code="'software:server:probe'" class="mb-5">
+        <DetectSoftware
+          v-if="distributionServer"
+          :server-id="distributionServer.id"
+        />
+      </div>
       <InstallationGrid table-title="已装应用">
         <template #application="{ row }">
           <div class="font-medium">{{ row.application_name }}</div>
@@ -325,3 +467,5 @@ async function showInstallations(row: SoftwareServer) {
     </Drawer>
   </Page>
 </template>
+
+<style src="../resource-cards.css"></style>

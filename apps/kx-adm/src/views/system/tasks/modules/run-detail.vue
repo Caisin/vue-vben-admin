@@ -38,7 +38,7 @@ const staleHint = computed(() => {
     destroy-on-close
     :footer="false"
     :title="`执行详情 · #${displayValue(task?.id)}`"
-    :size="760"
+    size="min(760px, 100vw)"
   >
     <Skeleton v-if="loading" active :paragraph="{ rows: 10 }" />
 

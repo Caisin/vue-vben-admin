@@ -4,27 +4,27 @@ import type {
   InvoiceExportView,
 } from '#/api/invoice';
 
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 
 import { Button, Drawer, Empty, message, Space, Table, Tag } from 'antdv-next';
 
 import { InvoiceApi } from '#/api/invoice';
+import { useTaskPolling } from '#/task-polling';
 import { Times } from '#/times';
 
 const props = defineProps<{
   exports: InvoiceExportDispatchView[];
-  open: boolean;
 }>();
 
 const emit = defineEmits<{
   download: [value: InvoiceExportView];
   refresh: [value: InvoiceExportDispatchView[]];
-  'update:open': [value: boolean];
 }>();
 
+const open = defineModel<boolean>('open', { required: true });
 const rows = ref<InvoiceExportDispatchView[]>([]);
 const loading = ref(false);
-let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+let notifyRefresh = false;
 
 watch(
   () => props.exports,
@@ -34,9 +34,16 @@ watch(
   { immediate: true },
 );
 
-watch([() => props.open, rows], () => scheduleRefresh(), { deep: true });
-
-onBeforeUnmount(() => clearRefreshTimer());
+watch(
+  [open, () => props.exports.map((item) => item.export.id).join(',')],
+  () => {
+    if (open.value) refreshAll(false);
+    else {
+      polling.stop();
+      loading.value = false;
+    }
+  },
+);
 
 function stateColor(state: InvoiceExportView['state']) {
   if (state === 'succeeded') return 'success';
@@ -45,41 +52,34 @@ function stateColor(state: InvoiceExportView['state']) {
   return 'default';
 }
 
-function clearRefreshTimer() {
-  if (refreshTimer !== undefined) clearTimeout(refreshTimer);
-  refreshTimer = undefined;
-}
-
-function scheduleRefresh() {
-  clearRefreshTimer();
-  if (
-    !props.open ||
-    !rows.value.some((item) =>
-      ['pending', 'running'].includes(item.export.state),
-    )
-  ) {
-    return;
-  }
-  refreshTimer = setTimeout(() => void refreshAll(false), 1000);
-}
-
-async function refreshAll(notify = true) {
-  if (loading.value) return;
-  clearRefreshTimer();
-  loading.value = true;
-  try {
-    rows.value = await Promise.all(
+const polling = useTaskPolling({
+  load: () =>
+    Promise.all(
       rows.value.map(async (item) => ({
         ...item,
         export: await InvoiceApi.exportDetail(item.export.id),
       })),
-    );
-    emit('refresh', rows.value);
-    if (notify) message.success('导出任务状态已刷新');
-  } finally {
+    ),
+  accept: (value) => {
+    rows.value = value;
     loading.value = false;
-    scheduleRefresh();
-  }
+    emit('refresh', value);
+    if (notifyRefresh) {
+      message.success('导出任务状态已刷新');
+      notifyRefresh = false;
+    }
+  },
+  done: (value) =>
+    !value.some((item) => ['pending', 'running'].includes(item.export.state)),
+  onError: () => {
+    loading.value = false;
+  },
+});
+function refreshAll(notify = true) {
+  if (!open.value) return;
+  notifyRefresh = notify;
+  loading.value = notify;
+  polling.start();
 }
 </script>
 
@@ -88,7 +88,7 @@ async function refreshAll(notify = true) {
     :open="open"
     size="min(820px, 100vw)"
     title="导出任务"
-    @close="emit('update:open', false)"
+    @close="open = false"
   >
     <template #extra>
       <Button size="small" @click="refreshAll()">刷新状态</Button>

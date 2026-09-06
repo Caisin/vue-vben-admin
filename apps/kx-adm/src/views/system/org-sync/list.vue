@@ -7,7 +7,7 @@ import type {
   OrgUserLink,
 } from '#/api/auth';
 
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { RotateCw } from '@vben/icons';
@@ -28,6 +28,7 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { OrgSyncApi } from '#/api/auth';
 import { TaskRunApi } from '#/api/task';
 import { displayValue } from '#/management';
+import { useTaskPolling } from '#/task-polling';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
 
@@ -60,7 +61,6 @@ const syncing = ref(false);
 const contactOpen = ref(false);
 const selectedContactUser = ref<OrgUserLink>();
 const syncingUserIds = ref(new Set<string>());
-let taskPollTimer: number | undefined;
 
 const sourceOptions = computed(() =>
   sources.value.map((source) => ({
@@ -184,34 +184,22 @@ async function runSync() {
   }
 }
 
+let pollingTaskId: number | string = '';
+const taskPolling = useTaskPolling({
+  delay: 3000,
+  load: () => TaskRunApi.detail(pollingTaskId),
+  accept: async (task) => {
+    if (task.status === 'succeeded')
+      message.success(`组织同步任务 #${task.id} 已完成`);
+    else if (task.status === 'failed')
+      message.error(task.error_message || '组织同步失败');
+    await runGridApi.reload();
+  },
+  done: (task) => !['queued', 'retrying', 'running'].includes(task.status),
+});
 function pollTask(taskId: number | string) {
-  if (taskPollTimer) {
-    window.clearInterval(taskPollTimer);
-  }
-  taskPollTimer = window.setInterval(async () => {
-    try {
-      const task = await TaskRunApi.detail(taskId);
-      await runGridApi.reload();
-      if (!['queued', 'retrying', 'running'].includes(task.status)) {
-        if (task.status === 'succeeded') {
-          message.success(`组织同步任务 #${task.id} 已完成`);
-        } else if (task.status === 'failed') {
-          message.error(
-            task.error_message || `组织同步任务 #${task.id} 执行失败`,
-          );
-        }
-        if (taskPollTimer) {
-          window.clearInterval(taskPollTimer);
-          taskPollTimer = undefined;
-        }
-      }
-    } catch {
-      if (taskPollTimer) {
-        window.clearInterval(taskPollTimer);
-        taskPollTimer = undefined;
-      }
-    }
-  }, 3000);
+  pollingTaskId = taskId;
+  taskPolling.start();
 }
 
 function refreshForSource() {
@@ -248,12 +236,6 @@ async function syncSystemUser(row: OrgUserLink) {
 onMounted(async () => {
   await loadSources();
   refreshForSource();
-});
-
-onBeforeUnmount(() => {
-  if (taskPollTimer) {
-    window.clearInterval(taskPollTimer);
-  }
 });
 </script>
 

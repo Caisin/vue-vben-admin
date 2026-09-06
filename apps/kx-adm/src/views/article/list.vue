@@ -106,6 +106,7 @@ async function publish(row: ArticleDoc) {
   message.success(
     result.unchanged ? '当前内容与线上版本一致' : '发布任务已提交',
   );
+  if (result.task) historyRef.value?.open(row);
   refresh();
 }
 

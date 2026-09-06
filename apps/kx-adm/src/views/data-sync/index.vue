@@ -8,7 +8,7 @@ import type {
   SyncRun,
 } from '#/api/data-sync';
 
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -32,6 +32,7 @@ import {
 } from 'antdv-next';
 
 import { DataSyncApi } from '#/api/data-sync';
+import { useTaskPolling } from '#/task-polling';
 
 import { operations, states } from './data';
 import DatabasePanel from './database-panel.vue';
@@ -252,8 +253,75 @@ async function saveSchedule() {
     scheduleBusy.value = false;
   }
 }
-let timer: ReturnType<typeof setInterval> | undefined;
-let polling = false;
+const polling = useTaskPolling({
+  delay: 5000,
+  load: async () => {
+    const query = {
+      keyword: keyword.value,
+      page: pagination.current,
+      size: pagination.pageSize,
+    };
+    const jobId = detail.value?.job.id;
+    const runId = runDetail.value?.run.id;
+    const runQuery = { page: runPage.current, size: runPage.pageSize };
+    const batchQuery = { page: batchPage.current, size: batchPage.pageSize };
+    const [page, sourceInstances, job, history, run, batchHistory] =
+      await Promise.all([
+        DataSyncApi.jobs(query),
+        DataSyncApi.instances(),
+        jobId ? DataSyncApi.detail(jobId) : undefined,
+        jobId ? DataSyncApi.runs(jobId, runQuery) : undefined,
+        runId ? DataSyncApi.run(runId) : undefined,
+        runId ? DataSyncApi.batches(runId, batchQuery) : undefined,
+      ]);
+    return {
+      query,
+      jobId,
+      runId,
+      runQuery,
+      batchQuery,
+      page,
+      sourceInstances,
+      job,
+      history,
+      run,
+      batchHistory,
+    };
+  },
+  accept: (result) => {
+    if (
+      result.query.keyword === keyword.value &&
+      result.query.page === pagination.current &&
+      result.query.size === pagination.pageSize
+    ) {
+      jobs.value = result.page.items;
+      pagination.total = result.page.total;
+    }
+    instances.value = result.sourceInstances;
+    if (result.job && detail.value?.job.id === result.jobId) {
+      detail.value = result.job;
+      if (
+        result.history &&
+        runPage.current === result.runQuery.page &&
+        runPage.pageSize === result.runQuery.size
+      ) {
+        runs.value = result.history.items;
+        runPage.total = result.history.total;
+      }
+    }
+    if (result.run && runDetail.value?.run.id === result.runId) {
+      runDetail.value = result.run;
+      if (
+        result.batchHistory &&
+        batchPage.current === result.batchQuery.page &&
+        batchPage.pageSize === result.batchQuery.size
+      ) {
+        batches.value = result.batchHistory.items;
+        batchPage.total = result.batchHistory.total;
+      }
+    }
+  },
+});
 onMounted(async () => {
   await load();
   const id = Number(route.query.job_id);
@@ -261,29 +329,8 @@ onMounted(async () => {
     const current = await DataSyncApi.detail(id);
     await show(current.job);
   }
-  timer = setInterval(async () => {
-    if (polling || document.hidden) return;
-    polling = true;
-    try {
-      await load(false);
-      const id = detail.value?.job.id;
-      if (id) {
-        const result = await DataSyncApi.detail(id);
-        if (detail.value?.job.id === id) detail.value = result;
-        await loadRuns(id);
-      }
-      const runId = runDetail.value?.run.id;
-      if (runId) {
-        const result = await DataSyncApi.run(runId);
-        if (runDetail.value?.run.id === runId) runDetail.value = result;
-        await loadBatches(runId);
-      }
-    } finally {
-      polling = false;
-    }
-  }, 5000);
+  polling.start();
 });
-onUnmounted(() => clearInterval(timer));
 </script>
 
 <template>

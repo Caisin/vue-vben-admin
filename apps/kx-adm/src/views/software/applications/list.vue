@@ -8,30 +8,34 @@ import type {
 } from '#/api/software';
 import type { FileInputValue } from '#/components/file-picker/file-ref';
 
-import { nextTick, reactive, ref, watch } from 'vue';
+import { nextTick, onMounted, reactive, ref, watch } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { Plus } from '@vben/icons';
+import { createIconifyIcon, Plus } from '@vben/icons';
 
 import {
   Alert,
   Button,
   Drawer,
+  Empty,
   Form,
   FormItem,
   Input,
   message,
   Modal,
-  Select,
-  Tag,
+  Pagination,
+  Segmented, Select, Tag,
 } from 'antdv-next';
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
 import { SoftwareApi } from '#/api/software';
 import { FileUrlInput } from '#/components/file-picker';
 import { requestErrorMessage } from '#/request-errors';
+import { useTaskPolling } from '#/task-polling';
 
 import { normalizeArtifactFileId } from './artifact-upload';
+import { customSourceFrom } from './custom-source';
+import CustomSourceForm from './custom-source-form.vue';
 import {
   providerOptions,
   useColumns,
@@ -46,12 +50,40 @@ const editing = ref<SoftwareApplication>();
 const detailApplication = ref<SoftwareApplication>();
 const detailLoading = ref(false);
 const sourceJson = ref('{}');
+const customSource = ref(customSourceFrom());
 const artifactOpen = ref(false);
 const artifactSaving = ref(false);
 const artifactVersion = ref<SoftwareVersion>();
 const artifactFile = ref<FileInputValue>('');
 const artifactPlatform = ref('linux');
 const artifactArch = ref('x86_64');
+const viewMode = ref('cards');
+const cardRows = ref<SoftwareApplication[]>([]);
+const cardPage = ref(1);
+const cardTotal = ref(0);
+const cardKeyword = ref('');
+const cardLoading = ref(false);
+const AppIcon = createIconifyIcon('lucide:package');
+let cardRequest = 0;
+async function loadCards() {
+  const request = ++cardRequest; cardLoading.value = true;
+  try { const result = await SoftwareApi.applications({ page:cardPage.value,size:12,keyword:cardKeyword.value || undefined });
+    if(request===cardRequest){cardRows.value=result.items;cardTotal.value=result.total;}
+  } finally {if(request===cardRequest)cardLoading.value=false;}
+}
+onMounted(loadCards);
+let refreshTarget: undefined | { app: SoftwareApplication; taskId: number | string };
+const refreshPolling = useTaskPolling({
+  load: () => SoftwareApi.versionTask(refreshTarget?.app.id ?? '', refreshTarget?.taskId ?? ''),
+  accept: async (task) => {
+    if (['queued','retrying','running'].includes(task.status)) return;
+    if (task.status === 'succeeded') {
+      message.success('版本已刷新');
+      if (refreshTarget && detailApplication.value?.id === refreshTarget.app.id) await showDetail(refreshTarget.app);
+    } else message.error(task.error_message || task.message || '版本刷新失败');
+  },
+  done: (task) => !['queued','retrying','running'].includes(task.status),
+});
 const form = reactive<ApplicationWrite>({
   code: '',
   install_root: '/opt/kx',
@@ -171,12 +203,17 @@ function edit(row?: SoftwareApplication) {
         },
   );
   sourceJson.value = JSON.stringify(row?.source ?? {}, null, 2);
+  customSource.value = customSourceFrom(row?.source);
   open.value = true;
 }
 
 async function save() {
   let source: Record<string, unknown>;
-  if (form.provider === 'meilisearch') {
+  if (form.provider === 'custom') {
+    source = { ...customSource.value };
+  } else if (['mysql', 'postgres', 'redis'].includes(form.provider)) {
+    source = {};
+  } else if (form.provider === 'meilisearch') {
     source = { owner: 'meilisearch', repo: 'meilisearch' };
   } else {
   try {
@@ -199,6 +236,7 @@ async function save() {
     open.value = false;
     message.success('应用已保存');
     await gridApi.query();
+    await loadCards();
   } finally {
     saving.value = false;
   }
@@ -250,11 +288,10 @@ watch(
 );
 
 async function refreshVersions(row: SoftwareApplication) {
-  await SoftwareApi.refreshVersions(row.id);
-  message.success('版本已刷新');
-  if (detailApplication.value?.id === row.id) {
-    await showDetail(row);
-  }
+  const task = await SoftwareApi.refreshVersions(row.id);
+  refreshTarget = { app: row, taskId: task.id };
+  message.success(`版本刷新任务 #${task.id} 已提交`);
+  refreshPolling.start();
 }
 
 async function showDetail(row: SoftwareApplication) {
@@ -278,7 +315,23 @@ async function showDetail(row: SoftwareApplication) {
     content-class="management-content"
     title="应用管理"
   >
-    <Grid class="management-grid" table-title="应用管理">
+    <div class="software-card-toolbar">
+      <Segmented v-model:value="viewMode" :options="[{label:'卡片',value:'cards'},{label:'表格',value:'table'}]" aria-label="应用展示方式" />
+      <template v-if="viewMode === 'cards'">
+        <Input.Search v-model:value="cardKeyword" class="max-w-80" placeholder="搜索应用" @search="cardPage = 1;loadCards()" />
+        <Button v-access:code="'software:application:edit'" type="primary" @click="edit()"><Plus class="size-4" />新增应用</Button>
+      </template>
+    </div>
+    <div v-if="viewMode === 'cards'" class="software-card-grid" :aria-busy="cardLoading">
+      <article v-for="row in cardRows" :key="row.id" class="software-resource-card">
+        <header><AppIcon class="size-8 text-cyan-600" /><div class="min-w-0 flex-1"><h3>{{ row.name }}</h3><div class="resource-code">{{ row.code }}</div></div><Tag :color="row.state === 'enabled' ? 'success' : 'default'">{{ row.state === 'enabled' ? '启用' : '停用' }}</Tag></header>
+        <dl><dt>安装实现</dt><dd>{{ providerOptions.find(item=>item.value === row.provider)?.label || row.provider }}</dd><dt>来源</dt><dd>{{ row.source_kind }}</dd><dt>默认目录</dt><dd>{{ row.install_root }}</dd><dt>说明</dt><dd>{{ row.description || '-' }}</dd></dl>
+        <footer><Button v-access:code="'software:version:refresh'" size="small" @click="refreshVersions(row)">刷新版本</Button><Button size="small" @click="showDetail(row)">版本与部署</Button><Button v-access:code="'software:application:edit'" size="small" @click="edit(row)">编辑</Button></footer>
+      </article>
+      <Empty v-if="!cardLoading && !cardRows.length" description="暂无应用" />
+    </div>
+    <div v-if="viewMode === 'cards'" class="software-card-pagination"><Pagination :current="cardPage" :page-size="12" :total="cardTotal" :show-size-changer="false" @change="cardPage = $event;loadCards()" /></div>
+    <Grid v-show="viewMode === 'table'" class="management-grid" table-title="应用管理">
       <template #toolbar-tools>
         <Button
           v-access:code="'software:application:edit'"
@@ -330,6 +383,9 @@ async function showDetail(row: SoftwareApplication) {
       v-model:open="open"
       :confirm-loading="saving"
       :title="editing ? '编辑应用' : '新增应用'"
+      centered
+      :width="760"
+      :styles="{ body: { maxHeight: 'calc(100dvh - 190px)', overflowY: 'auto' } }"
       @ok="save"
     >
       <Form layout="vertical">
@@ -355,7 +411,8 @@ async function showDetail(row: SoftwareApplication) {
           show-icon
           type="info"
         />
-        <FormItem v-else label="来源配置 JSON">
+        <CustomSourceForm v-else-if="form.provider === 'custom'" v-model="customSource" />
+        <FormItem v-else-if="!['mysql','postgres','redis'].includes(form.provider)" label="来源配置 JSON">
           <Input.TextArea
             v-model:value="sourceJson"
             :rows="7"
@@ -382,7 +439,7 @@ async function showDetail(row: SoftwareApplication) {
         <VersionGrid table-title="已发现版本">
           <template #operation="{ row }">
             <Button
-              v-if="detailApplication?.provider === 'meilisearch'"
+              v-if="['meilisearch', 'custom'].includes(detailApplication?.provider ?? '')"
               size="small"
               type="link"
               @click="openArtifactUpload(row)"
@@ -445,10 +502,12 @@ async function showDetail(row: SoftwareApplication) {
           <FileUrlInput
             v-model="artifactFile"
             button-text="选择或上传文件"
-            placeholder="从文件库选择已下载的官方 Meilisearch 二进制"
+            placeholder="从文件库选择对应版本和平台的制品"
           />
         </FormItem>
       </Form>
     </Modal>
   </Page>
 </template>
+
+<style src="../resource-cards.css"></style>

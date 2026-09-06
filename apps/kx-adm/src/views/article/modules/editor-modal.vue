@@ -5,6 +5,7 @@ import type EditorJS from '@editorjs/editorjs';
 import type {
   ArticleContent,
   ArticleDetail,
+  ArticleRelease,
   ArticleThemeView,
   ArticleUpdateWrite,
   ArticleVisibility,
@@ -42,6 +43,7 @@ import {
 import { ArticleApi } from '#/api/article';
 import { StorageFileApi } from '#/api/storage';
 import { FilePicker } from '#/components/file-picker';
+import { useTaskPolling } from '#/task-polling';
 
 import {
   articleAssetFileIds,
@@ -70,6 +72,35 @@ const detail = ref<ArticleDetail>();
 const themes = ref<ArticleThemeView[]>([]);
 const loading = ref(false);
 const saving = ref(false);
+const publishing = ref(false);
+const publishRelease = ref<ArticleRelease>();
+let publishingId: number | string | undefined;
+let publishingArticleId: number | string | undefined;
+const publishPoll = useTaskPolling({
+  load: async () =>
+    publishingArticleId && publishingId
+      ? ArticleApi.release(publishingArticleId, publishingId)
+      : undefined,
+  accept: (result) => {
+    if (!result || detail.value?.id !== publishingArticleId) return;
+    publishRelease.value = result.release;
+    publishing.value = result.release.state === 'preparing';
+    if (!publishing.value) {
+      if (result.release.state === 'published') {
+        message.success('文章已发布');
+        if (detail.value) {
+          detail.value.current_release_id = result.release.id;
+          detail.value.state = 'published';
+          detail.value.slug = result.release.slug;
+        }
+      } else {
+        message.error(result.release.failure_reason || '文章发布失败');
+      }
+      emit('success');
+    }
+  },
+  done: (result) => !result || result.release.state !== 'preparing',
+});
 const saveState = ref<
   'conflict' | 'dirty' | 'error' | 'idle' | 'saved' | 'saving'
 >('idle');
@@ -134,6 +165,9 @@ const [Modal, modalApi] = useVbenModal<ModalPayload>({
   },
   async onOpenChange(open) {
     if (!open) {
+      publishPoll.stop();
+      publishing.value = false;
+      publishRelease.value = undefined;
       await destroyEditor();
       detail.value = undefined;
       return;
@@ -366,7 +400,16 @@ async function publish() {
       message.success(
         result.unchanged ? '当前内容与线上版本一致' : '发布任务已提交',
       );
-      detail.value = await ArticleApi.detail(row.id);
+      if (detail.value?.id !== row.id) {
+        emit('success');
+        return;
+      }
+      if (result.task) {
+        publishingId = result.release_id;
+        publishingArticleId = row.id;
+        publishing.value = true;
+        publishPoll.start();
+      }
       emit('success');
     },
   });
@@ -374,6 +417,12 @@ async function publish() {
 
 async function unpublish() {
   if (!detail.value) return;
+  await saveDraft();
+  if (
+    ['conflict', 'dirty', 'error', 'saving'].includes(saveState.value) ||
+    !detail.value
+  )
+    return;
   const row = await ArticleApi.unpublish(detail.value.id);
   detail.value = row;
   fillForm(row);
@@ -523,7 +572,12 @@ onBeforeUnmount(() => {
           <Button :loading="saving" @click="saveDraft">保存草稿</Button>
           <Button @click="quickPreview">快速预览</Button>
           <Button @click="serverPreview">主题预览</Button>
-          <Button type="primary" @click="publish">发布</Button>
+          <Button :loading="publishing" type="primary" @click="publish">
+            发布
+          </Button>
+          <Tag v-if="publishRelease?.state === 'failed'" color="error">
+            {{ publishRelease.failure_reason || '发布失败' }}
+          </Tag>
           <Button
             v-if="detail?.state === 'published'"
             danger

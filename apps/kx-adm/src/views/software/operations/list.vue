@@ -7,19 +7,22 @@ import type {
 } from '#/api/software';
 
 import { onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
 
-import { Alert, Descriptions, DescriptionsItem, Drawer, Tag } from 'antdv-next';
+import { Drawer, Tag } from 'antdv-next';
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
 import { SoftwareApi } from '#/api/software';
 
 import { useColumns, useGridFormSchema } from './data';
+import OperationLog from './operation-log.vue';
 
 const servers = ref<SoftwareServer[]>([]);
 const applications = ref<SoftwareApplication[]>([]);
 const detail = ref<SoftwareOperation>();
+const route = useRoute();
 const stateColors: Record<string, string> = {
   failed: 'error',
   running: 'processing',
@@ -97,7 +100,12 @@ function actionLabel(value: string) {
   return actionLabels[value] ?? value;
 }
 
-onMounted(loadReferenceData);
+onMounted(async () => {
+  await loadReferenceData();
+  const id = route.query.operation_id;
+  if (typeof id === 'string' && id.trim())
+    detail.value = await SoftwareApi.operation(id);
+});
 </script>
 
 <template>
@@ -129,45 +137,10 @@ onMounted(loadReferenceData);
     <Drawer
       :open="Boolean(detail)"
       title="操作详情"
-      :size="680"
+      size="min(680px, 100vw)"
       @close="detail = undefined"
     >
-      <template v-if="detail">
-        <Alert
-          v-if="detail.error_summary"
-          class="mb-4"
-          :message="detail.error_summary"
-          show-icon
-          type="error"
-        />
-        <Descriptions bordered :column="2" size="small">
-          <DescriptionsItem label="操作">
-            {{ actionLabel(detail.action) }}
-          </DescriptionsItem>
-          <DescriptionsItem label="状态">
-            <Tag :color="stateColor(detail.state)">
-              {{ stateLabel(detail.state) }}
-            </Tag>
-          </DescriptionsItem>
-          <DescriptionsItem label="执行阶段">
-            {{ detail.stage }}
-          </DescriptionsItem>
-          <DescriptionsItem label="已完成步骤">
-            {{ detail.step }}
-          </DescriptionsItem>
-          <DescriptionsItem :span="2" label="目标版本">
-            {{ detail.target_version || '-' }}
-          </DescriptionsItem>
-        </Descriptions>
-        <h4 class="mb-2 font-medium">标准输出</h4>
-        <pre class="max-h-64 overflow-auto whitespace-pre-wrap bg-muted p-3">{{
-          detail.stdout_tail || '-'
-        }}</pre>
-        <h4 class="mb-2 mt-4 font-medium">错误输出</h4>
-        <pre class="max-h-64 overflow-auto whitespace-pre-wrap bg-muted p-3">{{
-          detail.stderr_tail || detail.error_summary || '-'
-        }}</pre>
-      </template>
+      <OperationLog v-if="detail" :operation-id="detail.id" />
     </Drawer>
   </Page>
 </template>

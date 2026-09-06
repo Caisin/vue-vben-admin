@@ -2,7 +2,7 @@
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { TaskRun, TaskRunStatus, TaskRunTrigger } from '#/api/task';
 
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
@@ -12,6 +12,7 @@ import { Button, message, Popconfirm, Space, Tag } from 'antdv-next';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { TaskRunApi } from '#/api/task';
 import { displayValue } from '#/management';
+import { useTaskPolling } from '#/task-polling';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
 
@@ -30,6 +31,7 @@ const route = useRoute();
 const detailOpen = ref(false);
 const detailLoading = ref(false);
 const currentTask = ref<TaskRun>();
+let hasActiveRows = false;
 const taskSortFields = [
   'id',
   'schedule_id',
@@ -68,6 +70,7 @@ const [Grid, gridApi] = useVbenVxeGrid<TaskRun>({
             status: formValues.status as TaskRunStatus | undefined,
             trigger: formValues.trigger as TaskRunTrigger | undefined,
           });
+          hasActiveRows = result.items.some(isActive);
           return { items: result.items, total: result.total };
         },
       },
@@ -83,22 +86,43 @@ const [Grid, gridApi] = useVbenVxeGrid<TaskRun>({
   } as VxeTableGridOptions<TaskRun>,
 });
 
+const listPoll = useTaskPolling({
+  delay: 3000,
+  load: async () => {
+    if (hasActiveRows && !document.hidden) await gridApi.query();
+  },
+  accept: () => {},
+});
+
 async function cancelTask(row: TaskRun) {
-  await TaskRunApi.cancel(row.id);
+  const updated = await TaskRunApi.cancel(row.id);
+  if (currentTask.value?.id === row.id) currentTask.value = updated;
   message.success('已请求取消任务执行');
   await gridApi.reload();
 }
 
 async function openDetail(row: TaskRun) {
+  detailPoll.stop();
   currentTask.value = row;
   detailOpen.value = true;
   detailLoading.value = true;
-  try {
-    currentTask.value = await TaskRunApi.detail(row.id);
-  } finally {
-    detailLoading.value = false;
-  }
+  detailPoll.start();
 }
+
+const detailPoll = useTaskPolling({
+  load: () => TaskRunApi.detail(currentTask.value?.id ?? ''),
+  accept: (task) => {
+    currentTask.value = task;
+    detailLoading.value = false;
+  },
+  done: (task) => !isActive(task),
+  onError: () => {
+    detailLoading.value = false;
+  },
+});
+watch(detailOpen, (open) => {
+  if (!open) detailPoll.stop();
+});
 
 function isActive(row: TaskRun) {
   return ['queued', 'retrying', 'running'].includes(row.status);
@@ -124,6 +148,7 @@ async function openBusinessDetail(row: TaskRun) {
 }
 
 onMounted(async () => {
+  listPoll.start();
   try {
     const filterOptions = await TaskRunApi.filterOptions();
     await gridApi.formApi.updateSchema(

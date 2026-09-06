@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { ImportExportDefinition, TransferRun } from '#/api/import-export';
 
-import { computed, onBeforeUnmount, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 import { Download, RotateCw } from '@vben/icons';
 import { downloadFileFromBlob } from '@vben/utils';
@@ -22,6 +22,7 @@ import {
 } from 'antdv-next';
 
 import { ImportExportApi } from '#/api/import-export';
+import { useTaskPolling } from '#/task-polling';
 
 const props = withDefaults(
   defineProps<{
@@ -49,7 +50,6 @@ const downloading = ref(false);
 const definition = ref<ImportExportDefinition>();
 const run = ref<TransferRun>();
 const options = reactive<Record<string, any>>({});
-let pollTimer: number | undefined;
 
 const fields = computed(() =>
   Object.entries(definition.value?.options_schema.properties ?? {}).map(
@@ -73,11 +73,11 @@ const terminal = computed(() =>
 );
 
 function clearPoll() {
-  if (pollTimer !== undefined) window.clearTimeout(pollTimer);
-  pollTimer = undefined;
+  polling.stop();
 }
 
 async function show() {
+  clearPoll();
   open.value = true;
   run.value = undefined;
   loading.value = true;
@@ -127,24 +127,28 @@ async function submit() {
   }
 }
 
+const polling = useTaskPolling({
+  load: async () =>
+    run.value
+      ? ImportExportApi.exportRun(props.definitionCode, run.value.id)
+      : undefined,
+  accept: (value) => {
+    if (!value) return;
+    run.value = value;
+    if (terminal.value) emit('completed', value);
+  },
+  done: () => !run.value || terminal.value,
+});
 function schedulePoll() {
   clearPoll();
-  if (!run.value || terminal.value) return;
-  pollTimer = window.setTimeout(refreshRun, document.hidden ? 10_000 : 1000);
+  if (open.value && run.value && !terminal.value) polling.start();
 }
-
-async function refreshRun() {
-  if (!run.value) return;
-  try {
-    run.value = await ImportExportApi.exportRun(
-      props.definitionCode,
-      run.value.id,
-    );
-    if (terminal.value) emit('completed', run.value);
-  } finally {
-    schedulePoll();
-  }
+function refreshRun() {
+  schedulePoll();
 }
+watch(open, (value) => {
+  if (!value) clearPoll();
+});
 
 async function downloadResult() {
   if (!run.value?.has_result || !definition.value) return;
@@ -169,8 +173,6 @@ function statusColor(status: string) {
   if (status === 'partially_succeeded') return 'warning';
   return 'processing';
 }
-
-onBeforeUnmount(clearPoll);
 </script>
 
 <template>

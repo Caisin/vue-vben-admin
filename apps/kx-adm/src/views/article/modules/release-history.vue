@@ -10,6 +10,7 @@ import { useVbenModal } from '@vben/common-ui';
 import { Button, message, Popconfirm, Space, Table, Tag } from 'antdv-next';
 
 import { ArticleApi } from '#/api/article';
+import { useTaskPolling } from '#/task-polling';
 import { Times } from '#/times';
 
 const emit = defineEmits<{ restored: [article: ArticleDoc] }>();
@@ -22,7 +23,14 @@ const pageSize = ref(10);
 
 const columns: TableProps<ArticleRelease>['columns'] = [
   { dataIndex: 'release_no', title: '版本', width: 80 },
-  { dataIndex: 'title', title: '标题' },
+  { dataIndex: 'title', title: '标题', width: 180 },
+  { dataIndex: 'state', title: '状态', width: 100 },
+  {
+    dataIndex: 'failure_reason',
+    title: '失败原因',
+    width: 220,
+    ellipsis: true,
+  },
   { dataIndex: 'theme_code', title: '主题', width: 120 },
   { dataIndex: 'visibility', title: '访问', width: 90 },
   { dataIndex: 'published_at', title: '发布时间', width: 180 },
@@ -33,23 +41,32 @@ const [Modal, modalApi] = useVbenModal({
   class: 'w-[min(980px,calc(100vw-20px))]',
   destroyOnClose: false,
   showConfirmButton: false,
+  onOpenChange: (open) => {
+    if (!open) polling.stop();
+  },
 });
 
 async function load() {
   if (!article.value) return;
   loading.value = true;
-  try {
-    const result = await ArticleApi.releases(article.value.id, {
+  polling.start();
+}
+const polling = useTaskPolling({
+  load: () =>
+    ArticleApi.releases(article.value?.id ?? '', {
       page: page.value,
       size: pageSize.value,
-      state: 'published',
-    });
+    }),
+  accept: (result) => {
     records.value = result.items;
     total.value = result.total;
-  } finally {
     loading.value = false;
-  }
-}
+  },
+  done: (result) => !result.items.some((row) => row.state === 'preparing'),
+  onError: () => {
+    loading.value = false;
+  },
+});
 
 async function restore(row: ArticleRelease) {
   if (!article.value) return;
@@ -78,6 +95,7 @@ defineExpose({ open });
       :loading="loading"
       :pagination="{ current: page, pageSize, total, showSizeChanger: true }"
       row-key="id"
+      :scroll="{ x: 1120 }"
       size="small"
       @change="
         (pager) => {
@@ -88,7 +106,26 @@ defineExpose({ open });
       "
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'visibility'">
+        <template v-if="column.dataIndex === 'state'">
+          <Tag
+            :color="
+              record.state === 'published'
+                ? 'success'
+                : record.state === 'failed'
+                  ? 'error'
+                  : 'processing'
+            "
+          >
+            {{
+              record.state === 'published'
+                ? '已发布'
+                : record.state === 'failed'
+                  ? '失败'
+                  : '发布中'
+            }}
+          </Tag>
+        </template>
+        <template v-else-if="column.dataIndex === 'visibility'">
           <Tag :color="record.visibility === 'public' ? 'success' : 'warning'">
             {{ record.visibility === 'public' ? '公开' : '密码' }}
           </Tag>
@@ -108,6 +145,7 @@ defineExpose({ open });
               打开
             </Button>
             <Popconfirm
+              v-if="record.state === 'published'"
               title="将该版本恢复为当前草稿？"
               @confirm="restore(record)"
             >

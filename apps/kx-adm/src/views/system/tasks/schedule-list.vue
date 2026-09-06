@@ -29,6 +29,7 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { TaskExecutorApi, TaskRunApi, TaskScheduleApi } from '#/api/task';
 import { CronExpressionSelect } from '#/components/management';
 import { displayValue } from '#/management';
+import { useTaskPolling } from '#/task-polling';
 import { Times } from '#/times';
 import { vxeSortParams } from '#/vxe-sort';
 
@@ -142,10 +143,6 @@ const selectedExecutor = computed(() =>
 );
 const payloadFields = computed(() =>
   payloadFieldsFromExecutor(selectedExecutor.value),
-);
-const identitySummary = computed(
-  () =>
-    `${form.schedule_name || '未命名调度'} / ${form.executor_code || '未选择执行器'}`,
 );
 
 onMounted(async () => {
@@ -365,17 +362,30 @@ async function openRuns(row: TaskSchedule) {
   selectedSchedule.value = row;
   runDrawerOpen.value = true;
   runLoading.value = true;
-  try {
-    const page = await TaskRunApi.list({
-      page: 1,
-      schedule_id: row.id,
-      size: 20,
-    });
-    runs.value = page.items;
-  } finally {
-    runLoading.value = false;
-  }
+  runPolling.start();
 }
+const runPolling = useTaskPolling({
+  load: () =>
+    TaskRunApi.list({
+      page: 1,
+      schedule_id: selectedSchedule.value?.id,
+      size: 20,
+    }),
+  accept: (page) => {
+    runs.value = page.items;
+    runLoading.value = false;
+  },
+  done: (page) =>
+    !page.items.some((run) =>
+      ['queued', 'retrying', 'running'].includes(run.status),
+    ),
+  onError: () => {
+    runLoading.value = false;
+  },
+});
+watch(runDrawerOpen, (open) => {
+  if (!open) runPolling.stop();
+});
 </script>
 
 <template>
@@ -432,21 +442,9 @@ async function openRuns(row: TaskSchedule) {
     v-model:open="drawerOpen"
     destroy-on-close
     :title="editingId ? '调整调度配置' : '新建调度配置'"
-    width="760"
+    size="min(760px, 100vw)"
   >
     <div class="schedule-form">
-      <div class="full-row schedule-summary">
-        <div>{{ identitySummary }}</div>
-        <div class="muted-summary">
-          手动触发相当于提前执行；不允许并发时，下一次 Cron 会等待当前执行结束。
-        </div>
-        <div v-if="selectedExecutor" class="muted-summary">
-          {{ selectedExecutor.description || '无执行器说明' }}；最小间隔：{{
-            selectedExecutor.minimum_interval_seconds
-          }}
-          秒；参数版本：{{ selectedExecutor.params_version }}
-        </div>
-      </div>
       <label>
         执行器<Select
           v-model:value="form.executor_code"
@@ -456,28 +454,6 @@ async function openRuns(row: TaskSchedule) {
         />
       </label>
       <label> 调度名称<Input v-model:value="form.schedule_name" /> </label>
-      <label>
-        调度编码<Input
-          v-model:value="form.schedule_code"
-          :disabled="
-            Boolean(editingId) || selectedExecutor?.cardinality === 'singleton'
-          "
-          :placeholder="
-            selectedExecutor?.cardinality === 'singleton'
-              ? '单例调度由后端固定生成'
-              : '留空由后端生成'
-          "
-        />
-      </label>
-      <label>
-        实例键<Input
-          v-model:value="form.instance_key"
-          :disabled="
-            Boolean(editingId) || selectedExecutor?.cardinality === 'singleton'
-          "
-          placeholder="多实例调度用于区分参数实例"
-        />
-      </label>
       <label class="full-row">
         Cron 表达式
         <CronExpressionSelect
@@ -491,10 +467,35 @@ async function openRuns(row: TaskSchedule) {
           :options="scheduleStatusOptions"
         />
       </label>
-      <label> 业务键<Input v-model:value="form.biz_key" /> </label>
       <details class="full-row advanced-options">
-        <summary>高级策略</summary>
+        <summary>高级设置</summary>
         <div class="schedule-form nested-form">
+          <label>
+            调度编码<Input
+              v-model:value="form.schedule_code"
+              :disabled="
+                Boolean(editingId) ||
+                selectedExecutor?.cardinality === 'singleton'
+              "
+              :placeholder="
+                selectedExecutor?.cardinality === 'singleton'
+                  ? '单例调度由后端固定生成'
+                  : '留空由后端生成'
+              "
+            />
+          </label>
+          <label>
+            实例键<Input
+              v-model:value="form.instance_key"
+              :disabled="
+                Boolean(editingId) ||
+                selectedExecutor?.cardinality === 'singleton'
+              "
+              placeholder="多实例调度用于区分参数实例"
+            />
+          </label>
+          <label> 业务键<Input v-model:value="form.biz_key" /> </label>
+
           <label>
             重叠策略<Select
               v-model:value="form.overlap_policy"
@@ -605,7 +606,7 @@ async function openRuns(row: TaskSchedule) {
     destroy-on-close
     :footer="false"
     :title="`执行记录 - ${displayValue(selectedSchedule?.schedule_name)}`"
-    width="760"
+    size="min(760px, 100vw)"
   >
     <div v-if="runLoading">加载中...</div>
     <div v-else class="execution-list">
@@ -646,12 +647,6 @@ async function openRuns(row: TaskSchedule) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.schedule-summary {
-  padding: 10px 12px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
 }
 
 .advanced-options {

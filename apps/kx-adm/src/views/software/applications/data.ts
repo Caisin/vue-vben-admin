@@ -9,6 +9,7 @@ import type {
 import { Times } from '#/times';
 
 export const providerOptions = [
+  { label: '官方制品 / 自定义安装步骤', value: 'custom' },
   { label: 'GitHub Release', value: 'github_release' },
   { label: 'Certimate', value: 'certimate' },
   { label: 'RustFS', value: 'rustfs' },

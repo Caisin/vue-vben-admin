@@ -26,6 +26,7 @@ import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
 import { DeveloperAccountApi } from '#/api/developer-account';
 import { CredentialSelect } from '#/components/credential';
 import { BusinessExport, BusinessImport } from '#/components/import-export';
+import { useTaskPolling } from '#/task-polling';
 
 import {
   miniAppColumns,
@@ -48,7 +49,6 @@ const form = reactive<TikTokMiniAppWrite>({
   name: '',
   remark: '',
 });
-let syncTaskPollTimer: number | undefined;
 const whitelistExportDefaults = {
   customer_group: '长沙古言网络科技有限公司',
   include_completed: false,
@@ -197,20 +197,12 @@ async function syncMiniApps() {
   }
 }
 
-function clearSyncTaskPoll() {
-  if (syncTaskPollTimer) {
-    window.clearInterval(syncTaskPollTimer);
-    syncTaskPollTimer = undefined;
-  }
-}
-
-async function refreshSyncTask() {
-  const taskId = activeSyncTaskId.value;
-  if (!taskId) return;
-  try {
-    const task = await DeveloperAccountApi.tiktokMiniAppSyncTask(taskId);
+const taskPolling = useTaskPolling({
+  delay: 3000,
+  load: () =>
+    DeveloperAccountApi.tiktokMiniAppSyncTask(activeSyncTaskId.value ?? ''),
+  accept: async (task) => {
     if (['queued', 'retrying', 'running'].includes(task.status)) return;
-    clearSyncTaskPoll();
     activeSyncTaskId.value = undefined;
     if (task.status === 'succeeded') {
       message.success(task.message || `同步任务 #${task.id} 已完成`);
@@ -220,20 +212,15 @@ async function refreshSyncTask() {
         task.error_message || task.message || `同步任务 #${task.id} 未完成`,
       );
     }
-  } catch {
-    clearSyncTaskPoll();
-    activeSyncTaskId.value = undefined;
-    message.error(`无法查询同步任务 #${taskId} 的状态`);
-  }
+  },
+  done: (task) => !['queued', 'retrying', 'running'].includes(task.status),
+});
+function clearSyncTaskPoll() {
+  taskPolling.stop();
 }
-
 function pollSyncTask(taskId: number | string) {
-  clearSyncTaskPoll();
   activeSyncTaskId.value = taskId;
-  void refreshSyncTask();
-  syncTaskPollTimer = window.setInterval(() => {
-    void refreshSyncTask();
-  }, 3000);
+  taskPolling.start();
 }
 
 onBeforeUnmount(clearSyncTaskPoll);

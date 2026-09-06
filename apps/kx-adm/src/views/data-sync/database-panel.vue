@@ -6,7 +6,7 @@ import type {
   DatabaseWrite,
 } from '#/api/data-sync-database';
 
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { createIconifyIcon, Plus } from '@vben/icons';
@@ -30,15 +30,15 @@ import { DataSyncApi } from '#/api/data-sync';
 import { DatabaseSyncApi } from '#/api/data-sync-database';
 import { StorageConfigApi } from '#/api/storage/config';
 import { DataSourceApi } from '#/api/system/data-source';
+import { useTaskPolling } from '#/task-polling';
 
+import { setStrategy, states, strategyOptions } from './data';
 import {
-  jobForm,
-  setStrategy,
-  states,
-  strategyOptions,
-  validateForm,
-} from './data';
-import { sourceTableLabels } from './database-data';
+  confirmAllTables,
+  databaseErrorText,
+  sourceTableLabels,
+  validateDatabaseTable,
+} from './database-data';
 import MetadataSelect from './metadata-select.vue';
 import SourceFields from './source-fields.vue';
 import StrategyFields from './strategy-fields.vue';
@@ -53,6 +53,7 @@ const emit = defineEmits<{ job: [Job] }>();
 const route = useRoute();
 const Refresh = createIconifyIcon('lucide:refresh-cw');
 const Trash = createIconifyIcon('lucide:trash-2');
+const CheckCheck = createIconifyIcon('lucide:check-check');
 const rows = ref<DatabaseSync[]>([]);
 const pagination = reactive({ current: 1, pageSize: 20, total: 0 });
 const selected = ref<DatabaseSync>();
@@ -68,12 +69,16 @@ const editing = ref<DatabaseTable>();
 const editingIndex = ref(-1);
 const taskPending = ref<number>();
 const taskError = ref('');
+const failedTables = computed(
+  () =>
+    selected.value?.plan.filter((row) => row.state === 'failed' && row.error) ??
+    [],
+);
 const schedule = reactive({
   cron_expr: '0 0 * * * *',
   timezone_offset_seconds: 28_800,
   enabled: false,
 });
-let timer: ReturnType<typeof setInterval> | undefined;
 let loading = false;
 const locked = computed(
   () =>
@@ -266,23 +271,33 @@ function bulk() {
     if (selectedTables.value.includes(table.target_table))
       strategy(table, bulkMode.value);
 }
+function confirmAll() {
+  if (!canEdit.value) return;
+  const result = confirmAllTables(form.value);
+  if (result.confirmed > 0) dirty.value = true;
+  if (result.failures.length > 0) {
+    Modal.warning({
+      title: `已确认 ${result.confirmed} 张表，${result.failures.length} 张表待完善`,
+      content: result.failures
+        .map((item) => `${item.table}：${item.reason}`)
+        .join('\n'),
+      styles: {
+        body: { whiteSpace: 'pre-wrap', maxHeight: '60vh', overflowY: 'auto' },
+      },
+    });
+  } else if (result.confirmed > 0) {
+    message.success(`已确认 ${result.confirmed} 张表，请保存配置`);
+  }
+}
 function editTable(table: DatabaseTable) {
   editingIndex.value = form.value.tables.indexOf(table);
   editing.value = copy(table);
 }
 function saveTable() {
   if (!editing.value) return;
-  const candidate = {
-    ...jobForm(),
-    name: form.value.name,
-    target_ds_code: form.value.target_ds_code,
-    target_database: form.value.target_database,
-    target_table: editing.value.target_table,
-    config: editing.value.config,
-  };
   let invalid: string | undefined;
   if (editing.value.excluded_reason === null) {
-    invalid = validateForm(candidate);
+    invalid = validateDatabaseTable(form.value, editing.value);
   } else if (!editing.value.excluded_reason.trim()) {
     invalid = '请填写排除原因';
   }
@@ -332,11 +347,52 @@ onMounted(async () => {
   await load();
   const id = Number(route.query.database_id);
   if (id > 0) await show(await DatabaseSyncApi.detail(id));
-  timer = setInterval(() => {
-    void load().catch(() => {});
-  }, 5000);
+  polling.start();
 });
-onUnmounted(() => clearInterval(timer));
+const polling = useTaskPolling({
+  delay: 5000,
+  load: async () => {
+    const query = { page: pagination.current, size: pagination.pageSize };
+    const id = open.value ? selected.value?.id : undefined;
+    const taskId = taskPending.value;
+    const [page, current, task] = await Promise.all([
+      DatabaseSyncApi.list(query),
+      id ? DatabaseSyncApi.detail(id) : undefined,
+      id && taskId ? DatabaseSyncApi.task(id, taskId) : undefined,
+    ]);
+    return { query, id, taskId, page, current, task };
+  },
+  accept: ({ query, id, taskId, page, current, task }) => {
+    if (
+      query.page === pagination.current &&
+      query.size === pagination.pageSize
+    ) {
+      rows.value = page.items;
+      pagination.total = page.total;
+    }
+    if (
+      !current ||
+      !open.value ||
+      selected.value?.id !== id ||
+      taskPending.value !== taskId
+    )
+      return;
+    selected.value = current;
+    if (task && !['queued', 'retrying', 'running'].includes(task.status)) {
+      taskError.value = task.error_message ?? '';
+      taskPending.value = undefined;
+    }
+    if (
+      !dirty.value &&
+      !current.active_task_id &&
+      (!taskPending.value || current.last_task_id === taskPending.value)
+    ) {
+      form.value = copy(current.config);
+      form.value.version = current.version;
+      taskPending.value = undefined;
+    }
+  },
+});
 </script>
 <template>
   <div>
@@ -389,9 +445,15 @@ onUnmounted(() => clearInterval(timer));
         v-if="taskError || selected?.last_error"
         type="error"
         show-icon
-        :message="taskError || selected?.last_error || ''"
+        :message="databaseErrorText(taskError || selected?.last_error || '')"
         class="mb-4"
-      />
+      >
+        <template v-if="failedTables.length" #description>
+          <div v-for="row in failedTables" :key="row.target_table">
+            {{ row.target_table }}：{{ databaseErrorText(row.error || '') }}
+          </div>
+        </template>
+      </Alert>
       <div class="toolbar">
         <Button
           v-if="configure"
@@ -586,6 +648,9 @@ onUnmounted(() => clearInterval(timer));
       <div class="toolbar">
         <span>包含 {{ counts.included }} · 排除 {{ counts.excluded }} · 待确认
           {{ counts.pending }}</span><template v-if="configure">
+          <Button :disabled="!canEdit || !counts.pending" @click="confirmAll">
+            <CheckCheck class="size-4" />全部确认
+          </Button>
           <Select
             v-model:value="bulkMode"
             :options="strategyOptions"

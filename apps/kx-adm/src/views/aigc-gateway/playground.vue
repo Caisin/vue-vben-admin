@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { GatewayMediaJob, ModelRoute } from '#/api/aigc-gateway';
 
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import { IconifyIcon } from '@vben/icons';
 
@@ -19,6 +19,7 @@ import {
 } from 'antdv-next';
 
 import { AigcGatewayApi } from '#/api/aigc-gateway';
+import { useTaskPolling } from '#/task-polling';
 
 const props = defineProps<{ models: ModelRoute[] }>();
 
@@ -42,7 +43,6 @@ const videoImageUrls = ref('');
 const sending = ref(false);
 const messages = ref<ChatMessage[]>([]);
 const mediaJob = ref<GatewayMediaJob>();
-let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
 const modelOptions = computed(() =>
   [
@@ -136,17 +136,17 @@ async function generateMedia() {
   }
 }
 
-async function pollMedia(id: number | string) {
-  clearTimeout(pollTimer);
-  try {
-    const job = await AigcGatewayApi.mediaJob(id);
+let mediaJobId: number | string = '';
+const mediaPolling = useTaskPolling({
+  load: () => AigcGatewayApi.mediaJob(mediaJobId),
+  accept: (job) => {
     mediaJob.value = job;
-    if (job.state === 'pending' || job.state === 'running') {
-      pollTimer = setTimeout(() => void pollMedia(id), 1500);
-    }
-  } catch {
-    clearTimeout(pollTimer);
-  }
+  },
+  done: (job) => !['pending', 'running'].includes(job.state),
+});
+function pollMedia(id: number | string) {
+  mediaJobId = id;
+  mediaPolling.start();
 }
 
 function responseText(value: unknown): string {
@@ -203,7 +203,6 @@ function extractMediaUrls(value: unknown): string[] {
   return [...urls];
 }
 
-onUnmounted(() => clearTimeout(pollTimer));
 watch(mode, () => {
   if (!modelOptions.value.some((item) => item.value === model.value)) {
     model.value = undefined;

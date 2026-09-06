@@ -262,6 +262,11 @@ for (const readonly of [false, true]) {
           else if (path === '/data-sync/databases/10' && method === 'PUT') {
             const req = requestBody(route.request());
             expect(req.tables[0].config.mode).toBe('full_table');
+            expect(
+              req.tables.every(
+                (table: { confirmed: boolean }) => table.confirmed,
+              ),
+            ).toBe(true);
             expect(req.tables[0].config.sources[0].id_column).toBeNull();
             expect(req.tables[1].config.mode).toBe('id_and_time');
             expect(req.warehouse).toBe('query one');
@@ -512,6 +517,9 @@ for (const readonly of [false, true]) {
     await page.mouse.move(0, 0);
     if (readonly) {
       await expect(
+        databaseEditor.getByRole('button', { name: '全部确认', exact: true }),
+      ).toHaveCount(0);
+      await expect(
         databaseEditor.getByRole('button', { name: '保存配置', exact: true }),
       ).toHaveCount(0);
       await expect(
@@ -530,8 +538,14 @@ for (const readonly of [false, true]) {
         'query one',
       );
       await databaseEditor
-        .getByRole('checkbox', { name: '确认 parameters 策略' })
-        .check();
+        .getByRole('button', { name: '全部确认', exact: true })
+        .click();
+      await expect(
+        databaseEditor.getByRole('checkbox', { name: '确认 parameters 策略' }),
+      ).toBeChecked();
+      await expect(
+        databaseEditor.getByRole('button', { name: '全部确认', exact: true }),
+      ).toBeDisabled();
       await databaseEditor
         .getByRole('button', { name: '保存配置', exact: true })
         .click();
@@ -559,6 +573,14 @@ for (const readonly of [false, true]) {
       await expect(
         databaseEditor.getByRole('button', { name: /关闭|close/i }).first(),
       ).toBeInViewport();
+      if (!readonly) {
+        const confirmAll = databaseEditor.getByRole('button', {
+          name: '全部确认',
+          exact: true,
+        });
+        await confirmAll.scrollIntoViewIfNeeded();
+        await expect(confirmAll).toBeInViewport({ ratio: 1 });
+      }
       await page.screenshot({
         path: testInfo.outputPath(`database-strategies-${viewport.width}.png`),
         fullPage: true,

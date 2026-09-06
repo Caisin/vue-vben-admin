@@ -81,7 +81,7 @@ export function useColumns(): VxeTableGridColumns<SoftwareInstallation> {
       showOverflow: false,
       slots: { default: 'operation' },
       title: '操作',
-      width: 150,
+      width: 240,
     },
   ];
 }

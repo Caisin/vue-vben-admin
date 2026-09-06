@@ -38,6 +38,7 @@ import {
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { DeveloperAccountApi } from '#/api/developer-account';
 import { TaskRunApi } from '#/api/task';
+import { useTaskPolling } from '#/task-polling';
 
 const username = ref('');
 const loading = ref(false);
@@ -58,7 +59,6 @@ const linkedDeveloperAccountId = ref<number>();
 const linkedCountry = ref('');
 const activeTaskId = ref<number | string>();
 const reindexingSearch = ref(false);
-let taskPollTimer: number | undefined;
 
 function buildDeveloperAccountTree(currentTiktokAccountId?: string) {
   return [
@@ -298,20 +298,11 @@ async function importBatchFile(event: Event) {
   message.success(`已读取 ${batchImportResult.value.items.length} 个账户`);
 }
 
-function clearTaskPoll() {
-  if (taskPollTimer) {
-    window.clearInterval(taskPollTimer);
-    taskPollTimer = undefined;
-  }
-}
-
-async function refreshTask() {
-  const taskId = activeTaskId.value;
-  if (!taskId) return;
-  try {
-    const task = await TaskRunApi.detail(taskId);
+const taskPolling = useTaskPolling({
+  delay: 3000,
+  load: () => TaskRunApi.detail(activeTaskId.value ?? ''),
+  accept: async (task) => {
     if (['queued', 'retrying', 'running'].includes(task.status)) return;
-    clearTaskPoll();
     activeTaskId.value = undefined;
     if (task.status === 'succeeded' || task.status === 'partially_succeeded') {
       message.success(task.message || `任务 #${task.id} 已完成`);
@@ -321,20 +312,15 @@ async function refreshTask() {
         task.error_message || task.message || `任务 #${task.id} 未完成`,
       );
     }
-  } catch {
-    clearTaskPoll();
-    activeTaskId.value = undefined;
-    message.error(`无法查询任务 #${taskId} 的状态`);
-  }
+  },
+  done: (task) => !['queued', 'retrying', 'running'].includes(task.status),
+});
+function clearTaskPoll() {
+  taskPolling.stop();
 }
-
 function pollTask(taskId: number | string) {
-  clearTaskPoll();
   activeTaskId.value = taskId;
-  void refreshTask();
-  taskPollTimer = window.setInterval(() => {
-    void refreshTask();
-  }, 3000);
+  taskPolling.start();
 }
 
 async function importBatchAccounts() {

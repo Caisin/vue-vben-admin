@@ -1,4 +1,5 @@
 import type { Page, PageQuery } from '#/api/request';
+import type { TaskRun } from '#/api/task';
 
 import { requestClient } from '#/api/request';
 
@@ -56,6 +57,14 @@ export interface ServerProbe {
   run_user: string;
   service_manager: string;
   trusted: boolean;
+}
+
+export interface SoftwareDetection {
+  installed: boolean;
+  manager: string;
+  binary_path: string;
+  version_output: string;
+  service_status: string;
 }
 
 export interface SoftwareApplication {
@@ -150,6 +159,8 @@ export interface MeilisearchInstallConfig {
 }
 
 export interface SoftwareInstallation {
+  config_pending?: boolean;
+  applied_config_hash?: string;
   active_operation_id?: null | number | string;
   application_code: string;
   application_id: number | string;
@@ -192,6 +203,8 @@ export interface InstallationConfigWrite {
 }
 
 export interface SoftwareOperation {
+  task_run_id?: null | number | string;
+  plan_json?: { steps: { type: string }[] };
   action: string;
   application_id: number | string;
   created_at: number | string;
@@ -216,6 +229,17 @@ export interface OperationWrite {
 }
 
 export const SoftwareApi = {
+  operation: (id: number | string) =>
+    requestClient.get<SoftwareOperation>(`/software/operations/${id}`),
+  detectSoftware: (
+    id: number | string,
+    provider: string,
+    binary_path?: string,
+  ) =>
+    requestClient.post<SoftwareDetection>(
+      `/software/servers/${id}/software/detect`,
+      { provider, binary_path },
+    ),
   applications: (
     params?: PageQuery & {
       keyword?: string;
@@ -282,8 +306,12 @@ export const SoftwareApi = {
       trust_host_key: trustHostKey,
     }),
   refreshVersions: (id: number | string) =>
-    requestClient.post<SoftwareVersion[]>(
+    requestClient.post<TaskRun>(
       `/software/applications/${id}/versions/refresh`,
+    ),
+  versionTask: (id: number | string, taskId: number | string) =>
+    requestClient.get<TaskRun>(
+      `/software/applications/${id}/versions/tasks/${taskId}`,
     ),
   uploadVersionArtifact: (
     applicationId: number | string,
