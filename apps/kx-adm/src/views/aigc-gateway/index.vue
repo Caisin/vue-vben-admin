@@ -47,10 +47,8 @@ import {
 import { AigcGatewayApi } from '#/api/aigc-gateway';
 import { CredentialSelect } from '#/components/credential';
 
-import Playground from './playground.vue';
-
 const loading = ref(false);
-const active = ref('playground');
+const active = ref('providers');
 const breakers = ref<GatewayBreaker[]>([]);
 const groups = ref<ProviderGroup[]>([]);
 const keys = ref<GatewayApiKey[]>([]);
@@ -137,9 +135,7 @@ const editingProviderIsJimeng = computed(() =>
   isJimengProtocol(editingProviderProtocol.value),
 );
 const editingProviderCapabilitiesLocked = computed(() =>
-  ['anthropic', 'deepseek', 'gemini', 'ollama'].includes(
-    editingProviderProtocol.value,
-  ),
+  ['deepseek'].includes(editingProviderProtocol.value),
 );
 const strategyOptions = [
   { label: '优先级', value: 'priority' },
@@ -179,7 +175,20 @@ const capabilityOptions = [
   { label: '对话', value: 'chat' },
   { label: '生图', value: 'image' },
   { label: '生视频', value: 'video' },
+  { label: '图片输入', value: 'input_image' },
+  { label: '视频输入', value: 'input_video' },
 ];
+const editingCapabilityOptions = computed(() =>
+  capabilityOptions.filter(({ value }) => {
+    const protocol = editingProviderProtocol.value;
+    if (protocol === 'deepseek') return value === 'chat';
+    if (['anthropic', 'ollama'].includes(protocol))
+      return ['chat', 'input_image'].includes(value);
+    if (['openai', 'openai_compatible'].includes(protocol))
+      return value !== 'input_video';
+    return true;
+  }),
+);
 async function load() {
   loading.value = true;
   try {
@@ -476,9 +485,6 @@ async function initSortables() {
       </Card>
     </section>
     <Tabs v-model:active-key="active">
-      <TabPane key="playground" tab="体验测试">
-        <Playground :models="models" />
-      </TabPane>
       <TabPane key="providers" tab="Provider">
         <Space class="toolbar">
           <Select
@@ -837,7 +843,7 @@ async function initSortables() {
                 :disabled="
                   editingProviderIsJimeng || editingProviderCapabilitiesLocked
                 "
-                :options="capabilityOptions"
+                :options="editingCapabilityOptions"
               />
             </FormItem>
             <FormItem label="输入/百万 Token">

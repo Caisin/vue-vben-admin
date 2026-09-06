@@ -1,6 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { resolveFileAccessUrl } from '#/api/storage/file-url';
+
+import { StorageFileApi } from './file';
+
+const { download } = vi.hoisted(() => ({ download: vi.fn() }));
+vi.mock('#/api/request', () => ({
+  apiURL: '/api',
+  plaintextRequestClient: { download },
+  requestClient: {},
+}));
+
+it('downloads protected plaintext binary content without KxEd decoding', async () => {
+  const blob = new Blob(['media']);
+  download.mockResolvedValue(blob);
+  expect(await StorageFileApi.download(7)).toBe(blob);
+  expect(download).toHaveBeenCalledWith('/storage/file/content/7');
+});
 
 describe('resolveFileAccessUrl', () => {
   it('prefixes backend-relative local file routes with the configured API base', () => {

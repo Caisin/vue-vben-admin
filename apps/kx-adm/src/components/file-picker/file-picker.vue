@@ -735,7 +735,11 @@ defineExpose<FilePickerExpose>({ close, open });
             :options="available_upload_mode_options"
             placeholder="上传方式"
           />
-          <Button :disabled="!active_storage_code" @click="openConvertUrl">
+          <Button
+            v-if="!adapter || adapter.convertRemote"
+            :disabled="!active_storage_code"
+            @click="openConvertUrl"
+          >
             <template #icon>
               <IconifyIcon icon="lucide:link" />
             </template>

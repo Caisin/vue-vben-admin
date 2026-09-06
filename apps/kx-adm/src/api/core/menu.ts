@@ -44,6 +44,14 @@ function toRoute(
 ): RouteRecordStringComponent {
   const route: any = {
     meta: {
+      // 创作会话通过 query 定位，但切换会话不创建新的页签或组件实例。
+      fullPathKey: [
+        '/aigc-gateway/chat',
+        '/aigc-gateway/image',
+        '/aigc-gateway/video',
+      ].includes(item.component)
+        ? false
+        : undefined,
       affixTab: item.meta.affix_tab ?? undefined,
       authority: item.meta.authority ?? undefined,
       badge: item.meta.badge ?? undefined,

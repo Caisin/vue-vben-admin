@@ -161,7 +161,7 @@ export const StorageFileApi = {
     return Promise.all(result.map((item) => resolveFileAccessView(item)));
   },
   download: (id: number | string) =>
-    requestClient.download<Blob>(`/storage/file/content/${id}`),
+    plaintextRequestClient.download<Blob>(`/storage/file/content/${id}`),
   remove: (id: number | string) =>
     requestClient.delete<boolean>(`/storage/file/${id}`),
 };

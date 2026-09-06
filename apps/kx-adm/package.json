@@ -32,6 +32,8 @@
     "#/*": "./src/*"
   },
   "dependencies": {
+    "markdown-it": "catalog:",
+    "highlight.js": "catalog:",
     "@codemirror/lang-json": "catalog:",
     "@codemirror/lang-sql": "catalog:",
     "@codemirror/state": "catalog:",
@@ -73,6 +75,7 @@
     "vue-router": "catalog:"
   },
   "devDependencies": {
+    "@types/markdown-it": "catalog:",
     "@playwright/test": "catalog:",
     "@types/json-bigint": "catalog:"
   }
