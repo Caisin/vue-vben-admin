@@ -49,6 +49,7 @@ export interface Binding {
   fields: FieldMapping[];
 }
 export interface SyncConfig {
+  receipt_database?: null | string;
   mode: 'full_table' | 'id_and_time' | 'id_append' | 'time_window';
   window?: null | {
     immutable_time_confirmed: boolean;
@@ -92,6 +93,8 @@ export interface Job extends Omit<JobWrite, 'config'> {
   last_error?: null | string;
 }
 export interface SchemaPlan {
+  receipt_database?: null | string;
+  previous_receipt_database?: null | string;
   primary_key_column: null | string;
   schema_hash: string;
   ddl: string;
@@ -208,8 +211,14 @@ export const DataSyncApi = {
     keyword?: string;
     warehouse?: null | string;
   }) => requestClient.post<MetadataOptions>(`${root}/target-databases`, data),
-  jobs: (params?: PageQuery & { keyword?: string }) =>
-    requestClient.get<Page<Job>>(`${root}/jobs`, { params }),
+  jobs: (
+    params?: PageQuery & {
+      keyword?: string;
+      target_database?: string;
+      target_ds_code?: string;
+      target_table?: string;
+    },
+  ) => requestClient.get<Page<Job>>(`${root}/jobs`, { params }),
   detail: (id: number) => requestClient.get<JobDetail>(`${root}/jobs/${id}`),
   save: (data: JobWrite, id?: number) =>
     id

@@ -97,6 +97,10 @@ test('原生安装先检测已有软件，接管需明确勾选且保存包配�
       result = {
         installed: true,
         manager: 'brew',
+        service_manager: 'launchd',
+        service_name: 'homebrew.mxcl.mysql@8.4',
+        service_config_path:
+          '/Users/operator/Library/LaunchAgents/homebrew.mxcl.mysql@8.4.plist',
         binary_path: '/opt/homebrew/opt/mysql@8.4/bin/mysqld',
         version_output: 'mysqld Ver 8.4.6',
         service_status: 'mysql@8.4:started',
@@ -141,6 +145,7 @@ test('原生安装先检测已有软件，接管需明确勾选且保存包配�
   await expect(
     dialog.getByText('mysqld Ver 8.4.6', { exact: true }),
   ).toBeVisible();
+  await expect(dialog.getByText('launchd', { exact: true })).toBeVisible();
   await expect(adopt).not.toBeChecked();
   await page.screenshot({
     path: info.outputPath('software-package-desktop.png'),

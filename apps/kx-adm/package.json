@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@codemirror/lang-json": "catalog:",
+    "@codemirror/lang-sql": "catalog:",
     "@codemirror/state": "catalog:",
     "@codemirror/theme-one-dark": "catalog:",
     "@editorjs/checklist": "catalog:",
@@ -67,6 +68,7 @@
     "dayjs": "catalog:",
     "json-bigint": "catalog:",
     "pinia": "catalog:",
+    "sql-formatter": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },

@@ -60,6 +60,9 @@ export interface ServerProbe {
 }
 
 export interface SoftwareDetection {
+  service_manager?: string;
+  service_name?: string;
+  service_config_path?: string;
   installed: boolean;
   manager: string;
   binary_path: string;

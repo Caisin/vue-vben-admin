@@ -59,6 +59,8 @@ for (const readonly of [false, true]) {
       last_error: failed ? 'data_sync_commit_unknown' : null,
     });
     let databaseSaved = false;
+    let databaseSaveCount = 0;
+    let expanded = false;
     const initialBinding = config.sources[0];
     if (!initialBinding) throw new Error('缺少源测试数据');
     let failWarehouseNext = false;
@@ -122,7 +124,48 @@ for (const readonly of [false, true]) {
         ],
       },
     };
+    for (const target of [
+      ...Array.from({ length: 23 }, (_, i) => `lookup_${i}`),
+      'orders_archive',
+    ]) {
+      database.config.tables.push({
+        target_table: target,
+        confirmed: true,
+        excluded_reason: null,
+        config: {
+          ...config,
+          mode: 'full_table',
+          sources: [
+            {
+              ...initialBinding,
+              table: target,
+              id_column: null,
+              updated_column: null,
+            },
+          ],
+        },
+      });
+    }
+    database.total_tables = database.config.tables.length;
+    database.failed_tables = 2;
+    database.last_error = 'data_sync_database_tables_failed';
+    database.plan = ['orders', 'orders_archive'].map((target_table) => ({
+      target_table,
+      state: 'failed',
+      error: 'data_sync_reserved_column',
+      job_id: null,
+      revision_id: null,
+      plan_hash: null,
+    }));
     const instances = [
+      {
+        code: 'shop_west_01',
+        ds_code: 'pg',
+        name: '华西门店',
+        enabled: true,
+        version: 1,
+        allow_insecure: false,
+      },
       {
         code: 'shop_east_01',
         ds_code: 'pg',
@@ -262,13 +305,18 @@ for (const readonly of [false, true]) {
           else if (path === '/data-sync/databases/10' && method === 'PUT') {
             const req = requestBody(route.request());
             expect(req.tables[0].config.mode).toBe('full_table');
-            expect(
-              req.tables.every(
-                (table: { confirmed: boolean }) => table.confirmed,
-              ),
-            ).toBe(true);
+            if (!expanded)
+              expect(
+                req.tables.every(
+                  (table: { confirmed: boolean }) => table.confirmed,
+                ),
+              ).toBe(databaseSaveCount > 0);
+            databaseSaveCount++;
             expect(req.tables[0].config.sources[0].id_column).toBeNull();
             expect(req.tables[1].config.mode).toBe('id_and_time');
+            expect(req.tables).toHaveLength(expanded ? 27 : 26);
+            expect(req.tables[1].config.limits.max_rows).toBe(2500);
+            expect(req.tables[1].existing_job_id).toBe(1);
             expect(req.warehouse).toBe('query one');
             database.config = req;
             database.version++;
@@ -278,19 +326,43 @@ for (const readonly of [false, true]) {
           else if (path === '/data-sync/databases/10/schedule') result = null;
           else if (path.startsWith('/data-sync/databases/10/tasks/'))
             result = { id: database.last_task_id, status: 'succeeded' };
-          else if (path === '/data-sync/databases/10/inspect') {
+          else if (path === '/data-sync/databases/10/discover') {
+            expanded = true;
+            database.last_task_id = 94;
+            database.state = 'draft';
+            database.plan = [];
+            database.plan_hash = null;
+            database.config.tables = database.config.tables.map((table) => ({
+              ...table,
+              confirmed: false,
+              config: {
+                ...table.config,
+                sources: [
+                  ...table.config.sources,
+                  { ...table.config.sources[0], instance_code: 'shop_west_01' },
+                ],
+              },
+            }));
+            result = { id: 94, status: 'succeeded' };
+          } else if (path === '/data-sync/databases/10/inspect') {
             database.state = 'validated';
             database.plan_hash = 'database-approved';
             database.completed_tables = 2;
+            database.last_error = null;
+            database.failed_tables = 0;
             database.last_task_id = 91;
-            database.plan = database.config.tables.map((t) => ({
-              target_table: t.target_table,
-              job_id: 1,
-              revision_id: 1,
-              plan_hash: 'table-approved',
-              state: 'succeeded',
-              error: null,
-            }));
+            database.plan = database.config.tables.map((t) => {
+              let state = t.confirmed ? 'succeeded' : 'unconfirmed';
+              if (t.excluded_reason !== null) state = 'excluded';
+              return {
+                target_table: t.target_table,
+                job_id: 1,
+                revision_id: 1,
+                plan_hash: 'table-approved',
+                state,
+                error: null,
+              };
+            });
             result = { id: 91, status: 'succeeded' };
           } else if (path === '/data-sync/databases/10/activate') {
             database.state = 'ready';
@@ -515,6 +587,86 @@ for (const readonly of [false, true]) {
       fullPage: true,
     });
     await page.mouse.move(0, 0);
+    const tableSearch = databaseEditor.getByRole('textbox', {
+      name: '搜索逐表同步策略',
+    });
+    const strategies = databaseEditor.locator('.strategy-table');
+    const strategyRows = strategies.locator('tbody tr[data-row-key]');
+    await strategies.locator('.ant-pagination-item-2').click();
+    await expect(strategyRows).toHaveCount(6);
+    await tableSearch.fill(' 系统参数 ');
+    await expect(strategyRows).toHaveCount(1);
+    await expect(strategyRows).toContainText('parameters');
+    await tableSearch.fill('不存在的表');
+    await expect(strategyRows).toHaveCount(0);
+    await expect(strategies).toContainText('没有匹配的表');
+    await tableSearch.fill('ORDERS');
+    await expect(strategyRows).toHaveCount(2);
+    if (!readonly) {
+      await strategyRows.first().getByRole('checkbox').first().check();
+      await expect(
+        databaseEditor.getByRole('button', { name: '应用到所选表' }),
+      ).toBeEnabled();
+    }
+    await tableSearch.fill('同步标识重名');
+    if (!readonly)
+      await expect(
+        databaseEditor.getByRole('button', { name: '应用到所选表' }),
+      ).toBeDisabled();
+    await expect(strategyRows).toHaveCount(2);
+    await tableSearch.fill('');
+    await databaseEditor.getByRole('checkbox', { name: /仅看错误表/ }).check();
+    await expect(strategyRows).toHaveCount(2);
+    await databaseEditor
+      .getByRole('button', { name: '定位错误表 orders', exact: true })
+      .click();
+    await expect(tableSearch).toHaveValue('orders');
+    await expect(strategyRows).toHaveCount(1);
+    await expect(strategyRows).toHaveAttribute('data-row-key', 'orders');
+    await expect(
+      databaseEditor.getByRole('heading', { name: '逐表同步策略' }),
+    ).toBeInViewport();
+    if (!readonly) {
+      await strategyRows
+        .getByRole('button', { name: '配置', exact: true })
+        .click();
+      const tableEditor = page.getByRole('dialog', {
+        name: 'orders',
+        exact: true,
+      });
+      await expect(tableEditor.getByRole('alert')).toContainText(
+        '同步标识重名',
+      );
+      await tableEditor.getByRole('combobox', { name: '已有同步任务' }).click();
+      await page.getByTitle('订单汇总 (#1)', { exact: true }).click();
+      await expect(
+        tableEditor.getByRole('button', { name: '确认本表配置' }),
+      ).toBeEnabled();
+      await tableEditor
+        .locator('label')
+        .filter({ hasText: '每批最多行数' })
+        .getByRole('spinbutton')
+        .fill('2500');
+      await tableEditor.getByRole('button', { name: '确认本表配置' }).click();
+      await expect(tableEditor).not.toBeVisible();
+      await expect(strategyRows).toHaveCount(1);
+    }
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await tableSearch.scrollIntoViewIfNeeded();
+      await expect(tableSearch).toBeInViewport({ ratio: 1 });
+      await expect(
+        databaseEditor.getByRole('checkbox', { name: /仅看错误表/ }),
+      ).toBeInViewport({ ratio: 1 });
+      await page.screenshot({
+        path: testInfo.outputPath(`strategy-error-search-${width}.png`),
+        fullPage: true,
+      });
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await databaseEditor.getByRole('button', { name: '清除表筛选' }).click();
+    await expect(strategyRows).toHaveCount(20);
+    expect(databaseSaved).toBe(false);
     if (readonly) {
       await expect(
         databaseEditor.getByRole('button', { name: '全部确认', exact: true }),
@@ -537,6 +689,26 @@ for (const readonly of [false, true]) {
       await expect(databaseEditor.locator('.warehouse-selector')).toContainText(
         'query one',
       );
+      await databaseEditor
+        .getByRole('button', { name: '保存配置', exact: true })
+        .click();
+      await expect.poll(() => databaseSaveCount).toBe(1);
+      await databaseEditor
+        .getByRole('button', { name: '检查已确认表' })
+        .click();
+      await expect(
+        databaseEditor.getByRole('button', { name: '确认建表并启用' }),
+      ).toBeEnabled();
+      expect(
+        database.plan.find((row) => row.target_table === 'parameters')?.state,
+      ).toBe('unconfirmed');
+      await databaseEditor
+        .getByRole('button', { name: '确认建表并启用' })
+        .click();
+      await databaseEditor
+        .getByRole('button', { name: '同步已确认表' })
+        .click();
+      await expect.poll(() => database.last_task_id).toBe(93);
       await databaseEditor
         .getByRole('button', { name: '全部确认', exact: true })
         .click();
@@ -564,6 +736,67 @@ for (const readonly of [false, true]) {
         .getByRole('button', { name: '立即同步全库' })
         .click();
       await expect.poll(() => database.last_task_id).toBe(93);
+    }
+    if (!readonly) {
+      await databaseEditor.getByRole('button', { name: '添加源范围' }).click();
+      const scope = databaseEditor.locator('.scope-row').last();
+      await scope.getByRole('combobox').first().click();
+      await page.getByTitle('华西门店 (shop_west_01)', { exact: true }).click();
+      await scope.getByRole('combobox').last().click();
+      await page.locator('.ant-select-item-option[title="public"]').click();
+      await databaseEditor
+        .getByRole('button', { name: '保存配置', exact: true })
+        .click();
+      await databaseEditor
+        .getByRole('button', { name: '发现源表', exact: true })
+        .click();
+      await expect.poll(() => expanded).toBe(true);
+      await tableSearch.fill('orders');
+      await strategies
+        .locator('tr[data-row-key="orders"]')
+        .getByRole('button', { name: '配置', exact: true })
+        .click();
+      const tableEditor = page.getByRole('dialog', {
+        name: 'orders',
+        exact: true,
+      });
+      const splitButtons = tableEditor.getByRole('button', {
+        name: '拆为独立目标表',
+      });
+      await expect(splitButtons).toHaveCount(2);
+      await expect(splitButtons.first()).toBeDisabled();
+      await expect(splitButtons.last()).toBeEnabled();
+      await splitButtons.last().click();
+      await tableEditor.getByRole('button', { name: /取\s*消/ }).click();
+      await expect(
+        strategies.locator('tr[data-row-key="orders_shop_west_01"]'),
+      ).toHaveCount(0);
+      await strategies
+        .locator('tr[data-row-key="orders"]')
+        .getByRole('button', { name: '配置', exact: true })
+        .click();
+      await tableEditor
+        .getByRole('button', { name: '拆为独立目标表' })
+        .last()
+        .click();
+      await tableEditor.getByRole('button', { name: '确认本表配置' }).click();
+      await expect(
+        strategies.locator('tr[data-row-key="orders_shop_west_01"]'),
+      ).toHaveCount(1);
+      await databaseEditor
+        .getByRole('button', { name: '保存配置', exact: true })
+        .click();
+      expect(database.config.sources).toHaveLength(2);
+      expect(
+        database.config.tables.find((table) => table.target_table === 'orders')
+          ?.config.sources,
+      ).toHaveLength(1);
+      expect(
+        database.config.tables.find(
+          (table) => table.target_table === 'orders_shop_west_01',
+        )?.confirmed,
+      ).toBe(false);
+      await databaseEditor.getByRole('button', { name: '清除表筛选' }).click();
     }
     for (const viewport of [
       { width: 1280, height: 800 },
@@ -772,6 +1005,32 @@ for (const readonly of [false, true]) {
     await expect(
       page.getByText('9007199254740993', { exact: true }).first(),
     ).toBeVisible();
+    await page.getByRole('tab', { name: '字段与建表计划' }).click();
+    const ddl = page.getByRole('textbox', { name: '目标 DDL SQL' });
+    await ddl.scrollIntoViewIfNeeded();
+    await expect(ddl).toHaveAttribute('aria-readonly', 'true');
+    await expect.poll(() => ddl.locator('.cm-line').count()).toBeGreaterThan(3);
+    await expect
+      .poll(() => ddl.locator('span[class]').count())
+      .toBeGreaterThan(0);
+    await page
+      .context()
+      .grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.getByRole('button', { name: '复制 SQL' }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toContain('CREATE TABLE');
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await ddl.scrollIntoViewIfNeeded();
+      await expect(ddl).toBeInViewport({ ratio: 1 });
+      await page.screenshot({
+        path: testInfo.outputPath(`formatted-ddl-${width}.png`),
+        fullPage: true,
+      });
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByRole('tab', { name: '水位与运行' }).click();
     if (readonly) {
       await expect(page.getByRole('button', { name: '检查结构' })).toHaveCount(
         0,

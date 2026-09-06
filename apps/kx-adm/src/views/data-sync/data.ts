@@ -34,6 +34,7 @@ export function setStrategy(config: SyncConfig, mode: SyncConfig['mode']) {
 }
 
 export const states: Record<string, string> = {
+  superseded: '已由原任务替代',
   draft: '草稿',
   validated: '已检查',
   active: '已启用',
@@ -89,6 +90,7 @@ export function jobForm(detail?: JobDetail): JobWrite {
     warehouse: null,
     allow_insecure: true,
     config: {
+      receipt_database: '_kx_sync_meta',
       mode: 'id_and_time',
       storage_code: '',
       sources: [newBinding()],

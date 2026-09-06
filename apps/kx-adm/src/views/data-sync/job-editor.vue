@@ -95,6 +95,8 @@ watch(
   { immediate: true },
 );
 async function save() {
+  form.value.config.receipt_database =
+    form.value.config.receipt_database?.trim() || null;
   submitted.value = true;
   const invalid = validateForm(form.value);
   if (invalid) {
@@ -184,6 +186,10 @@ function addSource() {
             class="text-xs text-red-500"
             role="alert"
             >请填写目标表名</span></label>
+        <label>回执数据库<Input
+            v-model:value="form.config.receipt_database"
+            placeholder="_kx_sync_meta"
+        /></label>
         <label>计算仓库<WarehouseSelect
             v-model:value="form.warehouse"
             :ds-code="form.target_ds_code"

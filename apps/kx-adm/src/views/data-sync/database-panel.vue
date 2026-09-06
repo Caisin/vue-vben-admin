@@ -6,7 +6,7 @@ import type {
   DatabaseWrite,
 } from '#/api/data-sync-database';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { createIconifyIcon, Plus } from '@vben/icons';
@@ -36,7 +36,10 @@ import { setStrategy, states, strategyOptions } from './data';
 import {
   confirmAllTables,
   databaseErrorText,
+  databaseTableError,
+  filterDatabaseTables,
   sourceTableLabels,
+  splitDatabaseTableSource,
   validateDatabaseTable,
 } from './database-data';
 import MetadataSelect from './metadata-select.vue';
@@ -54,6 +57,8 @@ const route = useRoute();
 const Refresh = createIconifyIcon('lucide:refresh-cw');
 const Trash = createIconifyIcon('lucide:trash-2');
 const CheckCheck = createIconifyIcon('lucide:check-check');
+const Search = createIconifyIcon('lucide:search');
+const FilterX = createIconifyIcon('lucide:filter-x');
 const rows = ref<DatabaseSync[]>([]);
 const pagination = reactive({ current: 1, pageSize: 20, total: 0 });
 const selected = ref<DatabaseSync>();
@@ -66,13 +71,47 @@ const stores = ref<{ label: string; value: string }[]>([]);
 const selectedTables = ref<string[]>([]);
 const bulkMode = ref<SyncConfig['mode']>('full_table');
 const editing = ref<DatabaseTable>();
+const activeSourceCodes = ref<null | string[]>(null);
+const separatedTables = ref<DatabaseTable[]>([]);
+const linkingJob = ref(false);
 const editingIndex = ref(-1);
 const taskPending = ref<number>();
 const taskError = ref('');
-const failedTables = computed(
+const tableKeyword = ref('');
+const onlyErrors = ref(false);
+const locatedTable = ref<string>();
+const tablePage = ref(1);
+const strategiesHeading = ref<HTMLElement>();
+const plansByTable = computed(
+  () => new Map(selected.value?.plan.map((row) => [row.target_table, row])),
+);
+const visibleTables = computed(() =>
+  filterDatabaseTables(form.value.tables, plansByTable.value, {
+    keyword: tableKeyword.value,
+    onlyErrors: onlyErrors.value,
+    target: locatedTable.value,
+  }),
+);
+const errorTableCount = computed(
   () =>
-    selected.value?.plan.filter((row) => row.state === 'failed' && row.error) ??
-    [],
+    form.value.tables.filter((table) =>
+      databaseTableError(table, plansByTable.value.get(table.target_table)),
+    ).length,
+);
+watch([tableKeyword, onlyErrors, locatedTable], () => {
+  tablePage.value = 1;
+  selectedTables.value = [];
+});
+watch(visibleTables, (tables) => {
+  tablePage.value = Math.min(
+    tablePage.value,
+    Math.max(1, Math.ceil(tables.length / 20)),
+  );
+  const visible = new Set(tables.map((table) => table.target_table));
+  selectedTables.value = selectedTables.value.filter((key) => visible.has(key));
+});
+const failedTables = computed(
+  () => selected.value?.plan.filter((row) => row.state === 'failed') ?? [],
 );
 const schedule = reactive({
   cron_expr: '0 0 * * * *',
@@ -98,7 +137,9 @@ const targetKey = computed(() =>
     : '',
 );
 const counts = computed(() => ({
-  included: form.value.tables.filter((t) => t.excluded_reason === null).length,
+  confirmed: form.value.tables.filter(
+    (t) => t.confirmed && t.excluded_reason === null,
+  ).length,
   excluded: form.value.tables.filter((t) => t.excluded_reason !== null).length,
   pending: form.value.tables.filter(
     (t) => !t.confirmed && t.excluded_reason === null,
@@ -114,6 +155,7 @@ const tableColumns = [
 ];
 function blank(): DatabaseWrite {
   return {
+    receipt_database: '_kx_sync_meta',
     name: '',
     target_ds_code: '',
     target_database: '',
@@ -178,6 +220,8 @@ async function show(record?: DatabaseSync) {
   form.value.version = selected.value?.version;
   dirty.value = false;
   selectedTables.value = [];
+  resetTableFilters();
+  tablePage.value = 1;
   open.value = true;
   taskPending.value = undefined;
   taskError.value = '';
@@ -225,8 +269,11 @@ async function save() {
   }
   busy.value = true;
   try {
-    for (const table of form.value.tables)
+    form.value.receipt_database = form.value.receipt_database?.trim() || null;
+    for (const table of form.value.tables) {
       table.config.storage_code = form.value.storage_code;
+      table.config.receipt_database = form.value.receipt_database;
+    }
     const current = await DatabaseSyncApi.save(
       { ...copy(form.value), version: selected.value?.version },
       selected.value?.id,
@@ -289,12 +336,127 @@ function confirmAll() {
     message.success(`已确认 ${result.confirmed} 张表，请保存配置`);
   }
 }
-function editTable(table: DatabaseTable) {
+async function editTable(table: DatabaseTable) {
+  linkingJob.value = false;
   editingIndex.value = form.value.tables.indexOf(table);
   editing.value = copy(table);
+  separatedTables.value = [];
+  activeSourceCodes.value = null;
+  const current = editing.value;
+  try {
+    let jobId = planRow(table)?.job_id ?? table.existing_job_id;
+    if (!jobId && selected.value) {
+      const jobs = await DataSyncApi.jobs({
+        size: 100,
+        target_database: form.value.target_database,
+        target_table: table.target_table,
+      });
+      jobId = jobs.items.find(
+        (job) =>
+          job.database_id === selected.value?.id && job.state !== 'superseded',
+      )?.id;
+    }
+    if (editing.value !== current) return;
+    if (!jobId) {
+      activeSourceCodes.value = [];
+      return;
+    }
+    const detail = await DataSyncApi.detail(jobId);
+    if (editing.value === current)
+      activeSourceCodes.value =
+        detail.active?.config.sources.map((source) => source.instance_code) ??
+        [];
+  } catch {
+    if (editing.value === current) message.error('读取已启用源绑定失败');
+  }
+}
+async function existingJobs(keyword: string) {
+  const result = await DataSyncApi.jobs({
+    size: 100,
+    keyword,
+    target_database: form.value.target_database,
+    target_table: editing.value?.target_table,
+  });
+  return {
+    items: result.items
+      .filter(
+        (job) =>
+          job.state !== 'superseded' &&
+          (!job.database_id || job.database_id === selected.value?.id),
+      )
+      .map((job) => ({
+        value: String(job.id),
+        label: `${job.name} (#${job.id})`,
+      })),
+    has_more: result.total > 100,
+  };
+}
+async function linkJob(value: string) {
+  const table = editing.value;
+  if (!table) return;
+  if (!value) {
+    table.existing_job_id = null;
+    return;
+  }
+  linkingJob.value = true;
+  try {
+    const detail = await DataSyncApi.detail(Number(value));
+    if (editing.value !== table) return;
+    const config = detail.draft?.config ?? detail.active?.config;
+    if (
+      !config ||
+      detail.job.target_database !== form.value.target_database ||
+      detail.job.target_table !== table.target_table
+    ) {
+      message.warning('已有任务目标不匹配');
+      return;
+    }
+    const identity = (source: SyncConfig['sources'][number]) =>
+      JSON.stringify([source.instance_code, source.schema, source.table]);
+    if (
+      !config.sources.every((source) =>
+        table.config.sources.some(
+          (next) => identity(next) === identity(source),
+        ),
+      )
+    ) {
+      message.warning('已有任务源实例或源表范围不一致');
+      return;
+    }
+    table.existing_job_id = detail.job.id;
+    const extra = table.config.sources.filter(
+      (source) =>
+        !config.sources.some(
+          (old) => old.instance_code === source.instance_code,
+        ),
+    );
+    table.config = copy(config);
+    table.config.sources.push(...extra);
+    activeSourceCodes.value =
+      detail.active?.config.sources.map((source) => source.instance_code) ?? [];
+    table.confirmed = true;
+  } catch {
+    if (editing.value === table) message.error('读取已有任务失败');
+  } finally {
+    if (editing.value === table) linkingJob.value = false;
+  }
+}
+function separateSource(instance: string) {
+  if (!editing.value || !activeSourceCodes.value) return;
+  const target = `${editing.value.target_table}_${instance}`
+    .replaceAll('-', '_')
+    .slice(0, 128);
+  const result = splitDatabaseTableSource(
+    editing.value,
+    instance,
+    activeSourceCodes.value,
+    target,
+  );
+  editing.value = result.main;
+  separatedTables.value.push(result.separate);
 }
 function saveTable() {
-  if (!editing.value) return;
+  if (!editing.value || linkingJob.value) return;
   let invalid: string | undefined;
   if (editing.value.excluded_reason === null) {
     invalid = validateDatabaseTable(form.value, editing.value);
@@ -305,16 +467,53 @@ function saveTable() {
     message.warning(invalid);
     return;
   }
+  const targets = new Set(
+    form.value.tables
+      .filter((_, index) => index !== editingIndex.value)
+      .map((table) => table.target_table),
+  );
+  for (const table of [editing.value, ...separatedTables.value]) {
+    if (
+      !/^[A-Z_a-z][\w]{0,127}$/.test(table.target_table) ||
+      targets.has(table.target_table)
+    ) {
+      message.warning('目标表名不合法或重复');
+      return;
+    }
+    targets.add(table.target_table);
+  }
   editing.value.confirmed = true;
   editing.value.suggestion_error = null;
+  if (
+    locatedTable.value === form.value.tables[editingIndex.value]?.target_table
+  ) {
+    locatedTable.value = editing.value.target_table;
+    tableKeyword.value = editing.value.target_table;
+  }
   form.value.tables[editingIndex.value] = copy(editing.value);
+  form.value.tables.push(...copy(separatedTables.value));
   dirty.value = true;
   editing.value = undefined;
 }
 function planRow(table: DatabaseTable) {
-  return selected.value?.plan.find(
-    (p) => p.target_table === table.target_table,
-  );
+  return plansByTable.value.get(table.target_table);
+}
+function searchTables(value: string) {
+  locatedTable.value = undefined;
+  tableKeyword.value = value;
+}
+function resetTableFilters() {
+  tableKeyword.value = '';
+  onlyErrors.value = false;
+  locatedTable.value = undefined;
+}
+async function locateTable(target: string) {
+  onlyErrors.value = false;
+  tableKeyword.value = target;
+  locatedTable.value = target;
+  tablePage.value = 1;
+  await nextTick();
+  strategiesHeading.value?.scrollIntoView({ block: 'start' });
 }
 async function viewJob(table: DatabaseTable) {
   const id = planRow(table)?.job_id;
@@ -442,15 +641,32 @@ const polling = useTaskPolling({
       @close="open = false"
     >
       <Alert
-        v-if="taskError || selected?.last_error"
+        v-if="taskError || selected?.last_error || failedTables.length"
         type="error"
         show-icon
-        :message="databaseErrorText(taskError || selected?.last_error || '')"
+        :message="
+          databaseErrorText(
+            taskError ||
+              selected?.last_error ||
+              'data_sync_database_tables_failed',
+          )
+        "
         class="mb-4"
       >
         <template v-if="failedTables.length" #description>
-          <div v-for="row in failedTables" :key="row.target_table">
-            {{ row.target_table }}：{{ databaseErrorText(row.error || '') }}
+          <div
+            v-for="row in failedTables"
+            :key="row.target_table"
+            class="failed-table"
+          >
+            <Button
+              type="link"
+              class="failed-table-link"
+              :aria-label="`定位错误表 ${row.target_table}`"
+              @click="locateTable(row.target_table)"
+            >
+              {{ row.target_table }}
+</Button>：{{ databaseErrorText(row.error || '检查或执行失败') }}
           </div>
         </template>
       </Alert>
@@ -473,10 +689,12 @@ const polling = useTaskPolling({
         </Button>
         <Button
           v-if="configure"
-          :disabled="!selected || !canEdit || dirty || !form.tables.length"
+          :disabled="!selected || !canEdit || dirty || !counts.confirmed"
           @click="dispatch('inspect')"
         >
-          检查所有表
+          {{
+            counts.pending || counts.excluded ? '检查已确认表' : '检查所有表'
+          }}
         </Button>
         <Button
           v-if="configure"
@@ -490,7 +708,9 @@ const polling = useTaskPolling({
           :disabled="selected?.state !== 'ready' || dirty || busy"
           @click="dispatch('sync')"
         >
-          立即同步全库
+          {{
+            counts.pending || counts.excluded ? '同步已确认表' : '立即同步全库'
+          }}
         </Button>
         <Button
           v-if="
@@ -562,6 +782,12 @@ const polling = useTaskPolling({
                     keyword,
                   })
               "
+              @change="dirty = true"
+          /></label>
+          <label class="field">回执数据库<Input
+              v-model:value="form.receipt_database"
+              placeholder="_kx_sync_meta"
+              :disabled="!canEdit"
               @change="dirty = true"
           /></label>
           <label class="field">计算仓库<WarehouseSelect
@@ -644,9 +870,34 @@ const polling = useTaskPolling({
           <Plus class="size-4" />添加源范围
         </Button>
       </fieldset>
-      <h3>逐表同步策略</h3>
+      <h3 ref="strategiesHeading">逐表同步策略</h3>
+      <div class="toolbar table-filters">
+        <Input
+          :value="tableKeyword"
+          allow-clear
+          aria-label="搜索逐表同步策略"
+          placeholder="源表、目标表、备注或错误原因"
+          class="table-search"
+          @update:value="searchTables"
+        >
+          <template #prefix><Search class="size-4" /></template>
+        </Input>
+        <Checkbox v-model:checked="onlyErrors">
+          仅看错误表（{{ errorTableCount }}）
+        </Checkbox>
+        <Tooltip title="清除表筛选" :z-index="2500">
+          <Button
+            aria-label="清除表筛选"
+            :disabled="!tableKeyword && !onlyErrors && !locatedTable"
+            @click="resetTableFilters"
+          >
+            <FilterX class="size-4" />
+          </Button>
+        </Tooltip>
+        <span role="status">显示 {{ visibleTables.length }} / {{ form.tables.length }} 张表</span>
+      </div>
       <div class="toolbar">
-        <span>包含 {{ counts.included }} · 排除 {{ counts.excluded }} · 待确认
+        <span>参与 {{ counts.confirmed }} · 排除 {{ counts.excluded }} · 待确认跳过
           {{ counts.pending }}</span><template v-if="configure">
           <Button :disabled="!canEdit || !counts.pending" @click="confirmAll">
             <CheckCheck class="size-4" />全部确认
@@ -665,11 +916,20 @@ const polling = useTaskPolling({
         </template>
       </div>
       <Table
-        :data-source="form.tables"
+        :data-source="visibleTables"
+        class="strategy-table"
         row-key="target_table"
         :columns="tableColumns"
         :scroll="{ x: 1100 }"
-        :pagination="{ pageSize: 20, showSizeChanger: false }"
+        :pagination="{
+          current: tablePage,
+          pageSize: 20,
+          showSizeChanger: false,
+        }"
+        :locale="{
+          emptyText: form.tables.length ? '没有匹配的表' : '暂无源表',
+        }"
+        @change="(p) => (tablePage = p.current ?? 1)"
         :row-selection="
           configure
             ? {
@@ -715,13 +975,10 @@ const polling = useTaskPolling({
           <span v-else-if="column.key === 'state'">{{
             record.excluded_reason !== null
               ? `排除：${record.excluded_reason}`
-              : (planRow(record)?.error ??
-                (planRow(record)?.state !== 'succeeded'
-                  ? record.suggestion_error
-                  : null) ??
+              : databaseTableError(record, planRow(record)) ||
                 (record.confirmed
                   ? (states[planRow(record)?.state ?? ''] ?? '待检查')
-                  : '待确认策略'))
+                  : '未确认，暂不执行')
           }}</span>
           <div v-else-if="column.key === 'actions'" class="toolbar">
             <Button
@@ -773,10 +1030,41 @@ const polling = useTaskPolling({
       :width="1000"
       :z-index="2400"
       ok-text="确认本表配置"
+      :ok-button-props="{ disabled: linkingJob }"
       @ok="saveTable"
       @cancel="editing = undefined"
     >
-      <div v-if="editing" class="table-editor">
+      <fieldset
+        v-if="editing"
+        :disabled="linkingJob"
+        :inert="linkingJob"
+        class="table-editor configuration"
+      >
+        <label class="field mb-4">关联已有同步任务<MetadataSelect
+            :value="
+              editing.existing_job_id ? String(editing.existing_job_id) : ''
+            "
+            label="已有同步任务"
+            allow-clear
+            :disabled="linkingJob"
+            :context-key="
+              JSON.stringify([
+                form.target_ds_code,
+                form.target_database,
+                editing.target_table,
+              ])
+            "
+            :load="existingJobs"
+            placeholder="不关联，检查时创建任务"
+            @change="linkJob"
+        /></label>
+        <Alert
+          v-if="databaseTableError(editing, planRow(editing))"
+          type="error"
+          show-icon
+          class="mb-4"
+          :message="databaseTableError(editing, planRow(editing))"
+        />
         <Checkbox
           :checked="editing.excluded_reason !== null"
           @change="
@@ -799,6 +1087,17 @@ const polling = useTaskPolling({
             :key="source.instance_code"
           >
             <h3>{{ source.instance_code }}</h3>
+            <Button
+              v-if="editing.config.sources.length > 1"
+              size="small"
+              :disabled="
+                !activeSourceCodes ||
+                activeSourceCodes.includes(source.instance_code)
+              "
+              @click="separateSource(source.instance_code)"
+            >
+              拆为独立目标表
+            </Button>
             <SourceFields
               :source="source"
               @update:source="
@@ -808,6 +1107,15 @@ const polling = useTaskPolling({
               :mode="editing.config.mode"
               :active="!!editing"
             />
+          </div>
+          <div v-if="separatedTables.length" class="fields">
+            <label
+              v-for="table in separatedTables"
+              :key="table.config.sources[0]?.instance_code"
+              class="field"
+              >{{ table.config.sources[0]?.instance_code }} 独立目标表<Input
+                v-model:value="table.target_table"
+            /></label>
           </div>
           <div class="fields">
             <label class="field">每批最多行数<InputNumber
@@ -837,11 +1145,29 @@ const polling = useTaskPolling({
             /></label>
           </div>
         </template>
-      </div>
+      </fieldset>
     </Modal>
   </div>
 </template>
 <style scoped>
+.table-search {
+  flex: 1 1 260px;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.failed-table {
+  overflow-wrap: anywhere;
+}
+
+.failed-table-link {
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+}
+
 .source-table-name {
   overflow-wrap: anywhere;
 }

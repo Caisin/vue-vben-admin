@@ -349,7 +349,9 @@ async function openAction(row: SoftwareInstallation, value: string) {
         page: 1,
         size: 200,
       });
-      targetVersions.value = response.items;
+      targetVersions.value = response.items.filter(
+        (version) => version.state !== 'disabled',
+      );
     } finally {
       versionLoading.value = false;
     }

@@ -71,6 +71,8 @@ async function detect() {
           { label: 'MySQL', value: 'mysql' },
           { label: 'PostgreSQL', value: 'postgres' },
           { label: 'Redis', value: 'redis' },
+          { label: 'Meilisearch', value: 'meilisearch' },
+          { label: 'RustFS', value: 'rustfs' },
           { label: '其它程序', value: 'custom' },
         ]"
       />
@@ -100,7 +102,18 @@ async function detect() {
       <DescriptionsItem label="安装状态">
         {{ result.installed ? '已检测到安装' : '标准路径未发现安装' }}
       </DescriptionsItem>
-      <DescriptionsItem label="包管理器">{{ result.manager }}</DescriptionsItem>
+      <DescriptionsItem label="设备包管理器">
+        {{ result.manager }}
+      </DescriptionsItem>
+      <DescriptionsItem label="服务管理器">
+        {{ result.service_manager || '-' }}
+      </DescriptionsItem>
+      <DescriptionsItem label="服务名称">
+        {{ result.service_name || '-' }}
+      </DescriptionsItem>
+      <DescriptionsItem label="服务配置">
+        {{ result.service_config_path || '-' }}
+      </DescriptionsItem>
       <DescriptionsItem label="程序路径">
         {{ result.binary_path || '-' }}
       </DescriptionsItem>

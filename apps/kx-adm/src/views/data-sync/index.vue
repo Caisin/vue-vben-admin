@@ -38,6 +38,7 @@ import { operations, states } from './data';
 import DatabasePanel from './database-panel.vue';
 import InstanceEditor from './instance-editor.vue';
 import JobEditor from './job-editor.vue';
+import SqlPreview from './sql-preview.vue';
 
 const route = useRoute();
 const activeTab = ref(route.query.database_id ? 'databases' : 'jobs');
@@ -619,7 +620,7 @@ onMounted(async () => {
                 </template>
               </Table>
               <h3>目标 DDL</h3>
-              <pre class="ddl">{{ plan.ddl }}</pre>
+              <SqlPreview :value="plan.ddl" />
             </template>
             <div v-else class="empty-state">尚无结构检查结果</div>
           </TabPane>
@@ -774,17 +775,6 @@ h3 {
   margin: 24px 0 12px;
   font-size: 15px;
   font-weight: 600;
-}
-
-.ddl {
-  max-height: 280px;
-  padding: 12px;
-  overflow: auto;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  border: 1px solid var(--border);
-  border-radius: 4px;
 }
 
 .key-contract {

@@ -6,6 +6,7 @@ import type { Page, PageQuery } from '#/api/request';
 import { requestClient } from '#/api/request';
 
 export interface DatabaseTable {
+  existing_job_id?: null | number;
   source_comments?: {
     comment: string;
     instance_code: string;
@@ -19,6 +20,7 @@ export interface DatabaseTable {
   excluded_reason: null | string;
 }
 export interface DatabaseWrite {
+  receipt_database?: null | string;
   name: string;
   target_ds_code: string;
   target_database: string;
