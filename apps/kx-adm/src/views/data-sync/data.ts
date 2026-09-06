@@ -34,6 +34,7 @@ export function setStrategy(config: SyncConfig, mode: SyncConfig['mode']) {
 }
 
 export const states: Record<string, string> = {
+  waiting: '未到同步时间',
   superseded: '已由原任务替代',
   draft: '草稿',
   validated: '已检查',

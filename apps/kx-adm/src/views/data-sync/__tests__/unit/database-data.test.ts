@@ -13,6 +13,8 @@ import {
   filterDatabaseTables,
   sourceTableLabels,
   splitDatabaseTableSource,
+  tableFrequencyLabel,
+  validateDatabaseTable,
 } from '../../database-data';
 
 function pendingTable(name: string): DatabaseTable {
@@ -71,6 +73,26 @@ describe('新增源单独配置', () => {
     expect(() => splitDatabaseTableSource(main, 'shop', [], 'other')).toThrow(
       '已启用',
     );
+  });
+});
+
+describe('逐表频率', () => {
+  it('兼容缺省并显示分钟、小时和天', () => {
+    expect(tableFrequencyLabel()).toBe('跟随全库定时');
+    expect(tableFrequencyLabel(300)).toBe('每 5 分钟');
+    expect(tableFrequencyLabel(7200)).toBe('每 2 小时');
+    expect(tableFrequencyLabel(86_400)).toBe('每 1 天');
+  });
+  it('校验范围且不改变完整配置', () => {
+    const table = pendingTable('orders');
+    const form = database([table]);
+    for (const seconds of [0, 59, 2_678_401, 60.5]) {
+      table.sync_interval_seconds = seconds;
+      expect(validateDatabaseTable(form, table)).toContain('同步频率');
+    }
+    table.sync_interval_seconds = 7200;
+    expect(validateDatabaseTable(form, table)).toBeUndefined();
+    expect(table.sync_interval_seconds).toBe(7200);
   });
 });
 

@@ -60,6 +60,7 @@ for (const readonly of [false, true]) {
     });
     let databaseSaved = false;
     let databaseSaveCount = 0;
+    const syncTargets: (string | undefined)[] = [];
     let expanded = false;
     const initialBinding = config.sources[0];
     if (!initialBinding) throw new Error('缺少源测试数据');
@@ -316,6 +317,7 @@ for (const readonly of [false, true]) {
             expect(req.tables[1].config.mode).toBe('id_and_time');
             expect(req.tables).toHaveLength(expanded ? 27 : 26);
             expect(req.tables[1].config.limits.max_rows).toBe(2500);
+            expect(req.tables[1].sync_interval_seconds).toBe(7200);
             expect(req.tables[1].existing_job_id).toBe(1);
             expect(req.warehouse).toBe('query one');
             database.config = req;
@@ -369,6 +371,7 @@ for (const readonly of [false, true]) {
             database.last_task_id = 92;
             result = { id: 92, status: 'succeeded' };
           } else if (path === '/data-sync/databases/10/sync') {
+            syncTargets.push(requestBody(route.request()).target_table);
             database.state = 'ready';
             database.last_task_id = 93;
             result = { id: 93, status: 'succeeded' };
@@ -643,10 +646,33 @@ for (const readonly of [false, true]) {
         tableEditor.getByRole('button', { name: '确认本表配置' }),
       ).toBeEnabled();
       await tableEditor
+        .getByRole('checkbox', { name: '跟随全库定时' })
+        .uncheck();
+      await tableEditor
+        .getByRole('spinbutton', { name: '同步间隔', exact: true })
+        .fill('2');
+      await tableEditor
         .locator('label')
         .filter({ hasText: '每批最多行数' })
         .getByRole('spinbutton')
         .fill('2500');
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        const interval = tableEditor.getByRole('spinbutton', {
+          name: '同步间隔',
+          exact: true,
+        });
+        await interval.scrollIntoViewIfNeeded();
+        await expect(interval).toBeInViewport({ ratio: 1 });
+        await expect(
+          tableEditor.getByRole('combobox', { name: /^同步间隔单位/ }),
+        ).toBeInViewport({ ratio: 1 });
+        await page.screenshot({
+          path: testInfo.outputPath(`table-frequency-${width}.png`),
+          fullPage: true,
+        });
+      }
+      await page.setViewportSize({ width: 1280, height: 800 });
       await tableEditor.getByRole('button', { name: '确认本表配置' }).click();
       await expect(tableEditor).not.toBeVisible();
       await expect(strategyRows).toHaveCount(1);
@@ -709,6 +735,15 @@ for (const readonly of [false, true]) {
         .getByRole('button', { name: '同步已确认表' })
         .click();
       await expect.poll(() => database.last_task_id).toBe(93);
+      await strategies
+        .locator('tr[data-row-key="orders"]')
+        .getByRole('button', { name: '同步一次', exact: true })
+        .click();
+      await expect.poll(() => syncTargets.at(-1)).toBe('orders');
+      expect(syncTargets[0]).toBeUndefined();
+      await expect(
+        strategies.locator('tr[data-row-key="orders"]'),
+      ).toContainText('每 2 小时');
       await databaseEditor
         .getByRole('button', { name: '全部确认', exact: true })
         .click();

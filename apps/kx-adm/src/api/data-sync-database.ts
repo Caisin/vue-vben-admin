@@ -6,6 +6,7 @@ import type { Page, PageQuery } from '#/api/request';
 import { requestClient } from '#/api/request';
 
 export interface DatabaseTable {
+  sync_interval_seconds?: null | number;
   existing_job_id?: null | number;
   source_comments?: {
     comment: string;
@@ -71,9 +72,11 @@ export const DatabaseSyncApi = {
     id: number,
     operation: string,
     approved_plan_hash?: null | string,
+    target_table?: string,
   ) =>
     requestClient.post<TaskRun>(`${root}/${id}/${operation}`, {
       approved_plan_hash,
+      target_table,
     }),
   cancel: (id: number) => requestClient.post<TaskRun>(`${root}/${id}/cancel`),
   jobs: (id: number) => requestClient.get<Job[]>(`${root}/${id}/jobs`),

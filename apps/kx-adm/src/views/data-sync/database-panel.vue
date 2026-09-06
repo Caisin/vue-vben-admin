@@ -40,11 +40,13 @@ import {
   filterDatabaseTables,
   sourceTableLabels,
   splitDatabaseTableSource,
+  tableFrequencyLabel,
   validateDatabaseTable,
 } from './database-data';
 import MetadataSelect from './metadata-select.vue';
 import SourceFields from './source-fields.vue';
 import StrategyFields from './strategy-fields.vue';
+import TableFrequency from './table-frequency.vue';
 import WarehouseSelect from './warehouse-select.vue';
 
 const props = defineProps<{
@@ -114,7 +116,7 @@ const failedTables = computed(
   () => selected.value?.plan.filter((row) => row.state === 'failed') ?? [],
 );
 const schedule = reactive({
-  cron_expr: '0 0 * * * *',
+  cron_expr: '0 * * * * *',
   timezone_offset_seconds: 28_800,
   enabled: false,
 });
@@ -149,6 +151,7 @@ const tableColumns = [
   { title: '源表', key: 'source', width: 230 },
   { title: '目标表', dataIndex: 'target_table', width: 180 },
   { title: '同步策略', key: 'strategy', width: 210 },
+  { title: '同步频率', key: 'frequency', width: 170 },
   { title: '确认', key: 'confirmed', width: 70 },
   { title: '状态 / 原因', key: 'state', width: 240 },
   { title: '操作', key: 'actions', width: 160 },
@@ -236,7 +239,7 @@ async function show(record?: DatabaseSync) {
             enabled: s.status === 'enabled',
           }
         : {
-            cron_expr: '0 0 * * * *',
+            cron_expr: '0 * * * * *',
             timezone_offset_seconds: 28_800,
             enabled: false,
           },
@@ -288,7 +291,7 @@ async function save() {
     busy.value = false;
   }
 }
-async function dispatch(operation: string) {
+async function dispatch(operation: string, targetTable?: string) {
   if (!selected.value || dirty.value) {
     message.warning('请先保存配置');
     return;
@@ -299,6 +302,7 @@ async function dispatch(operation: string) {
       selected.value.id,
       operation,
       operation === 'activate' ? selected.value.plan_hash : undefined,
+      targetTable,
     );
     taskPending.value = Number(task.id);
     taskError.value = '';
@@ -920,7 +924,7 @@ const polling = useTaskPolling({
         class="strategy-table"
         row-key="target_table"
         :columns="tableColumns"
-        :scroll="{ x: 1100 }"
+        :scroll="{ x: 1270 }"
         :pagination="{
           current: tablePage,
           pageSize: 20,
@@ -965,6 +969,9 @@ const polling = useTaskPolling({
             class="strategy-select"
             @change="(value) => strategy(record, value as SyncConfig['mode'])"
           />
+          <span v-else-if="column.key === 'frequency'">{{
+            tableFrequencyLabel(record.sync_interval_seconds)
+          }}</span>
           <Checkbox
             v-else-if="column.key === 'confirmed'"
             v-model:checked="record.confirmed"
@@ -981,6 +988,20 @@ const polling = useTaskPolling({
                   : '未确认，暂不执行')
           }}</span>
           <div v-else-if="column.key === 'actions'" class="toolbar">
+            <Button
+              v-if="execute"
+              size="small"
+              :disabled="
+                selected?.state !== 'ready' ||
+                locked ||
+                dirty ||
+                !record.confirmed ||
+                record.excluded_reason !== null
+              "
+              @click="dispatch('sync', record.target_table)"
+            >
+              同步一次
+            </Button>
             <Button
               v-if="configure"
               size="small"
@@ -1082,6 +1103,8 @@ const polling = useTaskPolling({
         <template v-else>
           <label class="field">目标表<Input v-model:value="editing.target_table" /></label>
           <StrategyFields v-model:config="editing.config" />
+          <h3>同步频率</h3>
+          <TableFrequency v-model:value="editing.sync_interval_seconds" />
           <div
             v-for="(source, index) in editing.config.sources"
             :key="source.instance_code"

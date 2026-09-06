@@ -8,6 +8,10 @@ import { jobForm, validateForm } from './data';
 
 export function databaseErrorText(code: string) {
   const messages: Record<string, string> = {
+    data_sync_table_not_enabled:
+      '该表未确认、已排除或不属于当前全库配置，无法同步',
+    data_sync_database_busy: '已有全库或单表任务正在处理，请等待完成',
+    data_sync_table_frequency_invalid: '同步频率必须在 1 分钟至 31 天之间',
     data_sync_link_existing_job_active:
       '重复任务已有启用记录、水位或运行，不能自动替代，请先核对归属',
     data_sync_job_superseded:
@@ -107,6 +111,13 @@ export function validateDatabaseTable(
   form: DatabaseWrite,
   table: DatabaseTable,
 ) {
+  const interval = table.sync_interval_seconds;
+  if (
+    interval !== null &&
+    interval !== undefined &&
+    (!Number.isInteger(interval) || interval < 60 || interval > 2_678_400)
+  )
+    return '同步频率必须在 1 分钟至 31 天之间';
   return validateForm({
     ...jobForm(),
     name: form.name,
@@ -115,6 +126,18 @@ export function validateDatabaseTable(
     target_table: table.target_table,
     config: table.config,
   });
+}
+
+export function tableFrequencyLabel(seconds?: null | number) {
+  if (seconds === null || seconds === undefined) return '跟随全库定时';
+  for (const [unit, label] of [
+    [86_400, '天'],
+    [3600, '小时'],
+    [60, '分钟'],
+  ] as const) {
+    if (seconds % unit === 0) return `每 ${seconds / unit} ${label}`;
+  }
+  return `每 ${seconds} 秒`;
 }
 
 /** 只确认完整配置，不替用户选择策略或确认时间字段不可变等业务前提。 */
