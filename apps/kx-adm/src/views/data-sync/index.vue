@@ -9,7 +9,7 @@ import type {
 } from '#/api/data-sync';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -41,10 +41,16 @@ import DatabasePanel from './database-panel.vue';
 import { formatSyncDuration } from './duration';
 import InstanceEditor from './instance-editor.vue';
 import JobEditor from './job-editor.vue';
+import {
+  isSchemaConflict,
+  schemaConflictErrors,
+  schemaSettingsQuery,
+} from './schema-conflict';
 import SqlPreview from './sql-preview.vue';
 import { startDatabase, startJob, stopDatabase, stopJob } from './sync-control';
 
 const route = useRoute();
+const router = useRouter();
 const activeTab = ref(route.query.database_id ? 'databases' : 'jobs');
 const RefreshCw = createIconifyIcon('lucide:refresh-cw');
 const Play = createIconifyIcon('lucide:play');
@@ -60,7 +66,8 @@ const loading = ref(false);
 const keyword = ref('');
 const mode = ref('all');
 const frequency = ref('all');
-watch([mode, frequency], () => {
+const issue = ref('all');
+watch([mode, frequency, issue], () => {
   pagination.current = 1;
   load();
 });
@@ -95,8 +102,8 @@ const columns = [
   { title: '任务', key: 'name', dataIndex: 'name', width: 220 },
   { title: '目标', key: 'target', width: 260 },
   { title: '状态', key: 'state', width: 150 },
-  { title: '最近错误', dataIndex: 'last_error', ellipsis: true },
-  { title: '操作', key: 'actions', width: 160 },
+  { title: '失败原因', key: 'error' },
+  { title: '操作', key: 'actions', width: 240 },
 ];
 const runColumns = [
   { title: '运行', dataIndex: 'id', key: 'id' },
@@ -130,6 +137,7 @@ function color(state: string) {
     (
       {
         blocked: 'error',
+        schema_conflict: 'error',
         failed: 'error',
         unknown: 'warning',
         running: 'processing',
@@ -153,6 +161,7 @@ async function load(spinner = true) {
       keyword: keyword.value,
       mode: mode.value,
       frequency: frequency.value,
+      schema_conflicts: issue.value === 'schema_conflict' || undefined,
       page: pagination.current,
       size: pagination.pageSize,
     });
@@ -197,6 +206,23 @@ async function show(job: Job) {
 async function edit(job?: Job) {
   editorDetail.value = job ? await DataSyncApi.detail(job.id) : undefined;
   editOpen.value = true;
+}
+async function resolveConflict(job: Job) {
+  if (!configure.value) return;
+  if (job.database_id) {
+    await router.push({
+      path: '/data-sync/jobs',
+      query: schemaSettingsQuery(job, true),
+    });
+    activeTab.value = 'databases';
+    return;
+  }
+  await show(job);
+  if (detail.value?.job.active_run_id) {
+    message.warning('当前运行未结束或存在待对账批次，暂不能修改配置');
+    return;
+  }
+  await edit(detail.value?.job);
 }
 async function saved(id: number) {
   await load();
@@ -329,6 +355,7 @@ const polling = useTaskPolling({
       keyword: keyword.value,
       mode: mode.value,
       frequency: frequency.value,
+      schema_conflicts: issue.value === 'schema_conflict' || undefined,
       page: pagination.current,
       size: pagination.pageSize,
     };
@@ -364,6 +391,8 @@ const polling = useTaskPolling({
       result.query.keyword === keyword.value &&
       result.query.mode === mode.value &&
       result.query.frequency === frequency.value &&
+      result.query.schema_conflicts ===
+        (issue.value === 'schema_conflict' || undefined) &&
       result.query.page === pagination.current &&
       result.query.size === pagination.pageSize
     ) {
@@ -395,13 +424,31 @@ const polling = useTaskPolling({
     }
   },
 });
-onMounted(async () => {
-  await load();
+async function openRoute() {
+  if (route.path !== '/data-sync/jobs') return;
+  if (Number(route.query.database_id) > 0) {
+    detail.value = undefined;
+    editOpen.value = false;
+    activeTab.value = 'databases';
+    return;
+  }
   const id = Number(route.query.job_id);
   if (id > 0) {
+    activeTab.value = 'jobs';
     const current = await DataSyncApi.detail(id);
+    if (Number(route.query.job_id) !== id) return;
     await show(current.job);
+    if (route.query.edit === '1' && configure.value) {
+      if (current.job.active_run_id)
+        message.warning('当前运行未结束或存在待对账批次，暂不能修改配置');
+      else await edit(current.job);
+    }
   }
+}
+watch(() => route.fullPath, openRoute);
+onMounted(async () => {
+  await load();
+  await openRoute();
   polling.start();
 });
 </script>
@@ -419,6 +466,10 @@ onMounted(async () => {
         />
       </TabPane>
       <TabPane key="jobs" tab="同步任务">
+        <Tabs v-model:active-key="issue" size="small">
+          <TabPane key="all" tab="全部任务" />
+          <TabPane key="schema_conflict" tab="结构冲突" />
+        </Tabs>
         <Tabs v-model:active-key="mode" size="small">
           <TabPane key="all" tab="全部类型" /><TabPane
             key="id_append"
@@ -479,6 +530,21 @@ onMounted(async () => {
               @click.prevent="show(record)"
               >{{ record.name }}</a>
             <span v-else-if="column.key === 'target'">{{ record.target_database }}.{{ record.target_table }}</span>
+            <div v-else-if="column.key === 'error'">
+              {{
+                schemaConflictErrors[record.last_error ?? ''] ??
+                record.last_error ??
+                (record.state === 'schema_conflict'
+                  ? '结构已检查，待确认启用'
+                  : '')
+              }}
+              <div
+                v-if="isSchemaConflict(record.last_error)"
+                class="text-xs text-muted-foreground"
+              >
+                {{ record.last_error }}
+              </div>
+            </div>
             <div
               v-else-if="column.key === 'state'"
               class="flex flex-wrap gap-1"
@@ -490,7 +556,21 @@ onMounted(async () => {
                 调度已停止
               </Tag>
             </div>
-            <div v-else-if="column.key === 'actions'" class="flex gap-1">
+            <div
+              v-else-if="column.key === 'actions'"
+              class="flex flex-wrap gap-1"
+            >
+              <Button
+                v-if="
+                  configure &&
+                  (record.state === 'schema_conflict' ||
+                    isSchemaConflict(record.last_error))
+                "
+                size="small"
+                @click="resolveConflict(record)"
+              >
+                处理冲突
+              </Button>
               <Tooltip v-if="execute" title="启动本表同步">
                 <Button
                   type="text"

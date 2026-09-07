@@ -78,6 +78,7 @@ const stores = ref<{ label: string; value: string }[]>([]);
 const selectedTables = ref<string[]>([]);
 const bulkMode = ref<SyncConfig['mode']>('full_table');
 const editing = ref<DatabaseTable>();
+const editingError = ref('');
 const activeSourceCodes = ref<null | string[]>(null);
 const separatedTables = ref<DatabaseTable[]>([]);
 const linkingJob = ref(false);
@@ -298,9 +299,13 @@ async function load() {
     loading = false;
   }
 }
+let showGeneration = 0;
 async function show(record?: DatabaseSync) {
+  const generation = ++showGeneration;
+  const current = record ? await DatabaseSyncApi.detail(record.id) : undefined;
+  if (generation !== showGeneration) return;
   lastRun.value = undefined;
-  selected.value = record ? await DatabaseSyncApi.detail(record.id) : undefined;
+  selected.value = current;
   form.value = selected.value ? copy(selected.value.config) : blank();
   form.value.version = selected.value?.version;
   strategyTab.value = 'confirmed';
@@ -313,6 +318,7 @@ async function show(record?: DatabaseSync) {
   taskError.value = '';
   await nextTick();
   await loadTables();
+  if (generation !== showGeneration) return;
   if (!totals.confirmed) strategyTab.value = 'pending';
   if (selected.value?.last_task_id) {
     const { id, last_task_id: taskId } = selected.value;
@@ -326,6 +332,7 @@ async function show(record?: DatabaseSync) {
   }
   if (record) {
     const s = await DatabaseSyncApi.schedule(record.id);
+    if (generation !== showGeneration) return;
     Object.assign(
       schedule,
       s
@@ -346,6 +353,7 @@ async function show(record?: DatabaseSync) {
       DataSourceApi.list({ size: 100, state: true }),
       StorageConfigApi.list({ size: 100, is_public: false }),
     ]);
+    if (generation !== showGeneration) return;
     targets.value = ds.items
       .filter((s) => s.db_type === 'databend')
       .map((s) => ({ value: s.ds_code, label: s.name }));
@@ -489,6 +497,7 @@ async function editTable(table: DatabaseTable) {
     (row) => row.definition.target_table === table.target_table,
   );
   linkingJob.value = false;
+  editingError.value = '';
   editingIndex.value = form.value.tables.indexOf(table);
   editing.value = copy(table);
   separatedTables.value = [];
@@ -513,6 +522,13 @@ async function editTable(table: DatabaseTable) {
       return;
     }
     const detail = await DataSyncApi.detail(jobId);
+    if (editing.value === current)
+      editingError.value = detail.job.last_error ?? '';
+    if (editing.value === current && detail.job.active_run_id) {
+      editing.value = undefined;
+      message.warning('该表存在未结束运行或待对账批次，暂不能修改配置');
+      return;
+    }
     if (editing.value === current)
       activeSourceCodes.value =
         detail.active?.config.sources.map((source) => source.instance_code) ??
@@ -701,6 +717,7 @@ async function locateTable(target: string) {
   locatedTable.value = target;
   tablePage.value = 1;
   await nextTick();
+  await loadTables();
   strategiesHeading.value?.scrollIntoView({ block: 'start' });
 }
 async function viewJob(table: DatabaseTable) {
@@ -730,10 +747,41 @@ async function pause() {
   );
   await load();
 }
+async function openRoute() {
+  if (route.path !== '/data-sync/jobs') return;
+  const id = Number(route.query.database_id);
+  if (!Number.isSafeInteger(id) || id <= 0) return;
+  if (dirty.value || editing.value) {
+    message.warning('请先保存或关闭当前表配置');
+    return;
+  }
+  const path = route.fullPath;
+  const current = await DatabaseSyncApi.detail(id);
+  if (route.fullPath !== path) return;
+  await show(current);
+  const target = route.query.target_table;
+  if (
+    typeof target !== 'string' ||
+    route.fullPath !== path ||
+    selected.value?.id !== id
+  )
+    return;
+  await locateTable(target);
+  if (route.fullPath !== path || selected.value?.id !== id) return;
+  const table = form.value.tables.find((row) => row.target_table === target);
+  if (!table) {
+    message.warning('当前全库配置中未找到该目标表');
+    return;
+  }
+  if (route.query.edit === '1' && props.configure) {
+    if (canEdit.value) await editTable(table);
+    else message.warning('全库运行中或存在待对账批次，暂不能修改配置');
+  }
+}
+watch(() => route.fullPath, openRoute);
 onMounted(async () => {
   await load();
-  const id = Number(route.query.database_id);
-  if (id > 0) await show(await DatabaseSyncApi.detail(id));
+  await openRoute();
   polling.start();
 });
 const polling = useTaskPolling({
@@ -1367,11 +1415,15 @@ const polling = useTaskPolling({
             @change="linkJob"
         /></label>
         <Alert
-          v-if="databaseTableError(editing, planRow(editing))"
+          v-if="editingError || databaseTableError(editing, planRow(editing))"
           type="error"
           show-icon
           class="mb-4"
-          :message="databaseTableError(editing, planRow(editing))"
+          :message="
+            editingError
+              ? databaseErrorText(editingError)
+              : databaseTableError(editing, planRow(editing))
+          "
         />
         <Checkbox
           :checked="editing.excluded_reason !== null"

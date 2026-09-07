@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue';
 import { Plus } from '@vben/icons';
 
 import {
+  Alert,
   Button,
   Checkbox,
   Input,
@@ -30,6 +31,7 @@ import {
   validateForm,
 } from './data';
 import MetadataSelect from './metadata-select.vue';
+import { schemaConflictErrors } from './schema-conflict';
 import SourceFields from './source-fields.vue';
 import StrategyFields from './strategy-fields.vue';
 import WarehouseSelect from './warehouse-select.vue';
@@ -143,6 +145,14 @@ function addSource() {
     @cancel="emit('update:open', false)"
   >
     <div class="editor">
+      <Alert
+        v-if="detail?.job.last_error"
+        type="warning"
+        show-icon
+        :message="
+          schemaConflictErrors[detail.job.last_error] ?? detail.job.last_error
+        "
+      />
       <h3>任务与目标</h3>
       <div class="form-grid">
         <label>任务名称<Input v-model:value="form.name" :maxlength="128" /></label>

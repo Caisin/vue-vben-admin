@@ -44,6 +44,7 @@ export const states: Record<string, string> = {
   running: '执行中',
   cancelling: '正在停止',
   blocked: '待对账',
+  schema_conflict: '结构冲突',
   failed: '失败',
   cancelled: '已取消',
   succeeded: '成功',

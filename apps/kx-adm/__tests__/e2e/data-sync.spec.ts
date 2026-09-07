@@ -18,6 +18,7 @@ for (const readonly of [false, true]) {
     let metadataSelections = false;
     let orderColumnReads = 0;
     let failed = false;
+    let structuralConflict = false;
     const config = {
       mode: 'id_and_time',
       storage_code: 'private',
@@ -51,12 +52,16 @@ for (const readonly of [false, true]) {
       target_table: 'orders',
       warehouse: null,
       allow_insecure: false,
-      state: failed ? 'blocked' : 'ready',
+      state:
+        (structuralConflict && 'schema_conflict') ||
+        (failed ? 'blocked' : 'ready'),
       version: 1,
       active_revision_id: 1,
       draft_revision_id: 1,
       active_run_id: failed ? 2 : null,
-      last_error: failed ? 'data_sync_commit_unknown' : null,
+      last_error:
+        (structuralConflict && 'data_sync_source_schema_drift') ||
+        (failed ? 'data_sync_commit_unknown' : null),
     });
     let databaseSaved = false;
     let databaseSaveCount = 0;
@@ -522,9 +527,26 @@ for (const readonly of [false, true]) {
             database.state = 'ready';
             database.last_task_id = 93;
             result = { id: 93, status: 'succeeded' };
-          } else if (path === '/data-sync/jobs' && method === 'GET')
-            result = pageResult([job()]);
-          else if (path === '/data-sync/instances') result = instances;
+          } else if (path === '/data-sync/jobs' && method === 'GET') {
+            const params = new URL(route.request().url()).searchParams;
+            const archive = {
+              ...job(),
+              id: 2,
+              database_id: 10,
+              target_table: 'orders_archive',
+              name: '归档订单冲突',
+            };
+            const items =
+              params.get('schema_conflicts') === 'true'
+                ? [job(), archive]
+                : [job()];
+            result = pageResult(
+              params.get('target_table') === 'orders_archive' &&
+                structuralConflict
+                ? [archive]
+                : items,
+            );
+          } else if (path === '/data-sync/instances') result = instances;
           else if (path.endsWith('/schemas'))
             result = {
               items: [{ value: 'public', label: 'public' }],
@@ -614,9 +636,19 @@ for (const readonly of [false, true]) {
           } else if (path === '/data-sync/jobs/1' && method === 'PUT') {
             edited = true;
             result = job();
-          } else if (path === '/data-sync/jobs/1')
+          } else if (
+            path === '/data-sync/jobs/1' ||
+            path === '/data-sync/jobs/2'
+          )
             result = {
-              job: job(),
+              job: path.endsWith('/2')
+                ? {
+                    ...job(),
+                    id: 2,
+                    database_id: 10,
+                    target_table: 'orders_archive',
+                  }
+                : job(),
               draft: revision(),
               active: { ...revision(), schema_plan: schema },
               instances,
@@ -1029,6 +1061,99 @@ for (const readonly of [false, true]) {
       .click();
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.getByRole('tab', { name: '同步任务', exact: true }).click();
+    structuralConflict = true;
+    await page.getByRole('tab', { name: '结构冲突', exact: true }).click();
+    await expect(page.getByText('归档订单冲突', { exact: true })).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath('schema-conflicts.png'),
+      fullPage: true,
+      animations: 'disabled',
+    });
+    if (readonly) {
+      await expect(page.getByRole('button', { name: '处理冲突' })).toHaveCount(
+        0,
+      );
+    } else {
+      await page
+        .locator('tr[data-row-key="1"]')
+        .getByRole('button', { name: '处理冲突' })
+        .click();
+      const conflictEditor = page.getByRole('dialog', {
+        name: '编辑同步配置',
+        exact: true,
+      });
+      await expect(
+        conflictEditor.getByText('源表结构与已启用快照不一致', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        conflictEditor.getByRole('textbox', { name: '目标表', exact: true }),
+      ).toHaveValue('orders');
+      await conflictEditor.getByRole('button', { name: /取\s*消/ }).click();
+      await page
+        .getByRole('dialog', { name: '订单汇总', exact: true })
+        .getByRole('button', { name: /关闭|close/i })
+        .first()
+        .click();
+      await page
+        .locator('tr[data-row-key="2"]')
+        .getByRole('button', { name: '处理冲突' })
+        .click();
+      await expect(page).toHaveURL(
+        /database_id=10.*target_table=orders_archive/,
+      );
+      const tableConflictEditor = page.getByRole('dialog', {
+        name: 'orders_archive',
+        exact: true,
+      });
+      await expect(tableConflictEditor).toBeVisible();
+      await expect(
+        tableConflictEditor.getByText('源表结构与已启用快照不一致', {
+          exact: true,
+        }),
+      ).toBeVisible();
+      const otherTables = structuredClone(
+        database.config.tables.filter(
+          (table) => table.target_table !== 'orders_archive',
+        ),
+      );
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect
+          .poll(async () => {
+            const box = await tableConflictEditor.boundingBox();
+            return box?.width ?? 2000;
+          })
+          .toBeLessThanOrEqual(width);
+        await page.screenshot({
+          path: testInfo.outputPath(`schema-conflict-settings-${width}.png`),
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await tableConflictEditor
+        .getByRole('button', { name: '确认本表配置', exact: true })
+        .click();
+      await expect(tableConflictEditor).toBeHidden();
+      expect(
+        database.config.tables.filter(
+          (table) => table.target_table !== 'orders_archive',
+        ),
+      ).toEqual(otherTables);
+      await expect(
+        page
+          .getByRole('dialog', { name: database.name, exact: true })
+          .locator('tr[data-row-key="orders_archive"]'),
+      ).toBeVisible();
+      await page
+        .getByRole('dialog', { name: database.name, exact: true })
+        .getByRole('button', { name: /关闭|close/i })
+        .first()
+        .click();
+      await page.getByRole('tab', { name: '同步任务', exact: true }).click();
+    }
+    structuralConflict = false;
+    await page.getByRole('tab', { name: '全部任务', exact: true }).click();
     if (!readonly) {
       await page.getByRole('tab', { name: '源实例', exact: true }).click();
       await page.getByText('华东门店', { exact: true }).click();

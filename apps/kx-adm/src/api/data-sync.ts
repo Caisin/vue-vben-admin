@@ -198,6 +198,7 @@ export const DataSyncApi = {
       state?: string;
       operation?: string;
       database_id?: number;
+      schema_conflicts?: boolean;
     },
   ) => requestClient.get<Page<RunListItem>>(`${root}/runs`, { params }),
   targetWarehouses: (data: {
@@ -231,6 +232,7 @@ export const DataSyncApi = {
       keyword?: string;
       mode?: string;
       frequency?: string;
+      schema_conflicts?: boolean;
       target_database?: string;
       target_ds_code?: string;
       target_table?: string;

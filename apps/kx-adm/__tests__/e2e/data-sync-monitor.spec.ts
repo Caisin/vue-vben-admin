@@ -35,7 +35,8 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
           is_guest: false,
           permission_count: 1,
         };
-      else if (path === '/auth/per/codes') result = ['data-sync:execute'];
+      else if (path === '/auth/per/codes')
+        result = ['data-sync:execute', 'data-sync:configure'];
       else if (path === '/auth/menu/current')
         result = [
           {
@@ -88,7 +89,14 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
               job_name: '订单汇总',
               target_database: 'analytics',
               target_table: 'orders',
-              state: query.get('state') || 'running',
+              state:
+                query.get('schema_conflicts') === 'true'
+                  ? 'failed'
+                  : query.get('state') || 'running',
+              error_code:
+                query.get('schema_conflicts') === 'true'
+                  ? 'data_sync_source_schema_drift'
+                  : null,
               operation: 'sync',
               started_at: 1_788_700_000,
               finished_at:
@@ -172,6 +180,18 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
   ).toBeVisible();
   await page.getByRole('tab', { name: '失败', exact: true }).click();
   await expect.poll(() => queries.at(-1)?.get('state')).toBe('failed');
+  await expect
+    .poll(() => queries.at(-1)?.get('schema_conflicts'))
+    .toBe('false');
+  await page.getByRole('tab', { name: '结构冲突', exact: true }).click();
+  await expect.poll(() => queries.at(-1)?.get('schema_conflicts')).toBe('true');
+  expect(queries.at(-1)?.has('state')).toBe(false);
+  await expect(
+    page.getByText('源表结构与已启用快照不一致', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '处理冲突', exact: true }),
+  ).toBeVisible();
   await page.getByRole('textbox', { name: '搜索执行记录' }).fill('orders');
   await page.getByRole('textbox', { name: '搜索执行记录' }).press('Enter');
   await expect.poll(() => queries.at(-1)?.get('keyword')).toBe('orders');

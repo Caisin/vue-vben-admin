@@ -28,11 +28,17 @@ import { useTaskPolling } from '#/task-polling';
 
 import { operations, states } from './data';
 import { formatSyncDuration } from './duration';
+import {
+  isSchemaConflict,
+  schemaConflictErrors,
+  schemaSettingsQuery,
+} from './schema-conflict';
 import { stopJob } from './sync-control';
 
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
 const execute = computed(() => hasAccessByCodes(['data-sync:execute']));
+const configure = computed(() => hasAccessByCodes(['data-sync:configure']));
 const status = ref('running');
 const operation = ref<string>();
 const keyword = ref('');
@@ -55,15 +61,21 @@ const columns = [
   { title: '读取 / 写入', key: 'rows', width: 150 },
   { title: '数据量', key: 'bytes', width: 100 },
   { title: '开始时间', key: 'started', width: 180 },
-  { title: '最近错误', dataIndex: 'error_code', width: 240 },
-  { title: '操作', key: 'actions', width: 190 },
+  { title: '失败原因', key: 'error', width: 280 },
+  { title: '操作', key: 'actions', width: 250 },
 ];
 async function load() {
   const version = ++generation;
   loading.value = true;
   try {
     const page = await DataSyncApi.allRuns({
-      state: status.value || undefined,
+      state:
+        status.value === 'schema_conflict'
+          ? undefined
+          : status.value || undefined,
+      schema_conflicts: ['failed', 'schema_conflict'].includes(status.value)
+        ? status.value === 'schema_conflict'
+        : undefined,
       operation: operation.value,
       keyword: keyword.value,
       page: pagination.current,
@@ -122,6 +134,7 @@ onMounted(() => polling.start());
 <template>
   <Page title="同步执行监控">
     <Tabs v-model:active-key="status">
+      <TabPane key="schema_conflict" tab="结构冲突" />
       <TabPane key="running" tab="正在进行" /><TabPane
         key="blocked"
         tab="待对账"
@@ -190,6 +203,17 @@ onMounted(() => polling.start());
         <span v-else-if="column.key === 'operation'">{{
           operations[record.operation] ?? record.operation
         }}</span>
+        <div v-else-if="column.key === 'error'">
+          <span>{{
+            schemaConflictErrors[record.error_code ?? ''] ?? record.error_code
+          }}</span>
+          <div
+            v-if="isSchemaConflict(record.error_code)"
+            class="text-xs text-muted-foreground"
+          >
+            {{ record.error_code }}
+          </div>
+        </div>
         <span v-else-if="column.key === 'duration'">{{
           formatSyncDuration(record)
         }}</span>
@@ -205,13 +229,18 @@ onMounted(() => polling.start());
             @click="
               router.push({
                 path: '/data-sync/jobs',
-                query: record.database_id
-                  ? { database_id: record.database_id }
-                  : { job_id: record.job_id },
+                query: schemaSettingsQuery(
+                  record,
+                  configure && isSchemaConflict(record.error_code),
+                ),
               })
             "
           >
-            配置
+            {{
+              configure && isSchemaConflict(record.error_code)
+                ? '处理冲突'
+                : '配置'
+            }}
 </Button><Button
             v-if="execute && record.state === 'running'"
             size="small"
