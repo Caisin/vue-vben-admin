@@ -33,7 +33,14 @@ describe('同步配置', () => {
     original.allow_insecure = false;
     expect(
       jobForm({
-        job: { ...original, id: 1, code: 'job', state: 'ready', version: 1 },
+        job: {
+          ...original,
+          id: 1,
+          code: 'job',
+          state: 'ready',
+          version: 1,
+          schedule_paused: false,
+        },
         draft: {
           id: 1,
           revision_no: 1,

@@ -5,6 +5,7 @@ import type {
   DatabaseTable,
   DatabaseWrite,
 } from '#/api/data-sync-database';
+import type { TaskRun } from '#/api/task/run';
 
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -43,9 +44,11 @@ import {
   tableFrequencyLabel,
   validateDatabaseTable,
 } from './database-data';
+import { formatSyncDuration } from './duration';
 import MetadataSelect from './metadata-select.vue';
 import SourceFields from './source-fields.vue';
 import StrategyFields from './strategy-fields.vue';
+import { startDatabase, stopDatabase } from './sync-control';
 import TableFrequency from './table-frequency.vue';
 import WarehouseSelect from './warehouse-select.vue';
 
@@ -61,6 +64,8 @@ const Trash = createIconifyIcon('lucide:trash-2');
 const CheckCheck = createIconifyIcon('lucide:check-check');
 const Search = createIconifyIcon('lucide:search');
 const FilterX = createIconifyIcon('lucide:filter-x');
+const Play = createIconifyIcon('lucide:play');
+const Square = createIconifyIcon('lucide:square');
 const rows = ref<DatabaseSync[]>([]);
 const pagination = reactive({ current: 1, pageSize: 20, total: 0 });
 const selected = ref<DatabaseSync>();
@@ -79,6 +84,7 @@ const linkingJob = ref(false);
 const editingIndex = ref(-1);
 const editingRecord = ref<import('#/api/data-sync-database').TableRecord>();
 const taskPending = ref<number>();
+const lastRun = ref<TaskRun>();
 const taskError = ref('');
 const tableKeyword = ref('');
 const onlyErrors = ref(false);
@@ -258,16 +264,21 @@ async function load() {
         ...current,
         plan: tableRecords.value.map((row) => row.plan),
       };
-      if (taskPending.value) {
-        const taskId = taskPending.value;
+      const pendingId = taskPending.value;
+      const taskId = pendingId ?? current.last_task_id;
+      if (taskId) {
         const task = await DatabaseSyncApi.task(id, taskId);
         if (
           !open.value ||
           selected.value?.id !== id ||
-          taskPending.value !== taskId
+          taskPending.value !== pendingId
         )
           return;
-        if (!['queued', 'retrying', 'running'].includes(task.status)) {
+        lastRun.value = task;
+        if (
+          pendingId &&
+          !['queued', 'retrying', 'running'].includes(task.status)
+        ) {
           taskError.value = task.error_message ?? '';
           taskPending.value = undefined;
         }
@@ -288,6 +299,7 @@ async function load() {
   }
 }
 async function show(record?: DatabaseSync) {
+  lastRun.value = undefined;
   selected.value = record ? await DatabaseSyncApi.detail(record.id) : undefined;
   form.value = selected.value ? copy(selected.value.config) : blank();
   form.value.version = selected.value?.version;
@@ -302,6 +314,16 @@ async function show(record?: DatabaseSync) {
   await nextTick();
   await loadTables();
   if (!totals.confirmed) strategyTab.value = 'pending';
+  if (selected.value?.last_task_id) {
+    const { id, last_task_id: taskId } = selected.value;
+    const task = await DatabaseSyncApi.task(id, taskId);
+    if (
+      open.value &&
+      selected.value?.id === id &&
+      selected.value.last_task_id === taskId
+    )
+      lastRun.value = task;
+  }
   if (record) {
     const s = await DatabaseSyncApi.schedule(record.id);
     Object.assign(
@@ -396,12 +418,15 @@ async function dispatch(operation: string, targetTable?: string) {
   }
   busy.value = true;
   try {
-    const task = await DatabaseSyncApi.dispatch(
-      selected.value.id,
-      operation,
-      operation === 'activate' ? selected.value.plan_hash : undefined,
-      targetTable,
-    );
+    const task =
+      operation === 'sync' && !targetTable
+        ? await startDatabase(selected.value)
+        : await DatabaseSyncApi.dispatch(
+            selected.value.id,
+            operation,
+            operation === 'activate' ? selected.value.plan_hash : undefined,
+            targetTable,
+          );
     taskPending.value = Number(task.id);
     taskError.value = '';
     message.success(`已提交任务 #${task.id}`);
@@ -409,6 +434,34 @@ async function dispatch(operation: string, targetTable?: string) {
   } finally {
     busy.value = false;
   }
+}
+function controlRun(record: DatabaseSync, stop: boolean) {
+  Modal.confirm({
+    title: stop ? '停止全库同步？' : '启动全库同步？',
+    okText: stop ? '停止' : '启动',
+    cancelText: '取消',
+    zIndex: 2200,
+    content: `${record.name}：${stop ? '停止后续调度及本轮所有表，已提交数据保留' : '恢复全库调度并立即同步，单独暂停的表保持暂停'}。`,
+    onOk: async () => {
+      busy.value = true;
+      try {
+        if (stop) {
+          await stopDatabase(record.id);
+          message.success('全库调度已停止，当前运行已请求停止');
+        } else {
+          const task = await startDatabase(record);
+          if (selected.value?.id === record.id) {
+            taskPending.value = Number(task.id);
+            taskError.value = '';
+          }
+          message.success(`全库同步已提交 #${task.id}`);
+        }
+        await load();
+      } finally {
+        busy.value = false;
+      }
+    },
+  });
 }
 function strategy(table: DatabaseTable, mode: SyncConfig['mode']) {
   setStrategy(table.config, mode);
@@ -672,7 +725,7 @@ async function pause() {
   if (!selected.value) return;
   selected.value = await DatabaseSyncApi.pause(
     selected.value.id,
-    selected.value.state !== 'paused',
+    !selected.value.schedule_paused && selected.value.state !== 'paused',
     selected.value.version,
   );
   await load();
@@ -688,15 +741,16 @@ const polling = useTaskPolling({
   load: async () => {
     const query = { page: pagination.current, size: pagination.pageSize };
     const id = open.value ? selected.value?.id : undefined;
-    const taskId = taskPending.value;
+    const pendingId = taskPending.value;
+    const taskId = pendingId ?? selected.value?.last_task_id;
     const [page, current, task] = await Promise.all([
       DatabaseSyncApi.list(query),
       id ? DatabaseSyncApi.detail(id) : undefined,
       id && taskId ? DatabaseSyncApi.task(id, taskId) : undefined,
     ]);
-    return { query, id, taskId, page, current, task };
+    return { query, id, pendingId, page, current, task };
   },
-  accept: ({ query, id, taskId, page, current, task }) => {
+  accept: ({ query, id, pendingId, page, current, task }) => {
     if (
       query.page === pagination.current &&
       query.size === pagination.pageSize
@@ -708,11 +762,16 @@ const polling = useTaskPolling({
       !current ||
       !open.value ||
       selected.value?.id !== id ||
-      taskPending.value !== taskId
+      taskPending.value !== pendingId
     )
       return;
     selected.value = current;
-    if (task && !['queued', 'retrying', 'running'].includes(task.status)) {
+    if (task) lastRun.value = task;
+    if (
+      task &&
+      pendingId &&
+      !['queued', 'retrying', 'running'].includes(task.status)
+    ) {
       taskError.value = task.error_message ?? '';
       taskPending.value = undefined;
     }
@@ -753,6 +812,7 @@ const polling = useTaskPolling({
         { title: '本轮成功', dataIndex: 'completed_tables' },
         { title: '本轮失败', dataIndex: 'failed_tables' },
         { title: '最近错误', dataIndex: 'last_error' },
+        { title: '操作', key: 'actions', width: 110 },
       ]"
       @change="
         (p) => {
@@ -766,7 +826,37 @@ const polling = useTaskPolling({
           record.name
         }}</a><Tag v-else-if="column.key === 'state'">
           {{ states[record.state] ?? record.state }}
+          {{ record.schedule_paused ? ' / 调度已停止' : '' }}
         </Tag>
+        <div v-else-if="column.key === 'actions' && execute" class="flex gap-1">
+          <Tooltip title="启动全库同步">
+            <Button
+              type="text"
+              aria-label="启动全库同步"
+              :disabled="
+                !['ready', 'paused'].includes(record.state) ||
+                !!record.active_task_id ||
+                busy
+              "
+              @click="controlRun(record, false)"
+            >
+              <Play class="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="停止全库同步">
+            <Button
+              type="text"
+              danger
+              aria-label="停止全库同步"
+              :disabled="
+                (record.schedule_paused && !record.active_task_id) || busy
+              "
+              @click="controlRun(record, true)"
+            >
+              <Square class="size-4" />
+            </Button>
+          </Tooltip>
+        </div>
       </template>
     </Table>
     <Modal
@@ -846,7 +936,13 @@ const polling = useTaskPolling({
         </Button>
         <Button
           v-if="execute"
-          :disabled="selected?.state !== 'ready' || dirty || busy"
+          :disabled="
+            !selected ||
+            !['ready', 'paused'].includes(selected.state) ||
+            !!selected.active_task_id ||
+            dirty ||
+            busy
+          "
           @click="dispatch('sync')"
         >
           {{
@@ -866,10 +962,12 @@ const polling = useTaskPolling({
           回执对账
         </Button>
         <Button
-          v-if="execute && selected?.active_task_id"
-          @click="DatabaseSyncApi.cancel(selected.id).then(load)"
+          v-if="execute && selected"
+          danger
+          :disabled="busy"
+          @click="controlRun(selected, true)"
         >
-          取消运行
+          停止全库同步
         </Button>
         <Button
           v-if="
@@ -879,14 +977,27 @@ const polling = useTaskPolling({
           "
           @click="pause"
         >
-          {{ selected.state === 'paused' ? '恢复调度' : '暂停调度' }}
+          {{
+            selected.schedule_paused || selected.state === 'paused'
+              ? '恢复调度'
+              : '暂停调度'
+          }}
         </Button>
       </div>
       <div v-if="selected" class="status-line">
+        {{ selected.schedule_paused ? '调度已停止 · ' : '' }}
         {{ states[selected.state] ?? selected.state }} · 成功
         {{ selected.completed_tables }} / {{ selected.total_tables }} · 失败
         {{ selected.failed_tables
         }}<span v-if="taskPending"> · 已提交 #{{ taskPending }}</span>
+        <span
+          v-if="
+            lastRun?.executor_code === 'data_sync.database.sync' &&
+            lastRun.status === 'succeeded' &&
+            Number(lastRun.id) === selected.last_task_id
+          "
+        >
+          · 同步耗时：{{ formatSyncDuration(lastRun) }}</span>
       </div>
       <fieldset
         :disabled="!canEdit"

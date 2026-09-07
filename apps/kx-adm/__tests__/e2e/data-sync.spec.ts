@@ -68,6 +68,7 @@ for (const readonly of [false, true]) {
     let delayWarehouseNext = false;
     let unavailableWarehouseNext = false;
     const database: DatabaseSync = {
+      schedule_paused: false,
       id: 10,
       name: '全库策略测试',
       state: 'draft',
@@ -223,6 +224,7 @@ for (const readonly of [false, true]) {
       bytes: 1000,
       error_code: failed ? 'data_sync_commit_unknown' : null,
       started_at: 1,
+      finished_at: 126,
     });
     const pageResult = (items: unknown[]) => ({
       items,
@@ -463,7 +465,16 @@ for (const readonly of [false, true]) {
             };
           else if (path === '/data-sync/databases/10/schedule') result = null;
           else if (path.startsWith('/data-sync/databases/10/tasks/'))
-            result = { id: database.last_task_id, status: 'succeeded' };
+            result = {
+              id: database.last_task_id,
+              status: 'succeeded',
+              executor_code:
+                database.last_task_id === 93
+                  ? 'data_sync.database.sync'
+                  : 'data_sync.database.inspect',
+              started_at: 100,
+              finished_at: 225,
+            };
           else if (path === '/data-sync/databases/10/discover') {
             expanded = true;
             database.last_task_id = 94;
@@ -891,6 +902,9 @@ for (const readonly of [false, true]) {
         .click();
       await expect.poll(() => syncTargets.at(-1)).toBe('orders');
       expect(syncTargets[0]).toBeUndefined();
+      await expect(databaseEditor.locator('.status-line')).toContainText(
+        '同步耗时：2m5s',
+      );
       await expect(
         strategies.locator('tr[data-row-key="orders"]'),
       ).toContainText('每 2 小时');
@@ -1221,12 +1235,15 @@ for (const readonly of [false, true]) {
     }
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.getByRole('tab', { name: '水位与运行' }).click();
+    await expect(
+      page.getByRole('cell', { name: '2m5s', exact: true }),
+    ).toBeVisible();
     if (readonly) {
       await expect(page.getByRole('button', { name: '检查结构' })).toHaveCount(
         0,
       );
       await expect(
-        page.getByRole('button', { name: '同步', exact: true }),
+        page.getByRole('button', { name: '启动本表同步', exact: true }),
       ).toHaveCount(0);
     } else {
       await page.getByRole('button', { name: '编辑配置', exact: true }).click();
@@ -1244,7 +1261,10 @@ for (const readonly of [false, true]) {
       await expect(
         page.getByRole('button', { name: '确认建表并启用' }),
       ).toBeEnabled({ timeout: 12_000 });
-      await page.getByRole('button', { name: '同步', exact: true }).click();
+      await page
+        .getByRole('button', { name: '启动本表同步', exact: true })
+        .last()
+        .click();
       await expect(
         page.getByRole('alert').filter({ hasText: 'data_sync_commit_unknown' }),
       ).toBeVisible({ timeout: 12_000 });
@@ -1257,6 +1277,9 @@ for (const readonly of [false, true]) {
       name: '同步运行 #2',
       exact: true,
     });
+    await expect(
+      drawer.getByText('同步耗时：2m5s', { exact: true }),
+    ).toBeVisible();
     await expect
       .poll(async () => {
         const box = await drawer.boundingBox();

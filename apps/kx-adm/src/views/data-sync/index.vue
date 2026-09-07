@@ -20,6 +20,7 @@ import {
   Button,
   Checkbox,
   Drawer,
+  Dropdown,
   Input,
   message,
   Modal,
@@ -32,18 +33,23 @@ import {
 } from 'antdv-next';
 
 import { DataSyncApi } from '#/api/data-sync';
+import { DatabaseSyncApi } from '#/api/data-sync-database';
 import { useTaskPolling } from '#/task-polling';
 
 import { operations, states } from './data';
 import DatabasePanel from './database-panel.vue';
+import { formatSyncDuration } from './duration';
 import InstanceEditor from './instance-editor.vue';
 import JobEditor from './job-editor.vue';
 import SqlPreview from './sql-preview.vue';
+import { startDatabase, startJob, stopDatabase, stopJob } from './sync-control';
 
 const route = useRoute();
 const activeTab = ref(route.query.database_id ? 'databases' : 'jobs');
 const RefreshCw = createIconifyIcon('lucide:refresh-cw');
 const Play = createIconifyIcon('lucide:play');
+const Square = createIconifyIcon('lucide:square');
+const Database = createIconifyIcon('lucide:database');
 const Settings2 = createIconifyIcon('lucide:settings-2');
 const { hasAccessByCodes } = useAccess();
 const configure = computed(() => hasAccessByCodes(['data-sync:configure']));
@@ -88,14 +94,15 @@ const scheduleId = ref<number>();
 const columns = [
   { title: '任务', key: 'name', dataIndex: 'name', width: 220 },
   { title: '目标', key: 'target', width: 260 },
-  { title: '状态', key: 'state', width: 100 },
+  { title: '状态', key: 'state', width: 150 },
   { title: '最近错误', dataIndex: 'last_error', ellipsis: true },
-  { title: '操作', key: 'actions', width: 120 },
+  { title: '操作', key: 'actions', width: 160 },
 ];
 const runColumns = [
   { title: '运行', dataIndex: 'id', key: 'id' },
   { title: '操作', key: 'operation' },
   { title: '状态', key: 'state' },
+  { title: '同步耗时', key: 'duration', width: 130 },
   { title: '读取行数', dataIndex: 'read_rows' },
   { title: '写入行数', dataIndex: 'written_rows' },
   { title: '错误', dataIndex: 'error_code' },
@@ -210,12 +217,65 @@ async function dispatch(
       : {};
   actionBusy.value = true;
   try {
-    const task = await DataSyncApi.dispatch(job.id, action, request);
+    const task =
+      action === 'sync'
+        ? await startJob(job)
+        : await DataSyncApi.dispatch(job.id, action, request);
     message.success(`任务已提交 #${task.id}`);
     await load(false);
   } finally {
     actionBusy.value = false;
   }
+}
+function stopTable(job: Job) {
+  stopRun(job.id, `${job.target_database}.${job.target_table}`);
+}
+function stopRun(id: number, target: string) {
+  Modal.confirm({
+    title: '停止本表同步？',
+    okText: '停止',
+    cancelText: '取消',
+    zIndex: 2200,
+    content: `${target}：停止后续定时调度并停止本次运行，不影响其它表。已提交数据保留，未确定提交结果需要对账。`,
+    onOk: async () => {
+      actionBusy.value = true;
+      try {
+        await stopJob(id);
+        message.success('本表调度已停止，当前运行已请求停止');
+        await load(false);
+        if (runDetail.value?.run.job_id === id)
+          await showRun(runDetail.value.run);
+      } finally {
+        actionBusy.value = false;
+      }
+    },
+  });
+}
+function controlDatabase(job: Job, stop: boolean) {
+  if (!job.database_id) return;
+  const id = job.database_id;
+  Modal.confirm({
+    title: stop ? '停止所属全库同步？' : '启动所属全库同步？',
+    okText: stop ? '停止' : '启动',
+    cancelText: '取消',
+    zIndex: 2200,
+    content: `${job.target_database}：${stop ? '停止所属全库后续调度及本轮所有表，已提交数据保留' : '恢复全库调度并立即同步，单独暂停的表保持暂停'}。`,
+    onOk: async () => {
+      actionBusy.value = true;
+      try {
+        if (stop) {
+          await stopDatabase(id);
+          message.success('全库调度已停止，当前运行已请求停止');
+        } else {
+          const task = await startDatabase(await DatabaseSyncApi.detail(id));
+          message.success(`全库同步已提交 #${task.id}`);
+        }
+        await load(false);
+      } finally {
+        actionBusy.value = false;
+      }
+    },
+  });
 }
 function activate() {
   Modal.confirm({
@@ -228,7 +288,7 @@ async function pause() {
   if (!detail.value) return;
   await DataSyncApi.state(
     detail.value.job,
-    detail.value.job.state !== 'paused',
+    !detail.value.job.schedule_paused && detail.value.job.state !== 'paused',
   );
   detail.value = await DataSyncApi.detail(detail.value.job.id);
   await load(false);
@@ -419,27 +479,76 @@ onMounted(async () => {
               @click.prevent="show(record)"
               >{{ record.name }}</a>
             <span v-else-if="column.key === 'target'">{{ record.target_database }}.{{ record.target_table }}</span>
-            <Tag
+            <div
               v-else-if="column.key === 'state'"
-              :color="color(record.state)"
+              class="flex flex-wrap gap-1"
             >
-              {{ states[record.state] ?? record.state }}
-            </Tag>
+              <Tag :color="color(record.state)">
+                {{ states[record.state] ?? record.state }}
+              </Tag>
+              <Tag v-if="record.schedule_paused" color="warning">
+                调度已停止
+              </Tag>
+            </div>
             <div v-else-if="column.key === 'actions'" class="flex gap-1">
-              <Tooltip v-if="execute && !record.database_id" title="立即同步">
+              <Tooltip v-if="execute" title="启动本表同步">
                 <Button
                   type="text"
-                  :disabled="record.state !== 'ready' || actionBusy"
+                  aria-label="启动本表同步"
+                  size="small"
+                  :disabled="
+                    !['ready', 'paused'].includes(record.state) ||
+                    !!record.active_run_id ||
+                    actionBusy
+                  "
                   @click="dispatch('sync', record)"
                 >
                   <Play class="size-4" />
                 </Button>
               </Tooltip>
+              <Tooltip v-if="execute" title="停止本表同步">
+                <Button
+                  type="text"
+                  danger
+                  aria-label="停止本表同步"
+                  size="small"
+                  :disabled="
+                    (record.schedule_paused && !record.active_run_id) ||
+                    record.state === 'superseded' ||
+                    actionBusy
+                  "
+                  @click="stopTable(record)"
+                >
+                  <Square class="size-4" />
+                </Button>
+              </Tooltip>
+              <Dropdown
+                v-if="execute && record.database_id"
+                :trigger="['click']"
+                :menu="{
+                  items: [
+                    { key: 'start', label: '启动所属全库同步' },
+                    { key: 'stop', label: '停止所属全库同步', danger: true },
+                  ],
+                  onClick: ({ key }) => controlDatabase(record, key === 'stop'),
+                }"
+              >
+                <Button
+                  type="text"
+                  aria-label="所属全库操作"
+                  size="small"
+                  title="所属全库操作"
+                  :disabled="actionBusy"
+                >
+                  <Database class="size-4" />
+                </Button>
+              </Dropdown>
               <Tooltip v-if="configure && !record.database_id" title="编辑配置">
                 <Button
                   type="text"
                   :disabled="!!record.active_run_id"
                   @click="edit(record)"
+                  size="small"
                 >
                   <Settings2 class="size-4" />
                 </Button>
@@ -501,6 +610,7 @@ onMounted(async () => {
         <div class="toolbar">
           <Tag :color="color(detail.job.state)">
             {{ states[detail.job.state] }}
+            {{ detail.job.schedule_paused ? ' / 调度已停止' : '' }}
           </Tag>
           <Button
             v-if="configure && !detail.job.database_id"
@@ -527,13 +637,27 @@ onMounted(async () => {
             确认建表并启用
           </Button>
           <Button
-            v-if="execute && !detail.job.database_id"
+            v-if="execute"
             type="primary"
-            :disabled="detail.job.state !== 'ready'"
+            :disabled="
+              !['ready', 'paused'].includes(detail.job.state) ||
+              !!detail.job.active_run_id
+            "
             :loading="actionBusy"
             @click="dispatch('sync')"
           >
-            <Play class="size-4" />同步
+            <Play class="size-4" />启动本表同步
+          </Button>
+          <Button
+            v-if="execute"
+            danger
+            :disabled="
+              (detail.job.schedule_paused && !detail.job.active_run_id) ||
+              actionBusy
+            "
+            @click="stopTable(detail.job)"
+          >
+            <Square class="size-4" />停止本表同步
           </Button>
           <Button
             v-if="execute && !detail.job.database_id"
@@ -550,7 +674,11 @@ onMounted(async () => {
             "
             @click="pause"
           >
-            {{ detail.job.state === 'paused' ? '恢复调度' : '暂停调度' }}
+            {{
+              detail.job.schedule_paused || detail.job.state === 'paused'
+                ? '恢复调度'
+                : '暂停调度'
+            }}
           </Button>
         </div>
         <Alert
@@ -588,7 +716,7 @@ onMounted(async () => {
               :columns="runColumns"
               row-key="id"
               :pagination="runPage"
-              :scroll="{ x: 650 }"
+              :scroll="{ x: 780 }"
               @change="
                 (p) => {
                   runPage.current = p.current ?? 1;
@@ -611,6 +739,9 @@ onMounted(async () => {
                 >
                   {{ states[record.state] }}
                 </Tag>
+                <span v-else-if="column.key === 'duration'">{{
+                  formatSyncDuration(record)
+                }}</span>
               </template>
             </Table>
           </TabPane>
@@ -701,17 +832,16 @@ onMounted(async () => {
         <div class="toolbar">
           <Tag :color="color(runDetail.run.state)">
             {{ states[runDetail.run.state] }}
-</Tag><span>读取 {{ runDetail.run.read_rows }} / 写入
+</Tag><span>同步耗时：{{ formatSyncDuration(runDetail.run) }}</span><span>读取 {{ runDetail.run.read_rows }} / 写入
             {{ runDetail.run.written_rows }}</span><Button
             v-if="execute && runDetail.run.state === 'running'"
             danger
+            :loading="actionBusy"
             @click="
-              DataSyncApi.cancel(runDetail.run.id).then(() =>
-                message.success('已请求取消'),
-              )
+              stopRun(runDetail.run.job_id, detail?.job.target_table ?? '')
             "
           >
-            取消运行
+            停止本表同步
           </Button>
         </div>
         <Alert

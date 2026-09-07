@@ -82,6 +82,7 @@ export interface JobWrite {
   version?: number;
 }
 export interface Job extends Omit<JobWrite, 'config'> {
+  schedule_paused: boolean;
   database_id?: null | number;
   id: number;
   code: string;
@@ -255,7 +256,7 @@ export const DataSyncApi = {
       `${root}/instances/${encodeURIComponent(code)}`,
       data,
     ),
-  state: (job: Job, paused: boolean) =>
+  state: (job: Pick<Job, 'id' | 'version'>, paused: boolean) =>
     requestClient.put<Job>(`${root}/jobs/${job.id}/state`, {
       paused,
       version: job.version,

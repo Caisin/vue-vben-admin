@@ -12,6 +12,7 @@ import {
   Alert,
   Button,
   Input,
+  message,
   Modal,
   Select,
   Switch,
@@ -26,6 +27,8 @@ import { DataSyncApi } from '#/api/data-sync';
 import { useTaskPolling } from '#/task-polling';
 
 import { operations, states } from './data';
+import { formatSyncDuration } from './duration';
+import { stopJob } from './sync-control';
 
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
@@ -37,6 +40,7 @@ const auto = ref(true);
 const error = ref('');
 const rows = ref<RunListItem[]>([]);
 const loading = ref(false);
+const cancelling = ref<number[]>([]);
 const pagination = reactive({ current: 1, pageSize: 50, total: 0 });
 const detail = ref<RunDetail>();
 const batchRows = ref<Batch[]>([]);
@@ -47,6 +51,7 @@ const columns = [
   { title: '任务 / 目标表', key: 'target', width: 260 },
   { title: '操作', key: 'operation', width: 110 },
   { title: '状态', key: 'state', width: 100 },
+  { title: '同步耗时', key: 'duration', width: 130 },
   { title: '读取 / 写入', key: 'rows', width: 150 },
   { title: '数据量', key: 'bytes', width: 100 },
   { title: '开始时间', key: 'started', width: 180 },
@@ -96,13 +101,19 @@ async function batches() {
 }
 async function cancel(row: RunListItem) {
   Modal.confirm({
-    title: row.database_id ? '停止所属全库运行？' : '停止本表同步？',
-    content: row.database_id
-      ? '同一全库运行中的其它子表也会收到取消请求，已提交数据保留。'
-      : '已提交数据保留，未确定提交结果需要对账。',
+    title: '停止本表同步？',
+    okText: '停止',
+    cancelText: '取消',
+    content: `${row.target_database}.${row.target_table}：停止后续定时调度并停止本次运行，不影响其它表。已提交数据保留，未确定提交结果需要对账。`,
     onOk: async () => {
-      await DataSyncApi.cancel(row.id);
-      await load();
+      cancelling.value.push(row.id);
+      try {
+        await stopJob(row.job_id);
+        message.success('本表调度已停止，当前运行已请求停止');
+        await load();
+      } finally {
+        cancelling.value = cancelling.value.filter((id) => id !== row.id);
+      }
     },
   });
 }
@@ -159,7 +170,7 @@ onMounted(() => polling.start());
       row-key="id"
       :loading="loading"
       :pagination="pagination"
-      :scroll="{ x: 1400 }"
+      :scroll="{ x: 1600 }"
       @change="
         (p) => {
           pagination.current = p.current ?? 1;
@@ -178,6 +189,9 @@ onMounted(() => polling.start());
         </Tag>
         <span v-else-if="column.key === 'operation'">{{
           operations[record.operation] ?? record.operation
+        }}</span>
+        <span v-else-if="column.key === 'duration'">{{
+          formatSyncDuration(record)
         }}</span>
         <span v-else-if="column.key === 'rows'">{{ Number(record.read_rows).toLocaleString() }} /
           {{ Number(record.written_rows).toLocaleString() }}</span>
@@ -202,9 +216,10 @@ onMounted(() => polling.start());
             v-if="execute && record.state === 'running'"
             size="small"
             danger
+            :loading="cancelling.includes(record.id)"
             @click="cancel(record)"
           >
-            {{ record.database_id ? '停止全库' : '停止' }}
+            停止本表
           </Button>
         </div>
       </template>
@@ -217,6 +232,7 @@ onMounted(() => polling.start());
       @cancel="detail = undefined"
     >
       <template v-if="detail">
+        <p>同步耗时：{{ formatSyncDuration(detail.run) }}</p>
         <Button @click="detail && show({ id: detail.run.id } as RunListItem)">
           刷新明细
         </Button>

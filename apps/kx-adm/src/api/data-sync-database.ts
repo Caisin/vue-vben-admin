@@ -43,6 +43,7 @@ export interface DatabasePlanRow {
   error: null | string;
 }
 export interface DatabaseSync {
+  schedule_paused: boolean;
   id: number;
   name: string;
   config: DatabaseWrite;
