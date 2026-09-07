@@ -7,7 +7,7 @@ import type {
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { ArrowUpToLine, Plus, X } from '@vben/icons';
+import { ArrowUpToLine, createIconifyIcon, Plus, X } from '@vben/icons';
 
 import {
   Button,
@@ -19,6 +19,7 @@ import {
   Select,
   Space,
   Table,
+  Tooltip,
   Upload,
 } from 'antdv-next';
 
@@ -28,8 +29,17 @@ import { BusinessImport } from '#/components/import-export';
 import { Times } from '#/times';
 
 const rows = ref<AppleDevice[]>([]);
+const RefreshCw = createIconifyIcon('lucide:refresh-cw');
 const accounts = ref<DeveloperAccountListItem[]>([]);
 const loading = ref(false);
+const keyword = ref('');
+const accountId = ref<number>();
+const pagination = reactive({
+  current: 1,
+  pageSize: 10,
+  showSizeChanger: true,
+});
+let generation = 0;
 const saving = ref(false);
 const screenshotUploading = ref(false);
 const open = ref(false);
@@ -81,17 +91,31 @@ function accountLabelById(id?: null | number) {
 }
 
 async function refresh() {
+  const version = ++generation;
   loading.value = true;
   try {
     const [deviceRows, accountPage] = await Promise.all([
-      DeveloperAccountApi.appleDevices(),
+      DeveloperAccountApi.appleDevices({
+        keyword: keyword.value.trim() || undefined,
+        developer_account_id: accountId.value,
+      }),
       DeveloperAccountApi.list({ page: 1, size: 1000 }),
     ]);
+    if (version !== generation) return;
     rows.value = deviceRows;
     accounts.value = accountPage.items;
+    pagination.current = Math.min(
+      pagination.current,
+      Math.max(1, Math.ceil(deviceRows.length / pagination.pageSize)),
+    );
   } finally {
-    loading.value = false;
+    if (version === generation) loading.value = false;
   }
+}
+
+function search() {
+  pagination.current = 1;
+  return refresh();
 }
 
 function resetForm() {
@@ -183,9 +207,34 @@ onMounted(refresh);
 
 <template>
   <Page auto-content-height class="management-page">
-    <div class="mb-3 flex justify-end">
-      <Space>
-        <Button @click="refresh">刷新</Button>
+    <div class="device-toolbar">
+      <Input.Search
+        v-model:value="keyword"
+        class="device-search"
+        aria-label="搜索设备资产"
+        placeholder="设备号、名称、序列号、使用者"
+        allow-clear
+        @search="search"
+      />
+      <label for="apple-device-account-filter" class="sr-only">筛选开发者账户</label>
+      <Select
+        id="apple-device-account-filter"
+        v-model:value="accountId"
+        class="account-filter"
+        aria-label="筛选开发者账户"
+        placeholder="全部开发者账户"
+        :options="accountOptions"
+        allow-clear
+        show-search
+        option-filter-prop="label"
+        @change="search"
+      />
+      <Space wrap class="device-actions">
+        <Tooltip title="刷新">
+          <Button aria-label="刷新设备资产" @click="refresh">
+            <RefreshCw class="size-4" />
+          </Button>
+        </Tooltip>
         <span v-access:code="'developer-account:apple-device-import'">
           <BusinessImport
             button-text="导入设备"
@@ -206,7 +255,15 @@ onMounted(refresh);
       :columns="columns"
       :data-source="rows"
       :loading="loading"
+      :pagination="pagination"
+      :scroll="{ x: 1200 }"
       row-key="id"
+      @change="
+        (page) => {
+          pagination.current = page.current ?? 1;
+          pagination.pageSize = page.pageSize ?? 10;
+        }
+      "
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'developer_account_id'">
@@ -322,3 +379,33 @@ onMounted(refresh);
     </Modal>
   </Page>
 </template>
+
+<style scoped>
+.device-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.device-search {
+  width: 360px;
+  max-width: 100%;
+}
+
+.account-filter {
+  width: 260px;
+  max-width: 100%;
+}
+
+.device-actions {
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .device-search,
+  .account-filter {
+    width: 100%;
+  }
+}
+</style>
