@@ -303,8 +303,15 @@ for (const readonly of [false, true]) {
             result = { items: [], unread_count: 0 };
           else if (path === '/data-sync/databases')
             result = pageResult([database]);
-          else if (path === '/data-sync/databases/10' && method === 'PUT') {
-            const req = requestBody(route.request());
+          else if (
+            (path === '/data-sync/databases/10' ||
+              path === '/data-sync/databases/10/settings') &&
+            method === 'PUT'
+          ) {
+            const req = {
+              ...requestBody(route.request()),
+              tables: database.config.tables,
+            };
             expect(req.tables[0].config.mode).toBe('full_table');
             if (!expanded)
               expect(
@@ -323,8 +330,137 @@ for (const readonly of [false, true]) {
             database.config = req;
             database.version++;
             databaseSaved = true;
-            result = database;
-          } else if (path === '/data-sync/databases/10') result = database;
+            database.last_task_id = 96;
+            result = path.endsWith('/settings')
+              ? { id: 96, status: 'succeeded' }
+              : database;
+          } else if (path === '/data-sync/databases/10/tables') {
+            const params = new URL(route.request().url()).searchParams;
+            const records = database.config.tables.map((definition, index) => ({
+              id: index + 1,
+              version: 1,
+              definition,
+              plan: database.plan.find(
+                (p) => p.target_table === definition.target_table,
+              ) ?? {
+                target_table: definition.target_table,
+                job_id: null,
+                revision_id: null,
+                plan_hash: null,
+                state: 'pending',
+                error: null,
+              },
+            }));
+            const filtered = records.filter((row) => {
+              const table = row.definition;
+              if (
+                params.has('confirmed') &&
+                (params.get('confirmed') === 'true'
+                  ? !table.confirmed || table.excluded_reason !== null
+                  : table.confirmed && table.excluded_reason === null)
+              )
+                return false;
+              if (
+                params.get('mode') &&
+                table.config.mode !== params.get('mode')
+              )
+                return false;
+              if (
+                params.has('frequency') &&
+                String(table.sync_interval_seconds ?? 0) !==
+                  params.get('frequency')
+              )
+                return false;
+              if (
+                params.get('target_table') &&
+                table.target_table !== params.get('target_table')
+              )
+                return false;
+              if (
+                params.get('errors') === 'true' &&
+                row.plan.state !== 'failed'
+              )
+                return false;
+              const text = JSON.stringify([
+                table.target_table,
+                table.config.sources,
+                table.source_comments,
+                row.plan.error,
+              ]).toLowerCase();
+              return (
+                text.includes(
+                  (params.get('keyword') ?? '').trim().toLowerCase(),
+                ) ||
+                (params.get('error_codes') ?? '')
+                  .split(',')
+                  .filter(Boolean)
+                  .some((code) => text.includes(code))
+              );
+            });
+            const offset = (Number(params.get('page') ?? 1) - 1) * 20;
+            result = {
+              excluded: records.filter(
+                (r) => r.definition.excluded_reason !== null,
+              ).length,
+              errors: records.filter((r) => r.plan.state === 'failed').length,
+              page: {
+                items: filtered.slice(offset, offset + 20),
+                total: filtered.length,
+              },
+              confirmed: records.filter(
+                (r) =>
+                  r.definition.confirmed &&
+                  r.definition.excluded_reason === null,
+              ).length,
+              pending: records.filter(
+                (r) =>
+                  !r.definition.confirmed &&
+                  r.definition.excluded_reason === null,
+              ).length,
+              frequencies: [
+                ...new Set(
+                  records.map(
+                    (r) => r.definition.sync_interval_seconds ?? null,
+                  ),
+                ),
+              ],
+            };
+          } else if (
+            /\/data-sync\/databases\/10\/tables\/\d+$/.test(path) &&
+            method === 'PUT'
+          ) {
+            const req = requestBody(route.request());
+            const index = Number(path.split('/').at(-1)) - 1;
+            database.config.tables[index] = req.table;
+            database.config.tables.push(...(req.additional ?? []));
+            database.version++;
+            result = {
+              id: index + 1,
+              version: 2,
+              definition: req.table,
+              plan: database.plan.find(
+                (p) => p.target_table === req.table.target_table,
+              ) ?? {
+                target_table: req.table.target_table,
+                job_id: null,
+                revision_id: null,
+                plan_hash: null,
+                state: 'pending',
+                error: null,
+              },
+            };
+          } else if (path === '/data-sync/databases/10/confirm') {
+            database.config.tables.forEach((table) => {
+              if (table.excluded_reason === null) table.confirmed = true;
+            });
+            database.last_task_id = 95;
+            result = { id: 95, status: 'succeeded' };
+          } else if (path === '/data-sync/databases/10')
+            result = {
+              ...database,
+              config: { ...database.config, tables: [] },
+              plan: [],
+            };
           else if (path === '/data-sync/databases/10/schedule') result = null;
           else if (path.startsWith('/data-sync/databases/10/tasks/'))
             result = { id: database.last_task_id, status: 'succeeded' };
@@ -572,6 +708,7 @@ for (const readonly of [false, true]) {
     }
     await page.getByText('全库策略测试', { exact: true }).click();
     const databaseEditor = page.getByRole('dialog', { name: '全库策略测试' });
+    await databaseEditor.getByRole('tab', { name: /^待配置/ }).click();
     await expect(
       databaseEditor.getByText('parameters', { exact: true }).first(),
     ).toBeVisible();
@@ -595,13 +732,16 @@ for (const readonly of [false, true]) {
     });
     const strategies = databaseEditor.locator('.strategy-table');
     const strategyRows = strategies.locator('tbody tr[data-row-key]');
+    await databaseEditor.getByRole('tab', { name: /^已确认/ }).click();
     await strategies.locator('.ant-pagination-item-2').click();
-    await expect(strategyRows).toHaveCount(6);
+    await expect(strategyRows).toHaveCount(5);
+    await databaseEditor.getByRole('tab', { name: /^待配置/ }).click();
     await tableSearch.fill(' 系统参数 ');
     await expect(strategyRows).toHaveCount(1);
     await expect(strategyRows).toContainText('parameters');
     await tableSearch.fill('不存在的表');
     await expect(strategyRows).toHaveCount(0);
+    await databaseEditor.getByRole('tab', { name: /^已确认/ }).click();
     await expect(strategies).toContainText('没有匹配的表');
     await tableSearch.fill('ORDERS');
     await expect(strategyRows).toHaveCount(2);
@@ -626,6 +766,12 @@ for (const readonly of [false, true]) {
     await expect(tableSearch).toHaveValue('orders');
     await expect(strategyRows).toHaveCount(1);
     await expect(strategyRows).toHaveAttribute('data-row-key', 'orders');
+    await page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith('/data-sync/databases/10') &&
+        response.request().method() === 'GET',
+    );
+    await expect(strategyRows).toHaveCount(1);
     await expect(
       databaseEditor.getByRole('heading', { name: '逐表同步策略' }),
     ).toBeInViewport();
@@ -715,6 +861,10 @@ for (const readonly of [false, true]) {
       await expect(databaseEditor.locator('.warehouse-selector')).toContainText(
         'query one',
       );
+      await expect(tableSearch).toBeDisabled();
+      await expect(
+        databaseEditor.getByRole('tab', { name: /^待配置/ }),
+      ).toBeDisabled();
       await databaseEditor
         .getByRole('button', { name: '保存配置', exact: true })
         .click();
@@ -786,6 +936,7 @@ for (const readonly of [false, true]) {
         .getByRole('button', { name: '发现源表', exact: true })
         .click();
       await expect.poll(() => expanded).toBe(true);
+      await databaseEditor.getByRole('tab', { name: /^待配置/ }).click();
       await tableSearch.fill('orders');
       await strategies
         .locator('tr[data-row-key="orders"]')
@@ -815,6 +966,10 @@ for (const readonly of [false, true]) {
         .last()
         .click();
       await tableEditor.getByRole('button', { name: '确认本表配置' }).click();
+      await expect(
+        strategies.locator('tr[data-row-key="orders_shop_west_01"]'),
+      ).toHaveCount(0);
+      await databaseEditor.getByRole('tab', { name: /^待配置/ }).click();
       await expect(
         strategies.locator('tr[data-row-key="orders_shop_west_01"]'),
       ).toHaveCount(1);

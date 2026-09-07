@@ -58,7 +58,49 @@ export interface DatabaseSync {
   last_error: null | string;
 }
 const root = '/data-sync/databases';
+export interface TableRecord {
+  id: number;
+  version: number;
+  definition: DatabaseTable;
+  plan: DatabasePlanRow;
+}
+export interface TablePage {
+  excluded: number;
+  errors: number;
+  page: Page<TableRecord>;
+  confirmed: number;
+  pending: number;
+  frequencies: (null | number)[];
+}
 export const DatabaseSyncApi = {
+  tables: (
+    id: number,
+    params: PageQuery & {
+      keyword?: string;
+      error_codes?: string;
+      target_table?: string;
+      confirmed?: boolean;
+      mode?: string;
+      frequency?: number;
+      errors?: boolean;
+    },
+  ) => requestClient.get<TablePage>(`${root}/${id}/tables`, { params }),
+  saveTable: (
+    id: number,
+    row: TableRecord,
+    table: DatabaseTable,
+    additional: DatabaseTable[] = [],
+  ) =>
+    requestClient.put<TableRecord>(`${root}/${id}/tables/${row.id}`, {
+      version: row.version,
+      table,
+      additional,
+    }),
+  saveSettings: (id: number, data: DatabaseWrite) =>
+    requestClient.put<TaskRun>(`${root}/${id}/settings`, {
+      ...data,
+      tables: [],
+    }),
   task: (id: number, taskId: number) =>
     requestClient.get<TaskRun>(`${root}/${id}/tasks/${taskId}`),
   list: (params: PageQuery) =>

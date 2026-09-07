@@ -8,7 +8,7 @@ import type {
   SyncRun,
 } from '#/api/data-sync';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -52,6 +52,12 @@ const jobs = ref<Job[]>([]);
 const instances = ref<Instance[]>([]);
 const loading = ref(false);
 const keyword = ref('');
+const mode = ref('all');
+const frequency = ref('all');
+watch([mode, frequency], () => {
+  pagination.current = 1;
+  load();
+});
 const pagination = reactive({
   current: 1,
   pageSize: 20,
@@ -138,6 +144,8 @@ async function load(spinner = true) {
   try {
     const page = await DataSyncApi.jobs({
       keyword: keyword.value,
+      mode: mode.value,
+      frequency: frequency.value,
       page: pagination.current,
       size: pagination.pageSize,
     });
@@ -259,6 +267,8 @@ const polling = useTaskPolling({
   load: async () => {
     const query = {
       keyword: keyword.value,
+      mode: mode.value,
+      frequency: frequency.value,
       page: pagination.current,
       size: pagination.pageSize,
     };
@@ -292,6 +302,8 @@ const polling = useTaskPolling({
   accept: (result) => {
     if (
       result.query.keyword === keyword.value &&
+      result.query.mode === mode.value &&
+      result.query.frequency === frequency.value &&
       result.query.page === pagination.current &&
       result.query.size === pagination.pageSize
     ) {
@@ -347,6 +359,24 @@ onMounted(async () => {
         />
       </TabPane>
       <TabPane key="jobs" tab="同步任务">
+        <Tabs v-model:active-key="mode" size="small">
+          <TabPane key="all" tab="全部类型" /><TabPane
+            key="id_append"
+            tab="ID 增量"
+          /><TabPane key="id_and_time" tab="ID + 时间" /><TabPane
+            key="time_window"
+            tab="时间窗口"
+          /><TabPane key="full_table" tab="全表刷新" />
+        </Tabs>
+        <Tabs v-model:active-key="frequency" size="small">
+          <TabPane key="all" tab="全部频率" /><TabPane
+            key="scheduled"
+            tab="独立定时"
+          /><TabPane key="database" tab="全库调度" /><TabPane
+            key="manual"
+            tab="手动任务"
+          />
+        </Tabs>
         <div class="toolbar">
           <Input.Search
             v-model:value="keyword"

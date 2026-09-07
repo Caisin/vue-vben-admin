@@ -151,6 +151,12 @@ export interface SyncRun {
   started_at: number;
   finished_at?: null | number;
 }
+export interface RunListItem extends SyncRun {
+  job_name: string;
+  target_database: string;
+  target_table: string;
+  database_id?: null | number;
+}
 export interface SourceProgress {
   id: number;
   binding_id: number;
@@ -185,6 +191,14 @@ export interface Schedule {
 }
 const root = '/data-sync';
 export const DataSyncApi = {
+  allRuns: (
+    params: PageQuery & {
+      keyword?: string;
+      state?: string;
+      operation?: string;
+      database_id?: number;
+    },
+  ) => requestClient.get<Page<RunListItem>>(`${root}/runs`, { params }),
   targetWarehouses: (data: {
     allow_insecure: boolean;
     ds_code: string;
@@ -214,6 +228,8 @@ export const DataSyncApi = {
   jobs: (
     params?: PageQuery & {
       keyword?: string;
+      mode?: string;
+      frequency?: string;
       target_database?: string;
       target_ds_code?: string;
       target_table?: string;

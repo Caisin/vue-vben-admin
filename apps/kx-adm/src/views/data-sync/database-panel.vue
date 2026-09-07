@@ -15,13 +15,14 @@ import {
   Alert,
   Button,
   Checkbox,
-  Drawer,
   Input,
   InputNumber,
   message,
   Modal,
   Select,
   Table,
+  TabPane,
+  Tabs,
   Tag,
   Tooltip,
 } from 'antdv-next';
@@ -34,10 +35,9 @@ import { useTaskPolling } from '#/task-polling';
 
 import { setStrategy, states, strategyOptions } from './data';
 import {
-  confirmAllTables,
+  databaseErrors,
   databaseErrorText,
   databaseTableError,
-  filterDatabaseTables,
   sourceTableLabels,
   splitDatabaseTableSource,
   tableFrequencyLabel,
@@ -77,43 +77,113 @@ const activeSourceCodes = ref<null | string[]>(null);
 const separatedTables = ref<DatabaseTable[]>([]);
 const linkingJob = ref(false);
 const editingIndex = ref(-1);
+const editingRecord = ref<import('#/api/data-sync-database').TableRecord>();
 const taskPending = ref<number>();
 const taskError = ref('');
 const tableKeyword = ref('');
 const onlyErrors = ref(false);
+const strategyTab = ref('confirmed');
+const strategyMode = ref('all');
+const strategyFrequency = ref('all');
+const tableRecords = ref<import('#/api/data-sync-database').TableRecord[]>([]);
+const totals = reactive({
+  excluded: 0,
+  errors: 0,
+  confirmed: 0,
+  pending: 0,
+  total: 0,
+  frequencies: [] as (null | number)[],
+});
+const frequencyOptions = computed(() =>
+  totals.frequencies.map((seconds) => ({
+    label: tableFrequencyLabel(seconds || undefined),
+    value: String(seconds ?? 0),
+  })),
+);
+let tableGeneration = 0;
+async function loadTables() {
+  if (!selected.value || !open.value || dirty.value || editing.value) return;
+  const generation = ++tableGeneration;
+  const errorCodes = Object.entries(databaseErrors)
+    .filter(
+      ([, text]) =>
+        tableKeyword.value.trim() &&
+        text.toLowerCase().includes(tableKeyword.value.trim().toLowerCase()),
+    )
+    .map(([code]) => code)
+    .join(',');
+  const result = await DatabaseSyncApi.tables(selected.value.id, {
+    page: tablePage.value,
+    size: 20,
+    keyword: tableKeyword.value,
+    error_codes: errorCodes || undefined,
+    target_table: locatedTable.value,
+    confirmed: strategyTab.value === 'confirmed',
+    mode: strategyMode.value === 'all' ? undefined : strategyMode.value,
+    frequency:
+      strategyFrequency.value === 'all'
+        ? undefined
+        : Number(strategyFrequency.value),
+    errors: onlyErrors.value,
+  });
+  if (
+    generation !== tableGeneration ||
+    dirty.value ||
+    editing.value ||
+    !open.value
+  )
+    return;
+  tableRecords.value = result.page.items;
+  form.value.tables = result.page.items.map((row) => copy(row.definition));
+  selected.value.plan = result.page.items.map((row) => row.plan);
+  Object.assign(totals, {
+    excluded: result.excluded,
+    errors: result.errors,
+    confirmed: result.confirmed,
+    pending: result.pending,
+    total: result.page.total,
+    frequencies: result.frequencies,
+  });
+}
 const locatedTable = ref<string>();
 const tablePage = ref(1);
 const strategiesHeading = ref<HTMLElement>();
 const plansByTable = computed(
-  () => new Map(selected.value?.plan.map((row) => [row.target_table, row])),
-);
-const visibleTables = computed(() =>
-  filterDatabaseTables(form.value.tables, plansByTable.value, {
-    keyword: tableKeyword.value,
-    onlyErrors: onlyErrors.value,
-    target: locatedTable.value,
-  }),
-);
-const errorTableCount = computed(
   () =>
-    form.value.tables.filter((table) =>
-      databaseTableError(table, plansByTable.value.get(table.target_table)),
-    ).length,
+    new Map(tableRecords.value.map(({ plan }) => [plan.target_table, plan])),
 );
-watch([tableKeyword, onlyErrors, locatedTable], () => {
-  tablePage.value = 1;
-  selectedTables.value = [];
+const visibleTables = computed(() => form.value.tables);
+const errorTableCount = computed(() => totals.errors);
+watch(
+  [
+    tableKeyword,
+    onlyErrors,
+    locatedTable,
+    strategyTab,
+    strategyMode,
+    strategyFrequency,
+  ],
+  () => {
+    tablePage.value = 1;
+    selectedTables.value = [];
+    void loadTables();
+  },
+);
+watch(tablePage, () => void loadTables());
+watch(dirty, () => {
+  tableGeneration++;
 });
-watch(visibleTables, (tables) => {
-  tablePage.value = Math.min(
-    tablePage.value,
-    Math.max(1, Math.ceil(tables.length / 20)),
-  );
-  const visible = new Set(tables.map((table) => table.target_table));
-  selectedTables.value = selectedTables.value.filter((key) => visible.has(key));
-});
-const failedTables = computed(
-  () => selected.value?.plan.filter((row) => row.state === 'failed') ?? [],
+function changeTablePage(page: number) {
+  if (dirty.value) {
+    message.warning('请先保存配置');
+    return;
+  }
+  tablePage.value = page;
+}
+const failedTables = computed(() =>
+  tableRecords.value
+    .map((row) => row.plan)
+    .filter((row) => row.state === 'failed'),
 );
 const schedule = reactive({
   cron_expr: '0 * * * * *',
@@ -139,13 +209,9 @@ const targetKey = computed(() =>
     : '',
 );
 const counts = computed(() => ({
-  confirmed: form.value.tables.filter(
-    (t) => t.confirmed && t.excluded_reason === null,
-  ).length,
-  excluded: form.value.tables.filter((t) => t.excluded_reason !== null).length,
-  pending: form.value.tables.filter(
-    (t) => !t.confirmed && t.excluded_reason === null,
-  ).length,
+  confirmed: totals.confirmed,
+  pending: totals.pending,
+  excluded: totals.excluded,
 }));
 const tableColumns = [
   { title: '源表', key: 'source', width: 230 },
@@ -188,7 +254,10 @@ async function load() {
       const id = selected.value.id;
       const current = await DatabaseSyncApi.detail(id);
       if (!open.value || selected.value?.id !== id) return;
-      selected.value = current;
+      selected.value = {
+        ...current,
+        plan: tableRecords.value.map((row) => row.plan),
+      };
       if (taskPending.value) {
         const taskId = taskPending.value;
         const task = await DatabaseSyncApi.task(id, taskId);
@@ -208,10 +277,11 @@ async function load() {
         !current.active_task_id &&
         (!taskPending.value || current.last_task_id === taskPending.value)
       ) {
-        form.value = copy(current.config);
+        form.value = { ...copy(current.config), tables: form.value.tables };
         form.value.version = current.version;
         taskPending.value = undefined;
       }
+      await loadTables();
     }
   } finally {
     loading = false;
@@ -221,6 +291,7 @@ async function show(record?: DatabaseSync) {
   selected.value = record ? await DatabaseSyncApi.detail(record.id) : undefined;
   form.value = selected.value ? copy(selected.value.config) : blank();
   form.value.version = selected.value?.version;
+  strategyTab.value = 'confirmed';
   dirty.value = false;
   selectedTables.value = [];
   resetTableFilters();
@@ -228,6 +299,9 @@ async function show(record?: DatabaseSync) {
   open.value = true;
   taskPending.value = undefined;
   taskError.value = '';
+  await nextTick();
+  await loadTables();
+  if (!totals.confirmed) strategyTab.value = 'pending';
   if (record) {
     const s = await DatabaseSyncApi.schedule(record.id);
     Object.assign(
@@ -273,15 +347,39 @@ async function save() {
   busy.value = true;
   try {
     form.value.receipt_database = form.value.receipt_database?.trim() || null;
-    for (const table of form.value.tables) {
-      table.config.storage_code = form.value.storage_code;
-      table.config.receipt_database = form.value.receipt_database;
+    if (selected.value) {
+      for (const table of form.value.tables) {
+        const stored = tableRecords.value.find(
+          (row) => row.definition.target_table === table.target_table,
+        );
+        if (
+          stored &&
+          JSON.stringify(stored.definition) !== JSON.stringify(table)
+        )
+          await DatabaseSyncApi.saveTable(selected.value.id, stored, table);
+      }
+      selected.value = await DatabaseSyncApi.detail(selected.value.id);
     }
-    const current = await DatabaseSyncApi.save(
-      { ...copy(form.value), version: selected.value?.version },
-      selected.value?.id,
-    );
-    selected.value = current;
+    if (selected.value) {
+      const task = await DatabaseSyncApi.saveSettings(selected.value.id, {
+        ...copy(form.value),
+        version: selected.value.version,
+      });
+      taskPending.value = Number(task.id);
+      taskError.value = '';
+      dirty.value = false;
+      message.success(`已提交配置更新 #${task.id}`);
+      await load();
+      return;
+    }
+    const current = await DatabaseSyncApi.save({
+      ...copy(form.value),
+      tables: [],
+    });
+    selected.value = {
+      ...current,
+      plan: tableRecords.value.map((row) => row.plan),
+    };
     form.value = copy(current.config);
     form.value.version = current.version;
     dirty.value = false;
@@ -322,25 +420,21 @@ function bulk() {
     if (selectedTables.value.includes(table.target_table))
       strategy(table, bulkMode.value);
 }
-function confirmAll() {
-  if (!canEdit.value) return;
-  const result = confirmAllTables(form.value);
-  if (result.confirmed > 0) dirty.value = true;
-  if (result.failures.length > 0) {
-    Modal.warning({
-      title: `已确认 ${result.confirmed} 张表，${result.failures.length} 张表待完善`,
-      content: result.failures
-        .map((item) => `${item.table}：${item.reason}`)
-        .join('\n'),
-      styles: {
-        body: { whiteSpace: 'pre-wrap', maxHeight: '60vh', overflowY: 'auto' },
-      },
-    });
-  } else if (result.confirmed > 0) {
-    message.success(`已确认 ${result.confirmed} 张表，请保存配置`);
+async function confirmAll() {
+  if (dirty.value) {
+    message.warning('请先保存配置');
+    return;
   }
+  await dispatch('confirm');
 }
 async function editTable(table: DatabaseTable) {
+  if (dirty.value) {
+    message.warning('请先保存配置');
+    return;
+  }
+  editingRecord.value = tableRecords.value.find(
+    (row) => row.definition.target_table === table.target_table,
+  );
   linkingJob.value = false;
   editingIndex.value = form.value.tables.indexOf(table);
   editing.value = copy(table);
@@ -459,7 +553,7 @@ function separateSource(instance: string) {
   editing.value = result.main;
   separatedTables.value.push(result.separate);
 }
-function saveTable() {
+async function saveTable() {
   if (!editing.value || linkingJob.value) return;
   let invalid: string | undefined;
   if (editing.value.excluded_reason === null) {
@@ -494,24 +588,61 @@ function saveTable() {
     locatedTable.value = editing.value.target_table;
     tableKeyword.value = editing.value.target_table;
   }
-  form.value.tables[editingIndex.value] = copy(editing.value);
-  form.value.tables.push(...copy(separatedTables.value));
-  dirty.value = true;
+  if (!selected.value) return;
+  const stored = editingRecord.value;
+  if (!stored) return;
+  await DatabaseSyncApi.saveTable(
+    selected.value.id,
+    stored,
+    copy(editing.value),
+    copy(separatedTables.value),
+  );
   editing.value = undefined;
+  selected.value = await DatabaseSyncApi.detail(selected.value.id);
+  strategyTab.value = 'confirmed';
+  dirty.value = false;
+  await loadTables();
 }
 function planRow(table: DatabaseTable) {
   return plansByTable.value.get(table.target_table);
 }
 function searchTables(value: string) {
+  if (dirty.value) {
+    message.warning('请先保存配置');
+    return;
+  }
   locatedTable.value = undefined;
   tableKeyword.value = value;
 }
 function resetTableFilters() {
+  strategyMode.value = 'all';
+  strategyFrequency.value = 'all';
   tableKeyword.value = '';
   onlyErrors.value = false;
   locatedTable.value = undefined;
 }
 async function locateTable(target: string) {
+  if (dirty.value) {
+    message.warning('请先保存配置');
+    return;
+  }
+  const id = selected.value?.id;
+  let table = form.value.tables.find((t) => t.target_table === target);
+  if (!table && id) {
+    const result = await DatabaseSyncApi.tables(id, {
+      target_table: target,
+      page: 1,
+      size: 1,
+    });
+    table = result.page.items[0]?.definition;
+  }
+  if (dirty.value || selected.value?.id !== id || !open.value) return;
+  strategyTab.value =
+    table?.confirmed && table.excluded_reason === null
+      ? 'confirmed'
+      : 'pending';
+  strategyMode.value = 'all';
+  strategyFrequency.value = 'all';
   onlyErrors.value = false;
   tableKeyword.value = target;
   locatedTable.value = target;
@@ -590,10 +721,11 @@ const polling = useTaskPolling({
       !current.active_task_id &&
       (!taskPending.value || current.last_task_id === taskPending.value)
     ) {
-      form.value = copy(current.config);
+      form.value = { ...copy(current.config), tables: form.value.tables };
       form.value.version = current.version;
       taskPending.value = undefined;
     }
+    void loadTables();
   },
 });
 </script>
@@ -637,12 +769,17 @@ const polling = useTaskPolling({
         </Tag>
       </template>
     </Table>
-    <Drawer
+    <Modal
       :open="open"
       :title="selected ? selected.name : '新增全库同步配置'"
-      :width="1120"
+      width="min(96vw, 1800px)"
+      :footer="null"
+      :style="{ top: '24px' }"
+      :styles="{
+        body: { maxHeight: 'calc(100dvh - 140px)', overflowY: 'auto' },
+      }"
       :z-index="2100"
-      @close="open = false"
+      @cancel="open = false"
     >
       <Alert
         v-if="taskError || selected?.last_error || failedTables.length"
@@ -659,7 +796,7 @@ const polling = useTaskPolling({
       >
         <template v-if="failedTables.length" #description>
           <div
-            v-for="row in failedTables"
+            v-for="row in failedTables.slice(0, 20)"
             :key="row.target_table"
             class="failed-table"
           >
@@ -719,7 +856,9 @@ const polling = useTaskPolling({
         <Button
           v-if="
             execute &&
-            (selected?.state === 'blocked' || selected?.active_task_id)
+            (selected?.state === 'blocked' ||
+              selected?.active_task_id ||
+              (selected?.failed_tables ?? 0) > 0)
           "
           :disabled="busy"
           @click="dispatch('reconcile')"
@@ -875,9 +1014,40 @@ const polling = useTaskPolling({
         </Button>
       </fieldset>
       <h3 ref="strategiesHeading">逐表同步策略</h3>
+      <Tabs v-model:active-key="strategyTab">
+        <TabPane
+          key="confirmed"
+          :disabled="dirty"
+          :tab="`已确认（${counts.confirmed}）`"
+        />
+        <TabPane
+          key="pending"
+          :disabled="dirty"
+          :tab="`待配置 / 已跳过（${counts.pending + counts.excluded}）`"
+        />
+      </Tabs>
+      <Tabs v-model:active-key="strategyMode" size="small">
+        <TabPane key="all" tab="全部类型" :disabled="dirty" />
+        <TabPane
+          v-for="item in strategyOptions"
+          :disabled="dirty"
+          :key="item.value"
+          :tab="item.label"
+        />
+      </Tabs>
+      <Tabs v-model:active-key="strategyFrequency" size="small">
+        <TabPane key="all" tab="全部频率" :disabled="dirty" />
+        <TabPane
+          v-for="item in frequencyOptions"
+          :disabled="dirty"
+          :key="item.value"
+          :tab="item.label"
+        />
+      </Tabs>
       <div class="toolbar table-filters">
         <Input
           :value="tableKeyword"
+          :disabled="dirty"
           allow-clear
           aria-label="搜索逐表同步策略"
           placeholder="源表、目标表、备注或错误原因"
@@ -886,19 +1056,19 @@ const polling = useTaskPolling({
         >
           <template #prefix><Search class="size-4" /></template>
         </Input>
-        <Checkbox v-model:checked="onlyErrors">
+        <Checkbox v-model:checked="onlyErrors" :disabled="dirty">
           仅看错误表（{{ errorTableCount }}）
         </Checkbox>
         <Tooltip title="清除表筛选" :z-index="2500">
           <Button
             aria-label="清除表筛选"
-            :disabled="!tableKeyword && !onlyErrors && !locatedTable"
+            :disabled="dirty || (!tableKeyword && !onlyErrors && !locatedTable)"
             @click="resetTableFilters"
           >
             <FilterX class="size-4" />
           </Button>
         </Tooltip>
-        <span role="status">显示 {{ visibleTables.length }} / {{ form.tables.length }} 张表</span>
+        <span role="status">显示 {{ visibleTables.length }} / {{ totals.total }} 张表</span>
       </div>
       <div class="toolbar">
         <span>参与 {{ counts.confirmed }} · 排除 {{ counts.excluded }} · 待确认跳过
@@ -929,11 +1099,15 @@ const polling = useTaskPolling({
           current: tablePage,
           pageSize: 20,
           showSizeChanger: false,
+          total: totals.total,
         }"
         :locale="{
-          emptyText: form.tables.length ? '没有匹配的表' : '暂无源表',
+          emptyText:
+            totals.confirmed + totals.pending + totals.excluded
+              ? '没有匹配的表'
+              : '暂无源表',
         }"
-        @change="(p) => (tablePage = p.current ?? 1)"
+        @change="(p) => changeTablePage(p.current ?? 1)"
         :row-selection="
           configure
             ? {
@@ -996,6 +1170,8 @@ const polling = useTaskPolling({
                 locked ||
                 dirty ||
                 !record.confirmed ||
+                !planRow(record)?.revision_id ||
+                !planRow(record)?.plan_hash ||
                 record.excluded_reason !== null
               "
               @click="dispatch('sync', record.target_table)"
@@ -1044,7 +1220,7 @@ const polling = useTaskPolling({
           保存定时配置
         </Button>
       </template>
-    </Drawer>
+    </Modal>
     <Modal
       :open="!!editing"
       :title="editing?.target_table"
