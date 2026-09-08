@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { accepts, cleanOptions, errorText, isActive } from './data';
+import {
+  accepts,
+  cleanOptions,
+  errorText,
+  isActive,
+  runErrorText,
+} from './data';
 
 describe('创作工作台契约', () => {
   it('受理和生成中不能作为成功终态', () => {
@@ -44,5 +50,24 @@ describe('创作工作台契约', () => {
   it('不把未知提交误报为安全重试或免费取消', () => {
     expect(errorText('aigc_studio_submission_unknown')).toContain('重复计费');
     expect(errorText('aigc_studio_cancelled')).toContain('计费');
+    expect(errorText('aigc_studio_response_incomplete')).toContain(
+      '未完成回复',
+    );
+    expect(errorText('aigc_studio_response_incomplete')).toContain(
+      '已保留部分内容',
+    );
+  });
+  it('附件不可用给出处理方法，失败记录缺少错误码也有说明', () => {
+    expect(errorText('aigc_studio_attachment_unavailable')).toContain(
+      '重新上传',
+    );
+    expect(errorText('storage_file_not_found')).toContain('访问权限');
+    expect(runErrorText({ state: 'failed', error_code: '' })).toContain(
+      '未记录',
+    );
+    expect(runErrorText({ state: 'succeeded', error_code: '' })).toBe('');
+    expect(
+      runErrorText({ state: 'failed', error_code: 'aigc_studio_rate_limited' }),
+    ).toContain('限流');
   });
 });

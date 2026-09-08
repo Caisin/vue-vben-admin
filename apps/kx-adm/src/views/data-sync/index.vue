@@ -39,6 +39,7 @@ import { useTaskPolling } from '#/task-polling';
 import { operations, states } from './data';
 import DatabasePanel from './database-panel.vue';
 import { formatSyncDuration } from './duration';
+import ForceStopButton from './force-stop-button.vue';
 import InstanceEditor from './instance-editor.vue';
 import JobEditor from './job-editor.vue';
 import {
@@ -228,6 +229,14 @@ async function saved(id: number) {
   await load();
   const current = await DataSyncApi.detail(id);
   await show(current.job);
+}
+async function forceStopped() {
+  await load(false);
+  if (detail.value) {
+    const current = await DataSyncApi.detail(detail.value.job.id);
+    await show(current.job);
+  }
+  if (runDetail.value) await showRun(runDetail.value.run);
 }
 async function dispatch(
   action: 'activate' | 'inspect' | 'reconcile' | 'sync',
@@ -602,6 +611,14 @@ onMounted(async () => {
                   <Square class="size-4" />
                 </Button>
               </Tooltip>
+              <ForceStopButton
+                :id="record.id"
+                :expected-id="record.active_run_id"
+                :target="`${record.target_database}.${record.target_table}`"
+                compact
+                :disabled="actionBusy"
+                @finished="forceStopped"
+              />
               <Dropdown
                 v-if="execute && record.database_id"
                 :trigger="['click']"
@@ -741,12 +758,21 @@ onMounted(async () => {
           </Button>
           <Button
             v-if="execute && !detail.job.database_id"
-            :disabled="!detail.job.active_revision_id"
+            :disabled="
+              !detail.job.active_revision_id && !detail.job.draft_revision_id
+            "
             :loading="actionBusy"
             @click="dispatch('reconcile')"
           >
             回执对账
           </Button>
+          <ForceStopButton
+            :id="detail.job.id"
+            :expected-id="detail.job.active_run_id"
+            :target="`${detail.job.target_database}.${detail.job.target_table}`"
+            :disabled="actionBusy"
+            @finished="forceStopped"
+          />
           <Button
             v-if="configure && !detail.job.database_id"
             :disabled="

@@ -31,6 +31,7 @@ for (const kind of ['chat', 'image', 'video'] as const) {
       ];
       const records: StudioRun[] = [];
       const submitted: Record<string, unknown>[] = [];
+      let rejectAttachment = kind === 'chat';
       const png = Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZFoAAAAASUVORK5CYII=',
         'base64',
@@ -159,6 +160,15 @@ for (const kind of ['chat', 'image', 'video'] as const) {
             if (method === 'POST') {
               const req = body(route.request());
               submitted.push(req);
+              if (rejectAttachment) {
+                rejectAttachment = false;
+                await fulfill(
+                  route,
+                  null,
+                  'aigc_studio_attachment_unavailable',
+                );
+                return;
+              }
               const row: StudioRun = {
                 id: records.length + 1,
                 session_id: Number(id),
@@ -182,6 +192,11 @@ for (const kind of ['chat', 'image', 'video'] as const) {
             } else {
               records.forEach((row) => {
                 if (row.state === 'running' && !row.cancel_requested) {
+                  if (kind === 'chat' && row.id === 2) {
+                    row.state = 'failed';
+                    row.error_code = 'aigc_studio_rate_limited';
+                    return;
+                  }
                   row.state = 'succeeded';
                   row.progress = 100;
                   row.output_text =
@@ -278,9 +293,24 @@ for (const kind of ['chat', 'image', 'video'] as const) {
             exact: true,
           })
           .click();
+        if (kind === 'chat') {
+          await expect(
+            page.locator('.ant-alert').filter({ hasText: '重新上传' }),
+          ).toBeVisible();
+          await page.locator('.composer .file-ref-preview button').click();
+          await page
+            .getByRole('textbox', { name: '创作内容' })
+            .fill('修改后重新发送');
+          await page.getByRole('button', { name: '发送', exact: true }).click();
+          await expect.poll(() => submitted.length).toBe(2);
+          expect(submitted[1]?.request_key).not.toBe(submitted[0]?.request_key);
+          expect(submitted[1]?.prompt).toBe('修改后重新发送');
+          expect(submitted[1]?.file_ids).toEqual([]);
+          submitted.shift();
+        }
         await expect(page.locator('[data-run-id="1"]')).toContainText('已完成');
         expect(submitted).toHaveLength(1);
-        expect(submitted[0]?.file_ids).toEqual([9]);
+        expect(submitted[0]?.file_ids).toEqual(kind === 'chat' ? [] : [9]);
         if (kind === 'chat') {
           await expect(
             page.getByRole('heading', { name: '回答', exact: true }),
@@ -319,6 +349,21 @@ for (const kind of ['chat', 'image', 'video'] as const) {
         await expect.poll(() => submitted.length).toBe(2);
         expect(submitted[0]?.request_key).not.toBe(submitted[1]?.request_key);
         if (kind === 'chat') expect(submitted[1]?.regenerate_from).toBe(1);
+        if (kind === 'chat') {
+          const failed = page.locator('[data-run-id="2"]');
+          await expect(failed).toContainText('供应商限流');
+          await failed
+            .getByRole('button', { name: '详情', exact: true })
+            .click();
+          const details = page.getByRole('dialog', { name: '生成详情' });
+          await expect(details).toContainText('供应商限流');
+          await expect(details).toContainText('aigc_studio_rate_limited');
+          await details.screenshot({
+            path: info.outputPath('chat-failure-details.png'),
+            animations: 'disabled',
+          });
+          await page.keyboard.press('Escape');
+        }
         await page.getByRole('button', { name: '重命名会话' }).click();
         await page
           .getByRole('textbox', { name: '会话名称' })
@@ -364,7 +409,21 @@ for (const kind of ['chat', 'image', 'video'] as const) {
             `${kind}-${readonly ? 'readonly' : 'write'}-${width}.png`,
           ),
           fullPage: true,
+          animations: 'disabled',
         });
+        if (width === 390 && kind === 'chat' && !readonly) {
+          await page
+            .locator('[data-run-id="2"]')
+            .getByRole('button', { name: '详情', exact: true })
+            .click();
+          const details = page.getByRole('dialog', { name: '生成详情' });
+          await expect(details).toContainText('aigc_studio_rate_limited');
+          await page.screenshot({
+            path: info.outputPath('chat-failure-details-mobile.png'),
+            animations: 'disabled',
+          });
+          await page.keyboard.press('Escape');
+        }
         if (width === 390 && !readonly) {
           await page
             .getByRole('button', { name: '生成参数', exact: true })
@@ -428,8 +487,12 @@ function menus(kind: StudioKind) {
     })),
   ];
 }
-async function fulfill(route: Route, result: unknown) {
-  const text = JSON.stringify({ code: 200, msg: 'ok', result });
+async function fulfill(route: Route, result: unknown, error?: string) {
+  const text = JSON.stringify({
+    code: error ? 500 : 200,
+    msg: error ?? 'ok',
+    result,
+  });
   await route.fulfill({
     body:
       route.request().headers().security === 'true'

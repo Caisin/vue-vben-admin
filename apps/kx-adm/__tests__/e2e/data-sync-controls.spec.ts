@@ -4,10 +4,9 @@ import { KxEd } from '@kx/admin-core';
 import { expect, test } from '@playwright/test';
 
 test.use({ headless: true });
-for (const readonly of [false, true]) {
-  test(`同步启停范围${readonly ? '只读' : '操作'}隔离`, async ({
-    page,
-  }, info) => {
+for (const scenario of ['只读', '操作', '强停']) {
+  const readonly = scenario === '只读';
+  test(`同步启停范围${scenario}隔离`, async ({ page }, info) => {
     const writes: { body: Record<string, unknown>; path: string }[] = [];
     const jobs = [1, 2].map((id) => ({
       id,
@@ -23,6 +22,7 @@ for (const readonly of [false, true]) {
       active_revision_id: 1,
     }));
     const database = {
+      last_task_id: 300,
       schedule_paused: false,
       version: 1,
       id: 10,
@@ -35,7 +35,12 @@ for (const readonly of [false, true]) {
     };
     const [independentJob, managedJob] = jobs;
     if (!independentJob || !managedJob) throw new Error('缺少同步任务 fixture');
+    if (readonly) {
+      Object.assign(independentJob, { state: 'running', active_run_id: 101 });
+      Object.assign(database, { state: 'running', active_task_id: 300 });
+    }
     let failStop = false;
+    const forceReads = new Map<number, number>();
     await page
       .context()
       .route('**/{auth,notify,param,data-sync}/**', async (route) => {
@@ -104,7 +109,42 @@ for (const readonly of [false, true]) {
           result = { items: jobs, total: jobs.length };
         else if (path === '/data-sync/databases')
           result = { items: [database], total: 1 };
-        else if (
+        else if (/\/tasks\/70[123]$/.test(path)) {
+          const id = Number(path.split('/').at(-1));
+          const reads = (forceReads.get(id) ?? 0) + 1;
+          forceReads.set(id, reads);
+          const done = reads >= 2;
+          if (done && id === 701)
+            Object.assign(independentJob, {
+              state: 'paused',
+              active_run_id: null,
+              schedule_paused: true,
+            });
+          if (done && id === 702)
+            Object.assign(database, {
+              state: 'blocked',
+              active_task_id: null,
+              last_task_id: id,
+              schedule_paused: true,
+              failed_tables: 1,
+            });
+          const finishedMessages: Record<number, string> = {
+            701: '已强制停止并解除占用',
+            702: '已强制停止，1 张表存在待对账批次',
+            703: 'data_sync_force_stop_stale',
+          };
+          let status = 'running';
+          if (done) status = id === 703 ? 'failed' : 'succeeded';
+          result = {
+            id,
+            status,
+            total_count: 1,
+            succeeded_count: done ? 1 : 0,
+            message: done
+              ? finishedMessages[id]
+              : '发布权已撤销，等待原执行者退出',
+          };
+        } else if (
           path === '/data-sync/databases/10' &&
           request.method() === 'GET'
         )
@@ -119,51 +159,62 @@ for (const readonly of [false, true]) {
                 : raw.toString();
           const body = JSON.parse(payload);
           writes.push({ path, body });
-          if (path === '/data-sync/jobs/1/sync')
-            Object.assign(independentJob, {
-              state: 'running',
-              active_run_id: 101,
-            });
-          if (path === '/data-sync/databases/10/sync') {
-            if (body.target_table)
-              Object.assign(managedJob, {
+          if (path.endsWith('/force-stop')) {
+            let id = 703;
+            if (path.includes('/databases/')) id = 702;
+            else if (path.includes('/jobs/1/')) id = 701;
+            result = {
+              id,
+              status: 'queued',
+              message: '强停请求已提交',
+            };
+          } else {
+            if (path === '/data-sync/jobs/1/sync')
+              Object.assign(independentJob, {
                 state: 'running',
-                active_run_id: 102,
+                active_run_id: 101,
               });
-            else
-              Object.assign(database, {
-                state: 'running',
-                active_task_id: 300,
-              });
-          }
-          if (path === '/data-sync/runs/101/cancel')
-            Object.assign(independentJob, {
-              state: 'ready',
-              active_run_id: null,
-            });
-          if (path === '/data-sync/runs/102/cancel') {
-            if (failStop) code = 400;
-            else
-              Object.assign(managedJob, {
+            if (path === '/data-sync/databases/10/sync') {
+              if (body.target_table)
+                Object.assign(managedJob, {
+                  state: 'running',
+                  active_run_id: 102,
+                });
+              else
+                Object.assign(database, {
+                  state: 'running',
+                  active_task_id: 300,
+                });
+            }
+            if (path === '/data-sync/runs/101/cancel')
+              Object.assign(independentJob, {
                 state: 'ready',
                 active_run_id: null,
               });
+            if (path === '/data-sync/runs/102/cancel') {
+              if (failStop) code = 400;
+              else
+                Object.assign(managedJob, {
+                  state: 'ready',
+                  active_run_id: null,
+                });
+            }
+            if (path === '/data-sync/databases/10/cancel')
+              Object.assign(database, { state: 'ready', active_task_id: null });
+            if (path === '/data-sync/jobs/1/state') {
+              independentJob.schedule_paused = body.paused;
+              independentJob.version += 1;
+              result = independentJob;
+            } else if (path === '/data-sync/jobs/2/state') {
+              managedJob.schedule_paused = body.paused;
+              managedJob.version += 1;
+              result = managedJob;
+            } else if (path === '/data-sync/databases/10/state') {
+              database.schedule_paused = body.paused;
+              database.version += 1;
+              result = database;
+            } else result = { id: 300, status: 'running' };
           }
-          if (path === '/data-sync/databases/10/cancel')
-            Object.assign(database, { state: 'ready', active_task_id: null });
-          if (path === '/data-sync/jobs/1/state') {
-            independentJob.schedule_paused = body.paused;
-            independentJob.version += 1;
-            result = independentJob;
-          } else if (path === '/data-sync/jobs/2/state') {
-            managedJob.schedule_paused = body.paused;
-            managedJob.version += 1;
-            result = managedJob;
-          } else if (path === '/data-sync/databases/10/state') {
-            database.schedule_paused = body.paused;
-            database.version += 1;
-            result = database;
-          } else result = { id: 300, status: 'running' };
         }
         const text = JSON.stringify({
           code,
@@ -198,10 +249,83 @@ for (const readonly of [false, true]) {
     }
     const independent = page.locator('tr[data-row-key="1"]');
     const managed = page.locator('tr[data-row-key="2"]');
+    if (scenario === '强停') {
+      await independent
+        .getByRole('button', { name: '启动本表同步', exact: true })
+        .click();
+      await expect(
+        independent.getByRole('button', { name: '强制停止本表同步' }),
+      ).toBeVisible();
+      await independent
+        .getByRole('button', { name: '强制停止本表同步' })
+        .click();
+      let confirm = page.getByRole('dialog', { name: '强制停止本表同步？' });
+      await confirm.getByRole('button', { name: /取\s*消/ }).click();
+      expect(writes.some((write) => write.path.endsWith('/force-stop'))).toBe(
+        false,
+      );
+      await independent
+        .getByRole('button', { name: '强制停止本表同步' })
+        .click();
+      confirm = page.getByRole('dialog', { name: '强制停止本表同步？' });
+      await confirm
+        .getByRole('button', { name: '强制停止', exact: true })
+        .click();
+      const progress = page.getByRole('dialog', { name: '强制停止进度' });
+      await expect(progress).toContainText('等待原执行者退出');
+      await expect(progress).toContainText('已强制停止并解除占用');
+      expect(writes.at(-1)).toEqual({
+        path: '/data-sync/jobs/1/force-stop',
+        body: { run_id: 101 },
+      });
+      expect(managedJob.schedule_paused).toBe(false);
+      await progress.getByRole('button', { name: '关闭', exact: true }).click();
+      await expect(
+        independent.getByRole('button', { name: '启动本表同步', exact: true }),
+      ).toBeEnabled();
+      await managed
+        .getByRole('button', { name: '启动本表同步', exact: true })
+        .click();
+      await managed.getByRole('button', { name: '强制停止本表同步' }).click();
+      await page
+        .getByRole('dialog', { name: '强制停止本表同步？' })
+        .getByRole('button', { name: '强制停止', exact: true })
+        .click();
+      await expect(progress).toContainText('data_sync_force_stop_stale');
+      await progress.getByRole('button', { name: '关闭', exact: true }).click();
+      await page.getByRole('tab', { name: '全库同步', exact: true }).click();
+      await page
+        .getByRole('button', { name: '启动全库同步', exact: true })
+        .click();
+      await page
+        .getByRole('dialog', { name: '启动全库同步？' })
+        .getByRole('button', { name: /启\s*动/ })
+        .click();
+      await page
+        .getByRole('button', { name: '强制停止全库同步', exact: true })
+        .click();
+      await page
+        .getByRole('dialog', { name: '强制停止全库同步？' })
+        .getByRole('button', { name: '强制停止', exact: true })
+        .click();
+      await expect(progress).toContainText('1 张表存在待对账批次');
+      expect(writes.at(-1)).toEqual({
+        path: '/data-sync/databases/10/force-stop',
+        body: { task_id: 300 },
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await progress.screenshot({
+        path: info.outputPath('force-stop-mobile.png'),
+        animations: 'disabled',
+      });
+      return;
+    }
     await expect(
-      independent.getByRole('button', { name: '停止本表同步' }),
+      independent.getByRole('button', { name: '停止本表同步', exact: true }),
     ).toBeEnabled();
-    await independent.getByRole('button', { name: '停止本表同步' }).click();
+    await independent
+      .getByRole('button', { name: '停止本表同步', exact: true })
+      .click();
     await page
       .getByRole('dialog', { name: '停止本表同步？' })
       .getByRole('button', { name: /停\s*止/ })
@@ -210,7 +334,7 @@ for (const readonly of [false, true]) {
       independent.getByText('调度已停止', { exact: true }),
     ).toBeVisible();
     await expect(
-      independent.getByRole('button', { name: '停止本表同步' }),
+      independent.getByRole('button', { name: '停止本表同步', exact: true }),
     ).toBeDisabled();
     expect(writes.at(-1)).toEqual({
       path: '/data-sync/jobs/1/state',
@@ -221,9 +345,11 @@ for (const readonly of [false, true]) {
     await expect.poll(() => writes.at(-1)?.path).toBe('/data-sync/jobs/1/sync');
     expect(writes.at(-2)?.body.paused).toBe(false);
     await expect(
-      independent.getByRole('button', { name: '停止本表同步' }),
+      independent.getByRole('button', { name: '停止本表同步', exact: true }),
     ).toBeEnabled();
-    await independent.getByRole('button', { name: '停止本表同步' }).click();
+    await independent
+      .getByRole('button', { name: '停止本表同步', exact: true })
+      .click();
     await page
       .getByRole('dialog', { name: '停止本表同步？' })
       .getByRole('button', { name: /停\s*止/ })
@@ -233,21 +359,25 @@ for (const readonly of [false, true]) {
     ).toBeEnabled();
     await managed.getByRole('button', { name: '启动本表同步' }).click();
     await expect(
-      managed.getByRole('button', { name: '停止本表同步' }),
+      managed.getByRole('button', { name: '停止本表同步', exact: true }),
     ).toBeEnabled();
     expect(writes.at(-1)).toEqual({
       path: '/data-sync/databases/10/sync',
       body: { target_table: 'orders2' },
     });
     const beforeCancel = writes.length;
-    await managed.getByRole('button', { name: '停止本表同步' }).click();
+    await managed
+      .getByRole('button', { name: '停止本表同步', exact: true })
+      .click();
     await page
       .getByRole('dialog', { name: '停止本表同步？' })
       .getByRole('button', { name: /取\s*消/ })
       .click();
     expect(writes).toHaveLength(beforeCancel);
     failStop = true;
-    await managed.getByRole('button', { name: '停止本表同步' }).click();
+    await managed
+      .getByRole('button', { name: '停止本表同步', exact: true })
+      .click();
     await page
       .getByRole('dialog', { name: '停止本表同步？' })
       .getByRole('button', { name: /停\s*止/ })
@@ -296,7 +426,7 @@ for (const readonly of [false, true]) {
       await page.setViewportSize({ width, height: 844 });
       await page.waitForTimeout(500);
       await managed
-        .getByRole('button', { name: '停止本表同步' })
+        .getByRole('button', { name: '停止本表同步', exact: true })
         .scrollIntoViewIfNeeded();
       await page.screenshot({
         animations: 'disabled',

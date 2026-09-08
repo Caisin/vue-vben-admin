@@ -115,20 +115,73 @@ export interface RequestQuery extends PageQuery {
   api_key_id?: number | string;
 }
 
+// Omit 只约束类型，不能移除编辑表单从查询结果带入的只读字段。
+function toProviderGroupWrite(data: ProviderGroupWrite): ProviderGroupWrite {
+  return {
+    code: data.code,
+    name: data.name,
+    priority: data.priority,
+    load_strategy: data.load_strategy,
+    enabled: data.enabled,
+  };
+}
+
+function toProviderWrite(data: ProviderWrite): ProviderWrite {
+  return {
+    group_id: data.group_id,
+    code: data.code,
+    name: data.name,
+    protocol: data.protocol,
+    base_url: data.base_url,
+    credential_code: data.credential_code,
+    priority: data.priority,
+    weight: data.weight,
+    enabled: data.enabled,
+    fail_threshold: data.fail_threshold,
+    open_duration_secs: data.open_duration_secs,
+    breaker_statuses: [...data.breaker_statuses],
+  };
+}
+
+function toModelWrite(data: ModelWrite): ModelWrite {
+  return {
+    provider_id: data.provider_id,
+    canonical_model: data.canonical_model,
+    upstream_model: data.upstream_model,
+    aliases: [...data.aliases],
+    capabilities: data.capabilities ? [...data.capabilities] : undefined,
+    input_price: data.input_price,
+    output_price: data.output_price,
+    enabled: data.enabled,
+  };
+}
+
 export const AigcGatewayApi = {
   overview: () => requestClient.get<GatewayOverview>('/aigc/admin/overview'),
   groups: () => requestClient.get<ProviderGroup[]>('/aigc/admin/groups'),
   saveGroup: (data: ProviderGroupWrite, id?: number | string) =>
     id
-      ? requestClient.put<ProviderGroup>(`/aigc/admin/groups/${id}`, data)
-      : requestClient.post<ProviderGroup>('/aigc/admin/groups', data),
+      ? requestClient.put<ProviderGroup>(
+          `/aigc/admin/groups/${id}`,
+          toProviderGroupWrite(data),
+        )
+      : requestClient.post<ProviderGroup>(
+          '/aigc/admin/groups',
+          toProviderGroupWrite(data),
+        ),
   reorderGroups: (ids: Array<number | string>) =>
     requestClient.put('/aigc/admin/groups/order', { ids }),
   providers: () => requestClient.get<Provider[]>('/aigc/admin/providers'),
   saveProvider: (data: ProviderWrite, id?: number | string) =>
     id
-      ? requestClient.put<Provider>(`/aigc/admin/providers/${id}`, data)
-      : requestClient.post<Provider>('/aigc/admin/providers', data),
+      ? requestClient.put<Provider>(
+          `/aigc/admin/providers/${id}`,
+          toProviderWrite(data),
+        )
+      : requestClient.post<Provider>(
+          '/aigc/admin/providers',
+          toProviderWrite(data),
+        ),
   reorderProviders: (groupId: number | string, ids: Array<number | string>) =>
     requestClient.put('/aigc/admin/providers/order', {
       group_id: groupId,
@@ -137,8 +190,14 @@ export const AigcGatewayApi = {
   models: () => requestClient.get<ModelRoute[]>('/aigc/admin/models'),
   saveModel: (data: ModelWrite, id?: number | string) =>
     id
-      ? requestClient.put<ModelRoute>(`/aigc/admin/models/${id}`, data)
-      : requestClient.post<ModelRoute>('/aigc/admin/models', data),
+      ? requestClient.put<ModelRoute>(
+          `/aigc/admin/models/${id}`,
+          toModelWrite(data),
+        )
+      : requestClient.post<ModelRoute>(
+          '/aigc/admin/models',
+          toModelWrite(data),
+        ),
   keys: () => requestClient.get<GatewayApiKey[]>('/aigc/admin/api-keys'),
   issueKey: (data: {
     allowed_models: string[];

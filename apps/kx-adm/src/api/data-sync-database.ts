@@ -102,7 +102,11 @@ export const DatabaseSyncApi = {
       ...data,
       tables: [],
     }),
-  task: (id: number, taskId: number) =>
+  forceStop: (id: number, taskId: number) =>
+    requestClient.post<TaskRun>(`${root}/${id}/force-stop`, {
+      task_id: taskId,
+    }),
+  task: (id: number, taskId: number | string) =>
     requestClient.get<TaskRun>(`${root}/${id}/tasks/${taskId}`),
   list: (params: PageQuery) =>
     requestClient.get<Page<DatabaseSync>>(root, { params }),

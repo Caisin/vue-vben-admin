@@ -51,6 +51,7 @@ import {
 import { StudioApi } from '#/api/aigc-gateway/studio';
 import { StorageFileApi } from '#/api/storage';
 import { FilePicker, FileRefPreview } from '#/components/file-picker';
+import { requestErrorMessage } from '#/request-errors';
 import { useTaskPolling } from '#/task-polling';
 
 import {
@@ -60,6 +61,7 @@ import {
   errorText,
   isActive,
   names,
+  runErrorText,
   states,
 } from './data';
 import Markdown from './markdown.vue';
@@ -92,7 +94,12 @@ const showSettings = ref(false);
 const renameOpen = ref(false);
 const renameTitle = ref('');
 const picker = ref<FilePickerExpose>();
-const details = ref<StudioRun>();
+const detailRun = ref<StudioRun>();
+const details = computed(
+  () =>
+    runs.value.find((run) => String(run.id) === String(detailRun.value?.id)) ??
+    detailRun.value,
+);
 const runList = ref<HTMLElement>();
 async function scrollLatest() {
   await nextTick();
@@ -303,9 +310,13 @@ async function send(regenerate?: StudioRun) {
     pageError.value = '';
     polling.start();
     await scrollLatest();
-  } catch {
-    pageError.value =
-      '提交未完成。重试将使用同一请求编号；也可刷新核对任务记录。';
+  } catch (error) {
+    const code = requestErrorMessage(error, '');
+    // 此错误仅在创建生成记录前拒绝当前附件；网络不确定结果仍保留幂等请求。
+    if (code === 'aigc_studio_attachment_unavailable') pending = undefined;
+    pageError.value = code
+      ? errorText(code)
+      : '提交未完成。重试将使用同一请求编号；也可刷新核对任务记录。';
   } finally {
     sending.value = false;
   }
@@ -608,9 +619,9 @@ onBeforeUnmount(() => {
             />
             <Spin v-else-if="isActive(run.state)" size="small" />
             <Alert
-              v-if="run.error_code"
+              v-if="runErrorText(run)"
               type="warning"
-              :message="errorText(run.error_code)"
+              :message="runErrorText(run)"
               show-icon
             />
             <footer class="run-actions">
@@ -623,7 +634,7 @@ onBeforeUnmount(() => {
                   <IconifyIcon icon="lucide:copy" />
                 </Button>
               </Tooltip>
-              <Button size="small" @click="details = run">
+              <Button size="small" @click="detailRun = run">
                 <template #icon><IconifyIcon icon="lucide:info" /></template>详情
               </Button>
               <Button
@@ -861,13 +872,23 @@ onBeforeUnmount(() => {
       :open="!!details"
       title="生成详情"
       :footer="null"
-      @cancel="details = undefined"
+      @cancel="detailRun = undefined"
     >
       <dl v-if="details" class="run-details">
         <dt>模型</dt>
         <dd>{{ details.upstream_model }}</dd>
         <dt>状态</dt>
         <dd>{{ states[details.state] }}</dd>
+        <template v-if="runErrorText(details)">
+          <dt>失败原因</dt>
+          <dd>{{ runErrorText(details) }}</dd>
+          <dt>错误码</dt>
+          <dd>{{ details.error_code || '未记录' }}</dd>
+        </template>
+        <dt>生成编号</dt>
+        <dd>{{ details.id }}</dd>
+        <dt>任务编号</dt>
+        <dd>{{ details.task_run_id ?? '未调度' }}</dd>
         <dt>创建时间</dt>
         <dd>
           {{ new Date(Number(details.created_at) * 1000).toLocaleString() }}

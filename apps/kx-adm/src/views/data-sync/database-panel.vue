@@ -45,6 +45,7 @@ import {
   validateDatabaseTable,
 } from './database-data';
 import { formatSyncDuration } from './duration';
+import ForceStopButton from './force-stop-button.vue';
 import MetadataSelect from './metadata-select.vue';
 import SourceFields from './source-fields.vue';
 import StrategyFields from './strategy-fields.vue';
@@ -877,6 +878,20 @@ const polling = useTaskPolling({
           {{ record.schedule_paused ? ' / 调度已停止' : '' }}
         </Tag>
         <div v-else-if="column.key === 'actions' && execute" class="flex gap-1">
+          <ForceStopButton
+            :id="record.id"
+            :expected-id="
+              record.active_task_id ??
+              (record.state === 'blocked' || record.failed_tables
+                ? record.last_task_id
+                : undefined)
+            "
+            :target="record.name"
+            database
+            compact
+            :disabled="busy"
+            @finished="load"
+          />
           <Tooltip title="启动全库同步">
             <Button
               type="text"
@@ -1017,6 +1032,20 @@ const polling = useTaskPolling({
         >
           停止全库同步
         </Button>
+        <ForceStopButton
+          v-if="selected"
+          :id="selected.id"
+          :expected-id="
+            selected.active_task_id ??
+            (selected.state === 'blocked' || selected.failed_tables
+              ? selected.last_task_id
+              : undefined)
+          "
+          :target="selected.name"
+          database
+          :disabled="busy"
+          @finished="load"
+        />
         <Button
           v-if="
             configure &&

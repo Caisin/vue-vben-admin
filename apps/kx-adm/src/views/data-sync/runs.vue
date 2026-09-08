@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Batch, RunDetail, RunListItem } from '#/api/data-sync';
 
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -28,6 +28,7 @@ import { useTaskPolling } from '#/task-polling';
 
 import { operations, states } from './data';
 import { formatSyncDuration } from './duration';
+import ForceStopButton from './force-stop-button.vue';
 import {
   isSchemaConflict,
   schemaConflictErrors,
@@ -47,6 +48,13 @@ const error = ref('');
 const rows = ref<RunListItem[]>([]);
 const loading = ref(false);
 const cancelling = ref<number[]>([]);
+const forceTarget = ref<RunListItem>();
+const forceControl = ref<{ confirm: () => void }>();
+async function forceStop(row: RunListItem) {
+  forceTarget.value = row;
+  await nextTick();
+  forceControl.value?.confirm();
+}
 const pagination = reactive({ current: 1, pageSize: 50, total: 0 });
 const detail = ref<RunDetail>();
 const batchRows = ref<Batch[]>([]);
@@ -250,9 +258,32 @@ onMounted(() => polling.start());
           >
             停止本表
           </Button>
+          <Button
+            v-if="
+              execute &&
+              ['running', 'cancelling', 'blocked'].includes(record.state)
+            "
+            danger
+            size="small"
+            @click="forceStop(record)"
+          >
+            强制停止
+          </Button>
         </div>
       </template>
     </Table>
+    <ForceStopButton
+      ref="forceControl"
+      :id="forceTarget?.job_id ?? 0"
+      :expected-id="forceTarget?.id"
+      :target="
+        forceTarget
+          ? `${forceTarget.target_database}.${forceTarget.target_table}`
+          : ''
+      "
+      hidden
+      @finished="load"
+    />
     <Modal
       :open="!!detail"
       title="运行明细"

@@ -8,10 +8,9 @@ import { KxEd } from '@kx/admin-core';
 import { expect, test } from '@playwright/test';
 
 test.use({ headless: true });
-for (const readonly of [false, true]) {
-  test(`数据同步${readonly ? '只读权限' : '配置与进度'}闭环`, async ({
-    page,
-  }, testInfo) => {
+for (const scenario of ['配置与进度', '只读权限', '首次同步起点']) {
+  const readonly = scenario === '只读权限';
+  test(`数据同步${scenario}闭环`, async ({ page }, testInfo) => {
     test.setTimeout(90_000);
     let edited = false;
     let inspected = false;
@@ -738,6 +737,62 @@ for (const readonly of [false, true]) {
     await expect(
       page.getByRole('link', { name: '订单汇总', exact: true }),
     ).toBeVisible();
+    if (scenario === '首次同步起点') {
+      await page.getByRole('button', { name: '新增任务' }).click();
+      const create = page.getByRole('dialog', { name: '新增同步任务' });
+      await create
+        .locator('label')
+        .filter({ hasText: '同步策略' })
+        .getByRole('combobox')
+        .click();
+      await page.getByTitle('时间窗口刷新', { exact: true }).click();
+      await create
+        .locator('label')
+        .filter({ hasText: '窗口时区' })
+        .locator('input')
+        .fill('Asia/Shanghai');
+      const startAt = create.getByRole('textbox', { name: /^首次同步起点/ });
+      await startAt.click();
+      await expect(
+        page.locator('.ant-picker-dropdown:visible .ant-picker-date-panel'),
+      ).toBeVisible();
+      await startAt.fill('2026-01-02');
+      await startAt.press('Enter');
+      await expect(startAt).toHaveValue('2026-01-02');
+      await create
+        .locator('label')
+        .filter({ hasText: '窗口粒度' })
+        .getByRole('combobox')
+        .click();
+      await page.getByTitle('按小时', { exact: true }).click();
+      await expect(startAt).toHaveValue('2026-01-02 00:00');
+      await startAt.click();
+      await expect(
+        page.locator('.ant-picker-dropdown:visible .ant-picker-time-panel'),
+      ).toBeVisible();
+      await startAt.fill('2026-01-02 13:00');
+      await page
+        .locator('.ant-picker-dropdown:visible .ant-picker-ok button')
+        .click();
+      await expect(startAt).toHaveValue('2026-01-02 13:00');
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await startAt.scrollIntoViewIfNeeded();
+        await startAt.click();
+        await expect(
+          page.locator('.ant-picker-dropdown:visible'),
+        ).toBeInViewport({ ratio: 1 });
+        await page.screenshot({
+          path: testInfo.outputPath(`window-start-${width}.png`),
+          animations: 'disabled',
+        });
+        await startAt.press('Escape');
+      }
+      await startAt.hover();
+      await create.locator('.ant-picker-clear').click();
+      await expect(startAt).toHaveValue('');
+      return;
+    }
     await page.getByRole('tab', { name: '全库同步', exact: true }).click();
     if (!readonly) {
       await page
@@ -1387,8 +1442,8 @@ for (const readonly of [false, true]) {
         page.getByRole('button', { name: '确认建表并启用' }),
       ).toBeEnabled({ timeout: 12_000 });
       await page
+        .getByRole('dialog', { name: '订单汇总已修改', exact: true })
         .getByRole('button', { name: '启动本表同步', exact: true })
-        .last()
         .click();
       await expect(
         page.getByRole('alert').filter({ hasText: 'data_sync_commit_unknown' }),

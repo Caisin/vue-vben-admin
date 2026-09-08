@@ -192,6 +192,12 @@ export interface Schedule {
 }
 const root = '/data-sync';
 export const DataSyncApi = {
+  forceStop: (id: number, runId: number) =>
+    requestClient.post<TaskRun>(`${root}/jobs/${id}/force-stop`, {
+      run_id: runId,
+    }),
+  jobTask: (id: number, taskId: number | string) =>
+    requestClient.get<TaskRun>(`${root}/jobs/${id}/tasks/${taskId}`),
   allRuns: (
     params: PageQuery & {
       keyword?: string;

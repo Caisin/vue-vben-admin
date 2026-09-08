@@ -146,8 +146,8 @@ const breakerStatusOptions = [401, 403, 408, 409, 429, 500, 502, 503, 504].map(
   (value) => ({ label: `${value}`, value }),
 );
 const protocolOptions = [
-  { label: 'OpenAI', value: 'openai' },
-  { label: 'OpenAI Compatible', value: 'openai_compatible' },
+  { label: 'OpenAI (Responses)', value: 'openai' },
+  { label: 'OpenAI Compatible (Chat Completions)', value: 'openai_compatible' },
   { label: 'DeepSeek', value: 'deepseek' },
   { label: 'Anthropic', value: 'anthropic' },
   { label: 'Google Gemini', value: 'gemini' },

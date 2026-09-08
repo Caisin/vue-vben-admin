@@ -38,6 +38,21 @@ export function canResume(run: StudioRun) {
 }
 export function errorText(code: string) {
   const errors: Record<string, string> = {
+    aigc_studio_attachment_unavailable:
+      '附件不存在或当前账号没有访问权限，请移除不可用附件并重新上传。',
+    storage_file_not_found:
+      '附件不存在或当前账号没有访问权限，请检查本轮及历史消息中的附件。',
+    aigc_studio_execution_failed: '任务执行失败，请联系管理员核查任务记录。',
+    aigc_studio_file_binding_failed: '附件引用保存失败，可以恢复原任务。',
+    aigc_studio_file_content_invalid:
+      '附件内容与文件格式不符，请重新上传有效文件。',
+    aigc_studio_file_type_unsupported:
+      '附件格式不支持，请上传 PNG、JPEG、WebP 图片或支持的视频。',
+    aigc_studio_file_too_large: '附件总大小超过限制，最多支持 24 MiB。',
+    aigc_studio_private_storage_required: '素材与生成结果必须使用私有存储。',
+    aigc_studio_response_invalid:
+      '供应商响应格式无效，请联系管理员检查模型接口。',
+    aigc_studio_upstream_unavailable: '供应商暂时无法连接，请稍后重试。',
     aigc_studio_upstream_unauthorized:
       '供应商凭证失效或没有模型权限，请联系管理员检查凭证和授权。',
     aigc_studio_balance_insufficient: '供应商账户余额不足。',
@@ -47,6 +62,8 @@ export function errorText(code: string) {
     aigc_studio_submission_unknown:
       '上游可能已受理，已暂停自动重试以避免重复计费。请核实供应商记录。',
     aigc_studio_stream_interrupted: '回复中断，已保留部分内容。',
+    aigc_studio_response_incomplete:
+      '供应商未完成回复，可能达到输出上限或内容限制，已保留部分内容。',
     aigc_studio_upstream_rejected:
       '供应商拒绝请求，请检查模型参数、账户额度或内容限制。',
     aigc_studio_generation_failed: '供应商生成失败，请检查素材与内容限制。',
@@ -61,6 +78,14 @@ export function errorText(code: string) {
     aigc_studio_cancelled: '已停止等待，上游可能继续生成或计费。',
   };
   return errors[code] ?? (code ? `任务未完成：${code}` : '');
+}
+export function runErrorText(run: Pick<StudioRun, 'error_code' | 'state'>) {
+  return (
+    errorText(run.error_code) ||
+    (['failed', 'unknown'].includes(run.state)
+      ? '该记录未记录具体错误原因，请联系管理员核查任务记录。'
+      : '')
+  );
 }
 export function accepts(model?: StudioModel, kind: StudioKind = 'chat') {
   return [
