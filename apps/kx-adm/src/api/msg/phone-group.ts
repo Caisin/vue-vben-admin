@@ -33,6 +33,13 @@ export interface PhoneGroupSimsQueryAddResult {
   total: number;
 }
 
+export interface PhoneGroupPhonesAddResult {
+  inserted: number;
+  existing: number;
+  duplicates: number;
+  failed: { phone_number: string; reason: string }[];
+}
+
 export interface PhoneGroupUsersView {
   uids: number[];
 }
@@ -99,6 +106,11 @@ export const PhoneGroupApi = {
     requestClient.post<PhoneGroupSimsQueryAddResult>(
       `/msg/phone-groups/${id}/sims/actions/add-by-query`,
       data,
+    ),
+  addSimsByPhones: (id: number, phoneNumbers: string[]) =>
+    requestClient.post<PhoneGroupPhonesAddResult>(
+      `/msg/phone-groups/${id}/sims/actions/add-by-phones`,
+      { phone_numbers: phoneNumbers },
     ),
   users: (id: number) =>
     requestClient.get<PhoneGroupUsersView>(`/msg/phone-groups/${id}/users`),

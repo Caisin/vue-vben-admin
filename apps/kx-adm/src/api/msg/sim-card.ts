@@ -91,6 +91,10 @@ export interface SimRealNameImport {
 }
 
 export const SimCardApi = {
+  delete: (iccid: string) =>
+    requestClient.delete<boolean>(
+      `/msg/sim-cards/${encodeURIComponent(iccid)}`,
+    ),
   list: (params: ListParams = {}) =>
     requestClient.get<PageResult<SimCardView>>('/msg/sim-cards', { params }),
   filterOptions: () =>
@@ -126,6 +130,8 @@ export const SimCardApi = {
     requestClient.post<TaskRun>(
       `/msg/sim-cards/${iccid}/actions/refresh-balance`,
     ),
+  balanceQuery: (id: number | string) =>
+    requestClient.get<TaskRun>(`/msg/sim-cards/balance-queries/${id}`),
   discoverPhoneNumber: (iccid: string, data: DiscoverPhoneNumberRequest) =>
     requestClient.post<TaskRun>(
       `/msg/sim-cards/${iccid}/actions/discover-phone-number`,

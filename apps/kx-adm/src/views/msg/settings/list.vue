@@ -59,7 +59,7 @@ const s2 = reactive<MsgS2ConfigWrite>({
   mqtt_port: 1883,
   mqtt_username: '',
   offline_after_secs: 300,
-  refresh_interval_secs: 300,
+  refresh_interval_secs: 60,
   sms_receipt_timeout_secs: 120,
   sms_receipt_topics: [],
   sms_send_interval_secs: 15,
@@ -461,10 +461,16 @@ onMounted(load);
             <FormItem label="设备响应 Topic" required>
               <Input v-model:value="s2.device_response_topic" />
             </FormItem>
-            <FormItem label="离线判定（秒）">
+            <FormItem
+              label="离线判定（秒）"
+              help="超过此时间未收到设备 MQTT 消息才判离线，建议大于探测周期并预留应答时间。"
+            >
               <InputNumber v-model:value="s2.offline_after_secs" :min="10" />
             </FormItem>
-            <FormItem label="周期刷新（秒）">
+            <FormItem
+              label="心跳探测周期（秒）"
+              help="定时通过 MQTT 查询设备信息和号码状态，周期和离线秒数保存后自动生效；连接设置仍需重启监听器。"
+            >
               <InputNumber v-model:value="s2.refresh_interval_secs" :min="5" />
             </FormItem>
             <FormItem label="短信回执超时（秒）">

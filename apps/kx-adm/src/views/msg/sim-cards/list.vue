@@ -62,6 +62,7 @@ import {
 } from '#/api/msg';
 import { BusinessExport, BusinessImport } from '#/components/import-export';
 import { StatusTag } from '#/components/management';
+import GroupPhoneInput from '#/components/management/group-phone-input.vue';
 import SimCardAccounts from '#/components/management/sim-card-accounts.vue';
 import SimCardSelect from '#/components/management/sim-card-select.vue';
 import {
@@ -79,6 +80,8 @@ import {
   useCardColumns,
   useFormSchema,
 } from './data';
+import BalanceQueryFeedback from './modules/balance-query-feedback.vue';
+import DeleteButton from './modules/delete-button.vue';
 import PopupDrawer from './modules/popup-drawer.vue';
 import PopupModal from './modules/popup-modal.vue';
 
@@ -92,11 +95,13 @@ const ownershipBatchForm = reactive({ ownership: '', phoneNumbers: '' });
 let ownershipPollTimer: number | undefined;
 const exportOptions = ref<Record<string, unknown>>({});
 const addGroupOpen = ref(false);
+const addGroupMode = ref('phones');
 const addGroupLoading = ref(false);
 const addGroupSubmitting = ref(false);
 const addGroupId = ref<number>();
 const phoneGroupOptions = ref<{ label: string; value: number }[]>([]);
 const balanceBatchLoading = ref(false);
+const balanceFeedback = ref<{ start: (card?: SimCardView) => Promise<void> }>();
 const discoveryOpen = ref(false);
 const discoverySubmitting = ref(false);
 const discoveryTargetIccids = ref<string[]>([]);
@@ -251,6 +256,18 @@ async function loadInitialData() {
 }
 
 async function refreshAfterRealNameImport() {
+  await Promise.all([loadFilterOptions(), gridApi.query()]);
+}
+
+async function cardDeleted(iccid: string) {
+  if (selectedCard.value?.iccid === iccid) {
+    drawerOpen.value = false;
+    accountsDrawerOpen.value = false;
+    profileOpen.value = false;
+    balanceOpen.value = false;
+    expiryOpen.value = false;
+    selectedCard.value = null;
+  }
   await Promise.all([loadFilterOptions(), gridApi.query()]);
 }
 
@@ -606,24 +623,31 @@ function refreshAllBalances() {
     okText: '开始查询',
     title: '确认批量查询余额',
     async onOk() {
-      balanceBatchLoading.value = true;
-      try {
-        const task = await SimCardApi.refreshBalances();
-        message.success(`批量查询余额任务 #${task.id} 已提交`);
-      } finally {
-        balanceBatchLoading.value = false;
-      }
+      await balanceFeedback.value?.start();
     },
   });
 }
 
 async function refreshCardBalance(card: SimCardView) {
-  balanceRefreshingIccid.value = card.iccid;
+  await balanceFeedback.value?.start(card);
+}
+
+function balanceBusy(busy: boolean, iccid: string) {
+  balanceBatchLoading.value = busy && !iccid;
+  balanceRefreshingIccid.value = busy ? iccid : '';
+}
+
+async function balanceFinished() {
   try {
-    const result = await SimCardApi.refreshBalance(card.iccid);
-    message.success(`余额查询任务 #${result.id} 已提交`);
-  } finally {
-    balanceRefreshingIccid.value = '';
+    await gridApi.query();
+    if (selectedCard.value) {
+      const current = selectedCard.value;
+      const result = await SimCardApi.list({ iccid: current.iccid, size: 1 });
+      const updated = result.items.find((card) => card.iccid === current.iccid);
+      if (updated) Object.assign(current, updated);
+    }
+  } catch {
+    message.warning('查询任务已结束，但列表刷新失败，请手动刷新查看余额。');
   }
 }
 
@@ -792,6 +816,9 @@ function cardDisplay(card: SimCardView, key: unknown) {
     }
     case 'management_note': {
       return displayValue(card.management_note);
+    }
+    case 'ownership': {
+      return displayValue(card.ownership);
     }
     case 'phone_number': {
       return displayValue(card.phone_number);
@@ -968,7 +995,15 @@ onBeforeUnmount(clearOwnershipPoll);
       </Space>
     </header>
 
+    <BalanceQueryFeedback
+      ref="balanceFeedback"
+      @busy="balanceBusy"
+      @finished="balanceFinished"
+    />
     <Grid class="management-grid" table-title="电话卡">
+      <template #actions="{ row }">
+        <DeleteButton :card="row" @deleted="cardDeleted" />
+      </template>
       <template #iccid="{ row }">
         <Tooltip title="查看电话卡详情">
           <Button
@@ -1265,11 +1300,22 @@ onBeforeUnmount(clearOwnershipPoll);
     <PopupModal
       v-model:open="addGroupOpen"
       :confirm-loading="addGroupSubmitting"
-      title="按当前查询加入号码分组"
+      title="加入号码分组"
+      :footer="addGroupMode === 'phones' ? null : undefined"
       @ok="submitAddCurrentQueryToGroup"
     >
       <Form layout="vertical">
-        <FormItem label="查询条件">
+        <FormItem label="添加方式">
+          <Select
+            v-model:value="addGroupMode"
+            :disabled="addGroupSubmitting"
+            :options="[
+              { label: '按行输入号码', value: 'phones' },
+              { label: '当前查询全部号码', value: 'query' },
+            ]"
+          />
+        </FormItem>
+        <FormItem v-if="addGroupMode === 'query'" label="查询条件">
           <Input
             value="将当前筛选条件命中的全部号码追加到目标分组，不会重复添加已存在号码"
             disabled
@@ -1278,6 +1324,8 @@ onBeforeUnmount(clearOwnershipPoll);
         <FormItem label="目标分组" required>
           <Select
             v-model:value="addGroupId"
+            aria-label="目标分组"
+            :disabled="addGroupSubmitting"
             allow-clear
             class="w-full"
             :loading="addGroupLoading"
@@ -1287,6 +1335,11 @@ onBeforeUnmount(clearOwnershipPoll);
             option-filter-prop="label"
           />
         </FormItem>
+        <GroupPhoneInput
+          v-if="addGroupOpen && addGroupMode === 'phones'"
+          :group-id="addGroupId"
+          @busy="addGroupSubmitting = $event"
+        />
       </Form>
     </PopupModal>
 
@@ -1396,6 +1449,7 @@ onBeforeUnmount(clearOwnershipPoll);
             <div class="muted">{{ selectedCard.iccid }}</div>
           </div>
           <Space>
+            <DeleteButton :card="selectedCard" @deleted="cardDeleted" />
             <Button
               v-if="canLocateDevice"
               :disabled="

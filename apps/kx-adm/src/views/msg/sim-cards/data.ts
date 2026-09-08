@@ -275,5 +275,12 @@ export function useCardColumns(): VxeTableGridColumns<SimCardView> {
       title: '最近发现',
       width: 180,
     },
+    {
+      field: 'actions',
+      fixed: 'right',
+      slots: { default: 'actions' },
+      title: '操作',
+      width: 90,
+    },
   ];
 }

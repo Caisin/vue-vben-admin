@@ -26,6 +26,7 @@ import {
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { PhoneGroupApi } from '#/api/msg';
 import { SystemUserApi } from '#/api/system/user';
+import GroupPhoneInput from '#/components/management/group-phone-input.vue';
 import SimCardSelect from '#/components/management/sim-card-select.vue';
 import { displayValue } from '#/management';
 import { vxeSortParams } from '#/vxe-sort';
@@ -38,6 +39,7 @@ const simDrawerOpen = ref(false);
 const userDrawerOpen = ref(false);
 const notificationDrawerOpen = ref(false);
 const simAddOpen = ref(false);
+const phoneInputOpen = ref(false);
 const userAddOpen = ref(false);
 const assignLoading = ref(false);
 const selectedGroup = ref<PhoneGroup>();
@@ -205,6 +207,14 @@ async function replaceSims(iccids: string[], successMessage: string) {
 function openAddSims() {
   pendingIccids.value = [];
   simAddOpen.value = true;
+}
+
+async function phonesAdded() {
+  if (!selectedGroup.value) return;
+  const result = await PhoneGroupApi.sims(selectedGroup.value.id);
+  selectedIccids.value = result.iccids;
+  groupSims.value = result.items;
+  await gridApi.query();
 }
 
 async function addSims() {
@@ -439,7 +449,13 @@ async function saveNotificationChannels() {
       class="w-full max-w-180"
       :title="simDrawerTitle"
     >
-      <div class="mb-3 flex justify-end">
+      <div class="mb-3 flex justify-end gap-2">
+        <Button
+          v-access:code="'phone_groups:manage'"
+          @click="phoneInputOpen = true"
+        >
+          按行输入号码
+        </Button>
         <Button
           v-access:code="'phone_groups:manage'"
           type="primary"
@@ -484,6 +500,22 @@ async function saveNotificationChannels() {
         v-model="pendingIccids"
         mode="multiple"
         placeholder="搜索并选择要添加的号码"
+      />
+    </Modal>
+
+    <Modal
+      v-model:open="phoneInputOpen"
+      title="按行添加号码到分组"
+      :footer="null"
+      :z-index="3000"
+      destroy-on-close
+    >
+      <p class="mb-3">目标分组：{{ selectedGroup?.grp_name }}</p>
+      <GroupPhoneInput
+        v-if="phoneInputOpen && selectedGroup"
+        :group-id="selectedGroup.id"
+        @added="phonesAdded"
+        @busy="assignLoading = $event"
       />
     </Modal>
 
