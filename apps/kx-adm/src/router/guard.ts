@@ -5,6 +5,7 @@ import { preferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 import { startProgress, stopProgress } from '@vben/utils';
 
+import { AuthApi } from '#/api/core';
 import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
 
@@ -92,9 +93,13 @@ function setupAccessGuard(router: Router) {
       return true;
     }
 
-    // 生成路由表
-    // 当前登录用户拥有的角色标识列表
-    const userInfo = userStore.userInfo || (await authStore.fetchUserInfo());
+    // 菜单与按钮权限一起刷新，避免新菜单沿用旧登录会话的持久化权限码。
+    // 读取失败时保持未授权状态，不能继续使用可能已撤销的旧按钮权限。
+    accessStore.setAccessCodes([]);
+    const [userInfo, accessCodes] = await Promise.all([
+      authStore.fetchUserInfo(),
+      AuthApi.accessCodes(),
+    ]);
     const userRoles = userInfo.roles ?? [];
 
     // 生成菜单和路由
@@ -106,6 +111,7 @@ function setupAccessGuard(router: Router) {
     });
 
     // 保存菜单信息和路由信息
+    accessStore.setAccessCodes(accessCodes);
     accessStore.setAccessMenus(accessibleMenus);
     accessStore.setAccessRoutes(accessibleRoutes);
     accessStore.setIsAccessChecked(true);

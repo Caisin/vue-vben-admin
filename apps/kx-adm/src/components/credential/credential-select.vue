@@ -35,10 +35,12 @@ import JsonFileInput from './json-file-input.vue';
 
 interface Props {
   allowClear?: boolean;
+  allowCreate?: boolean;
   createKind?: CredentialKind;
   disabled?: boolean;
   excludeCodes?: string[];
   kind?: CredentialKind;
+  inputId?: string;
   kinds?: CredentialKind[];
   managePath?: string;
   placeholder?: string;
@@ -48,10 +50,12 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   allowClear: true,
+  allowCreate: true,
   createKind: undefined,
   disabled: false,
   excludeCodes: () => [],
   kind: undefined,
+  inputId: undefined,
   kinds: () => [],
   managePath: '/credential/items',
   placeholder: '选择凭证中心的凭证',
@@ -329,6 +333,7 @@ defineExpose({ reload: loadCredentials });
   <div class="w-full">
     <SpaceCompact block>
       <Select
+        :id="props.inputId"
         v-model:value="modelValue"
         :allow-clear="props.allowClear"
         class="min-w-0 flex-1"
@@ -342,7 +347,11 @@ defineExpose({ reload: loadCredentials });
       >
         <template #popupRender="menuNode">
           <component :is="menuNode" />
-          <div class="credential-select-create" @mousedown.prevent.stop>
+          <div
+            v-if="props.allowCreate"
+            class="credential-select-create"
+            @mousedown.prevent.stop
+          >
             <Button block size="small" type="link" @click="openQuickCreate">
               <template #icon><Plus /></template>
               新增凭证

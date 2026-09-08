@@ -12,6 +12,7 @@ export const fieldKinds: { label: string; value: FieldKind }[] = [
   { label: '开关', value: 'boolean' },
   { label: '选择项', value: 'select' },
   { label: '密码', value: 'password' },
+  { label: '选择凭证', value: 'credential' },
 ];
 export function accountError(error: unknown) {
   const code = requestErrorMessage(error, '操作失败，请稍后重试');
@@ -36,5 +37,9 @@ export function accountError(error: unknown) {
     return `请填写必填字段：${code.split(':').slice(1).join(':')}`;
   if (code.startsWith('account_field_value_invalid:'))
     return `字段格式不正确：${code.split(':').slice(1).join(':')}`;
+  if (code.startsWith('account_credential_unavailable:'))
+    return `凭证不存在或没有访问权限，请重新选择：${code.slice('account_credential_unavailable:'.length)}`;
+  if (code.startsWith('account_credential_inactive:'))
+    return `凭证已停用、过期或尚未生效，请重新选择：${code.slice('account_credential_inactive:'.length)}`;
   return messages[code] ?? code;
 }

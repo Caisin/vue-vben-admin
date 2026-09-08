@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AccountField, AccountType } from '#/api/account-manager';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, useId } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -28,6 +28,7 @@ import { accountError, fieldKinds } from './data';
 
 type FieldDraft = AccountField & { optionsText: string };
 const { hasAccessByCodes } = useAccess();
+const formId = useId();
 const canWrite = computed(() =>
   hasAccessByCodes(['account-manager:type-write']),
 );
@@ -149,6 +150,13 @@ onMounted(load);
 </script>
 <template>
   <Page title="账户类型">
+    <Alert
+      v-if="!canWrite"
+      class="mb-3"
+      message="当前仅有查看权限。新增类型和维护字段需要“管理账户类型”权限，授权后刷新页面即可生效。"
+      type="info"
+      show-icon
+    />
     <Space class="mb-4">
       <Button v-if="canWrite" type="primary" @click="edit()">
         新增账户类型
@@ -232,8 +240,12 @@ onMounted(load);
                 :aria-label="`字段名称 ${index + 1}`"
               />
             </FormItem>
-            <FormItem label="字段类型">
+            <FormItem
+              :label="`字段类型 ${index + 1}`"
+              :html-for="`${formId}-kind-${index}`"
+            >
               <Select
+                :id="`${formId}-kind-${index}`"
                 :value="field.kind"
                 :disabled="locked.has(field.key)"
                 :options="fieldKinds"

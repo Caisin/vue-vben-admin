@@ -4,6 +4,7 @@ import { requestClient } from '#/api/request';
 
 export type FieldKind =
   | 'boolean'
+  | 'credential'
   | 'date'
   | 'email'
   | 'number'

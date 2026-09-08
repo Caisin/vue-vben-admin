@@ -93,186 +93,207 @@ for (const readonly of [false, true]) {
     const writes: AccountWrite[] = [];
     const secrets = new Map<number, string>([[1, 'existing-test-only-secret']]);
     let revealCount = 0;
+    let grantedCodes: string[] = [];
+    const credentialRequests: string[] = [];
+    const credential = {
+      code: 'test-payment-login',
+      name: '支付平台登录凭证',
+      kind: 'password',
+      profile: 'generic',
+      state: 'active',
+      summary: { fields: [] },
+    };
     await page
       .context()
-      .route('**/{auth,notify,account-manager}/**', async (route) => {
-        if (!['fetch', 'xhr'].includes(route.request().resourceType()))
-          return route.continue();
-        const request = route.request();
-        const path = new URL(request.url()).pathname.replace(
-          /^\/api(?=\/)/,
-          '',
-        );
-        const method = request.method();
-        const bytes = request.postDataBuffer();
-        const body = bytes
-          ? JSON.parse(
-              request.headers().security === 'true'
-                ? KxEd.decodeText(KxEd.decrypt(bytes))
-                : bytes.toString(),
-            )
-          : {};
-        let result: unknown = null;
-        if (path === '/auth/user/access_token')
-          result = {
-            access_token: 'test-token',
-            token_type: 'Bearer',
-            uid: 7,
-            exp_at: 4_102_444_800,
-            exp_in: 3600,
-          };
-        else if (path === '/auth/user/user_info')
-          result = {
-            id: 7,
-            name: '账户管理员',
-            enabled: true,
-            home_path: '/account-manager/types',
-            avatar: '',
-            permission_count: 1,
-            is_guest: false,
-          };
-        else if (path === '/auth/per/codes')
-          result = readonly
-            ? []
-            : [
-                'account-manager:write',
-                'account-manager:type-write',
-                'account-manager:reveal',
-              ];
-        else if (path === '/auth/menu/current')
-          result = [
-            {
-              id: 1,
-              pid: 0,
-              name: 'ManagedAccountTypes',
-              title: '账户类型',
-              path: '/account-manager/types',
-              component: '/account-manager/types',
-              perm_type: 'menu',
-              enabled: true,
-              order_no: 1,
-              auth_code: '',
-              meta: {},
-              redirect: null,
-            },
-            {
-              id: 2,
-              pid: 0,
-              name: 'ManagedAccounts',
-              title: '账户列表',
-              path: '/account-manager/accounts',
-              component: '/account-manager/accounts',
-              perm_type: 'menu',
-              enabled: true,
-              order_no: 2,
-              auth_code: '',
-              meta: {},
-              redirect: null,
-            },
-          ];
-        else if (path === '/auth/user/mfa/step-up')
-          result = {
-            grant_token: 'test-reveal-grant',
-            expires_at: 4_102_444_800,
-            action: 'credential.reveal',
-          };
-        else if (path === '/notify/inbox')
-          result = { items: [], unread_count: 0 };
-        else if (path === '/account-manager/types' && method === 'GET')
-          result = types;
-        else if (path === '/account-manager/types' && method === 'POST') {
-          const input = body as AccountTypeWrite;
-          const row = {
-            ...input,
-            id: types.length + 1,
-            version: 1,
-            created_at: 1,
-            updated_at: 1,
-          };
-          types.push(row);
-          result = row;
-        } else if (/\/types\/\d+$/.test(path)) {
-          const type = types.find(
-            (row) => row.id === Number(path.split('/').at(-1)),
+      .route(
+        '**/{auth,notify,param,credential,account-manager}/**',
+        async (route) => {
+          if (!['fetch', 'xhr'].includes(route.request().resourceType()))
+            return route.continue();
+          const request = route.request();
+          const path = new URL(request.url()).pathname.replace(
+            /^\/api(?=\/)/,
+            '',
           );
-          if (!type) throw new Error('unknown type');
-          if (method === 'PUT')
-            Object.assign(type, body, { version: type.version + 1 });
-          result = type;
-        } else if (path === '/account-manager/accounts' && method === 'GET')
-          result = {
-            items: records.map(
-              ({
-                id,
-                name,
-                type_id,
-                version,
-                owner_uid,
-                created_at,
-                updated_at,
-              }) => ({
-                id,
-                name,
-                type_id,
-                version,
-                owner_uid,
-                created_at,
-                updated_at,
-              }),
-            ),
-            total: records.length,
-          };
-        else if (path.endsWith('/reveal')) {
-          expect(request.headers()['x-kx-step-up-token']).toBe(
-            'test-reveal-grant',
-          );
-          revealCount++;
-          result = { value: secrets.get(Number(path.split('/').at(-4))) };
-        } else if (path.startsWith('/account-manager/accounts')) {
-          const id =
-            method === 'POST'
-              ? records.length + 1
-              : Number(path.split('/').at(-1));
-          let record = records.find((row) => row.id === id);
-          if (method === 'POST' || method === 'PUT') {
-            const input = body as AccountWrite;
-            writes.push(input);
-            const type = types.find((row) => row.id === input.type_id);
-            if (!type) throw new Error('missing account type');
-            expect(input.type_version).toBe(type.version);
-            const publicValues = { ...record?.values, ...input.values };
-            if (typeof publicValues.password === 'string')
-              secrets.set(id, publicValues.password);
-            delete publicValues.password;
-            const updated: AccountDetail = {
-              id,
-              name: input.name,
-              type_id: input.type_id,
-              owner_uid: 7,
-              version: (record?.version ?? 0) + 1,
-              created_at: 1,
-              updated_at: 2,
-              values: publicValues,
-              account_type: type,
-              configured_secrets: secrets.has(id) ? ['password'] : [],
+          const method = request.method();
+          const bytes = request.postDataBuffer();
+          const body = bytes
+            ? JSON.parse(
+                request.headers().security === 'true'
+                  ? KxEd.decodeText(KxEd.decrypt(bytes))
+                  : bytes.toString(),
+              )
+            : {};
+          let result: unknown = null;
+          if (path.startsWith('/credential/')) {
+            credentialRequests.push(`${method} ${path}`);
+            if (path === '/credential/items/all') result = [credential];
+            else if (path === `/credential/items/${credential.code}`)
+              result = credential;
+            else
+              throw new Error(
+                `Unexpected credential operation: ${method} ${path}`,
+              );
+          } else if (path === '/param/system-settings/public') result = {};
+          else if (path === '/auth/user/access_token')
+            result = {
+              access_token: 'test-token',
+              token_type: 'Bearer',
+              uid: 7,
+              exp_at: 4_102_444_800,
+              exp_in: 3600,
             };
-            if (record) Object.assign(record, updated);
-            else {
-              records.push(updated);
-              record = updated;
+          else if (path === '/auth/user/user_info')
+            result = {
+              id: 7,
+              name: '账户管理员',
+              enabled: true,
+              home_path: '/account-manager/types',
+              avatar: '',
+              permission_count: 1,
+              is_guest: false,
+            };
+          else if (path === '/auth/per/codes') result = grantedCodes;
+          else if (path === '/auth/menu/current')
+            result = [
+              {
+                id: 1,
+                pid: 0,
+                name: 'ManagedAccountTypes',
+                title: '账户类型',
+                path: '/account-manager/types',
+                component: '/account-manager/types',
+                perm_type: 'menu',
+                enabled: true,
+                order_no: 1,
+                auth_code: '',
+                meta: {},
+                redirect: null,
+              },
+              {
+                id: 2,
+                pid: 0,
+                name: 'ManagedAccounts',
+                title: '账户列表',
+                path: '/account-manager/accounts',
+                component: '/account-manager/accounts',
+                perm_type: 'menu',
+                enabled: true,
+                order_no: 2,
+                auth_code: '',
+                meta: {},
+                redirect: null,
+              },
+            ];
+          else if (path === '/auth/user/mfa/step-up')
+            result = {
+              grant_token: 'test-reveal-grant',
+              expires_at: 4_102_444_800,
+              action: 'credential.reveal',
+            };
+          else if (path === '/notify/inbox')
+            result = { items: [], unread_count: 0 };
+          else if (path === '/account-manager/types' && method === 'GET')
+            result = types;
+          else if (path === '/account-manager/types' && method === 'POST') {
+            const input = body as AccountTypeWrite;
+            const row = {
+              ...input,
+              id: types.length + 1,
+              version: 1,
+              created_at: 1,
+              updated_at: 1,
+            };
+            types.push(row);
+            result = row;
+          } else if (/\/types\/\d+$/.test(path)) {
+            const type = types.find(
+              (row) => row.id === Number(path.split('/').at(-1)),
+            );
+            if (!type) throw new Error('unknown type');
+            if (method === 'PUT')
+              Object.assign(type, body, { version: type.version + 1 });
+            result = type;
+          } else if (path === '/account-manager/accounts' && method === 'GET')
+            result = {
+              items: records.map(
+                ({
+                  id,
+                  name,
+                  type_id,
+                  version,
+                  owner_uid,
+                  created_at,
+                  updated_at,
+                }) => ({
+                  id,
+                  name,
+                  type_id,
+                  version,
+                  owner_uid,
+                  created_at,
+                  updated_at,
+                }),
+              ),
+              total: records.length,
+            };
+          else if (path.endsWith('/reveal')) {
+            expect(request.headers()['x-kx-step-up-token']).toBe(
+              'test-reveal-grant',
+            );
+            revealCount++;
+            result = { value: secrets.get(Number(path.split('/').at(-4))) };
+          } else if (path.startsWith('/account-manager/accounts')) {
+            const id =
+              method === 'POST'
+                ? records.length + 1
+                : Number(path.split('/').at(-1));
+            let record = records.find((row) => row.id === id);
+            if (method === 'DELETE') {
+              const index = records.findIndex((row) => row.id === id);
+              expect(index).toBeGreaterThanOrEqual(0);
+              records.splice(index, 1);
             }
+            if (method === 'POST' || method === 'PUT') {
+              const input = body as AccountWrite;
+              writes.push(input);
+              const type = types.find((row) => row.id === input.type_id);
+              if (!type) throw new Error('missing account type');
+              expect(input.type_version).toBe(type.version);
+              const publicValues = { ...record?.values, ...input.values };
+              if (typeof publicValues.password === 'string')
+                secrets.set(id, publicValues.password);
+              delete publicValues.password;
+              const updated: AccountDetail = {
+                id,
+                name: input.name,
+                type_id: input.type_id,
+                owner_uid: 7,
+                version: (record?.version ?? 0) + 1,
+                created_at: 1,
+                updated_at: 2,
+                values: publicValues,
+                account_type: type,
+                configured_secrets: secrets.has(id) ? ['password'] : [],
+              };
+              if (record) Object.assign(record, updated);
+              else {
+                records.push(updated);
+                record = updated;
+              }
+            }
+            result = record;
           }
-          result = record;
-        }
-        const text = JSON.stringify({ code: 200, msg: 'ok', result });
-        await route.fulfill({
-          contentType: 'application/json',
-          body:
-            request.headers().security === 'true'
-              ? Buffer.from(KxEd.encryptText(text))
-              : text,
-        });
-      });
+          const text = JSON.stringify({ code: 200, msg: 'ok', result });
+          await route.fulfill({
+            contentType: 'application/json',
+            body:
+              request.headers().security === 'true'
+                ? Buffer.from(KxEd.encryptText(text))
+                : text,
+          });
+        },
+      );
     await page.goto('/');
     await page.locator("input[name='username']").fill('account-admin');
     await page.locator("input[name='password']").fill('test-only');
@@ -302,6 +323,19 @@ for (const readonly of [false, true]) {
       expect(revealCount).toBe(0);
       return;
     }
+    // 模拟安装模块/授予权限后，已有会话通过刷新获取新的维护权限。
+    await expect(
+      page.getByRole('button', { name: '新增账户类型' }),
+    ).toHaveCount(0);
+    grantedCodes = [
+      'account-manager:write',
+      'account-manager:type-write',
+      'account-manager:reveal',
+    ];
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: '新增账户类型' }),
+    ).toBeVisible();
     await page.getByRole('button', { name: '维护字段' }).click();
     const typeDialog = page.getByRole('dialog', {
       name: '编辑账户类型',
@@ -317,6 +351,16 @@ for (const readonly of [false, true]) {
       .getByRole('checkbox', { name: '必填', exact: true })
       .last()
       .check();
+    await typeDialog
+      .getByRole('button', { name: '添加字段', exact: true })
+      .click();
+    await typeDialog
+      .getByRole('textbox', { name: '字段名称 7', exact: true })
+      .fill('登录凭证');
+    await typeDialog
+      .getByRole('combobox', { name: '字段类型 7', exact: true })
+      .click();
+    await page.getByTitle('选择凭证', { exact: true }).click();
     await typeDialog.getByRole('button', { name: /确\s*定|OK/ }).click();
     await expect(typeDialog).toBeHidden();
     await page.goto('/account-manager/accounts');
@@ -337,12 +381,29 @@ for (const readonly of [false, true]) {
     await form
       .locator('input[type="password"]')
       .fill('test-only-private-password');
+    await form.getByLabel('登录凭证', { exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: '新增凭证', exact: true }),
+    ).toHaveCount(0);
+    await page
+      .getByText('支付平台登录凭证 · 密码 (test-payment-login)', {
+        exact: true,
+      })
+      .click();
     await form.getByRole('button', { name: /确\s*定|OK/ }).click();
     await expect(form).toBeHidden();
     const row = page.getByRole('row').filter({ hasText: 'Stripe 测试账户' });
     await row.getByRole('button', { name: '详情', exact: true }).click();
     const details = page.getByRole('dialog', { name: '账户详情', exact: true });
     await expect(details).toContainText('merchant-42');
+    await expect(details).toContainText('支付平台登录凭证');
+    const credentialField = types[0]?.fields.find(
+      (field) => field.kind === 'credential',
+    );
+    if (!credentialField) throw new Error('缺少凭证字段定义');
+    expect(writes.at(-1)?.values[credentialField.key]).toBe(
+      'test-payment-login',
+    );
     await expect(details).not.toContainText('test-only-private-password');
     await details
       .getByRole('button', { name: '查看密码', exact: true })
@@ -367,6 +428,13 @@ for (const readonly of [false, true]) {
     await expect(edit).toBeHidden();
     expect(writes.at(-1)?.values.password).toBeUndefined();
     expect(revealCount).toBe(1);
+    expect(credentialRequests).toContain('GET /credential/items/all');
+    expect(credentialRequests).toContain(
+      'GET /credential/items/test-payment-login',
+    );
+    expect(
+      credentialRequests.every((request) => request.startsWith('GET ')),
+    ).toBe(true);
     await page.goto('/account-manager/types');
     await page
       .getByRole('button', { name: '新增账户类型', exact: true })
@@ -397,5 +465,28 @@ for (const readonly of [false, true]) {
     await expect(form).toBeHidden();
     expect(writes.at(-1)?.type_id).toBe(2);
     expect(Object.values(writes.at(-1)?.values ?? {})).toEqual(['social-user']);
+    const socialRow = page.getByRole('row').filter({ hasText: '社交测试账户' });
+    await socialRow.getByRole('button', { name: '删除', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: '删除账户', exact: true })
+      .getByRole('button', { name: /删\s*除/ })
+      .click();
+    await expect(socialRow).toHaveCount(0);
+    // 撤销权限同样必须替换缓存，不能保留旧的可执行按钮。
+    grantedCodes = [];
+    await page.reload();
+    await expect(
+      page.getByRole('row').filter({ hasText: '已有账户' }),
+    ).toBeVisible();
+    await expect(page.getByText(/当前仅有查看权限/)).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: '新增账户', exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: '编辑', exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: '删除', exact: true }),
+    ).toHaveCount(0);
   });
 }

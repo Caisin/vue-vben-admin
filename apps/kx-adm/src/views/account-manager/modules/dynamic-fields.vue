@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { AccountField, FieldValue } from '#/api/account-manager';
 
-import { useId } from 'vue';
+import { computed, useId } from 'vue';
+
+import { useAccess } from '@vben/access';
 
 import {
   Checkbox,
@@ -13,7 +15,14 @@ import {
   Switch,
   TextArea,
 } from 'antdv-next';
+
+import { CredentialSelect } from '#/components/credential';
+
 defineProps<{ fields: AccountField[]; configuredSecrets: string[] }>();
+const { hasAccessByCodes } = useAccess();
+const canCreateCredential = computed(() =>
+  hasAccessByCodes(['credential:create']),
+);
 const values = defineModel<Record<string, FieldValue>>({ required: true });
 const id = useId();
 function textValue(key: string) {
@@ -76,6 +85,15 @@ function setCleared(key: string, checked: unknown) {
           清空已保存的{{ field.label }}
         </Checkbox>
       </template>
+      <CredentialSelect
+        v-else-if="field.kind === 'credential'"
+        :input-id="`${id}-${field.key}`"
+        :model-value="textValue(field.key) || null"
+        :allow-create="canCreateCredential"
+        create-kind="password"
+        placeholder="搜索并选择已有凭证"
+        @update:model-value="values[field.key] = $event || null"
+      />
       <TextArea
         v-else-if="field.kind === 'textarea'"
         :id="`${id}-${field.key}`"

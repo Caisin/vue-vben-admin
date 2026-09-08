@@ -38,6 +38,7 @@ import { AccountManagerApi } from '#/api/account-manager';
 import { Times } from '#/times';
 
 import { accountError } from './data';
+import CredentialReference from './modules/credential-reference.vue';
 import DynamicFields from './modules/dynamic-fields.vue';
 import Reveal from './modules/reveal.vue';
 
@@ -242,6 +243,13 @@ onMounted(async () => {
       <Button v-if="canWrite" type="primary" @click="create">新增账户</Button>
     </Space>
     <Alert
+      v-if="!canWrite"
+      class="mb-3"
+      message="当前仅有查看权限。新增、编辑和删除账户需要“管理账户”权限，授权后刷新页面即可生效。"
+      type="info"
+      show-icon
+    />
+    <Alert
       v-if="pageError"
       class="mb-3"
       :message="pageError"
@@ -366,6 +374,14 @@ onMounted(async () => {
                 查看{{ field.label }}
               </Button>
             </template>
+            <CredentialReference
+              v-else-if="field.kind === 'credential'"
+              :code="
+                typeof details.values[field.key] === 'string'
+                  ? String(details.values[field.key])
+                  : ''
+              "
+            />
             <span v-else class="break-all whitespace-pre-wrap">{{
               display(details.values[field.key])
             }}</span>
