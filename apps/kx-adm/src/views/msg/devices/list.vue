@@ -29,6 +29,7 @@ import {
 } from '@vben/icons';
 
 import {
+  App,
   AutoComplete,
   Button,
   DatePicker,
@@ -55,12 +56,7 @@ import {
 } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
-import {
-  DeviceApi,
-  DeviceLocateError,
-  MsgConfigApi,
-  SimCardApi,
-} from '#/api/msg';
+import { DeviceApi, MsgConfigApi, SimCardApi } from '#/api/msg';
 import { JsonEditor } from '#/components/codemirror';
 import { StatusTag } from '#/components/management';
 import SimCardAccounts from '#/components/management/sim-card-accounts.vue';
@@ -157,6 +153,7 @@ const route = useRoute();
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
 const canManageDevices = computed(() => hasAccessByCodes(['devices:manage']));
+const { message: locateMessage } = App.useApp();
 const canLocateDevice = computed(() => hasAccessByCodes(['devices:locate']));
 const canManageSystemConfig = computed(() =>
   hasAccessByCodes(['devices:system-config']),
@@ -750,17 +747,17 @@ async function submitOtaBatch() {
   }
 }
 
-async function locateDeviceHttp(device: Device) {
+async function locateDevice(device: Device) {
   if (device.online_state !== 'online') {
-    message.warning('设备不在线，无法直连定位');
+    locateMessage.warning('设备不在线，无法定位');
     return;
   }
   actionLoading.value = `${device.device_code}:locate`;
   try {
-    const result = await DeviceApi.locateByHttp(device.device_code);
-    message.success(result.message || '定位命令已发送');
-  } catch (error) {
-    if (error instanceof DeviceLocateError) message.error(error.message);
+    await DeviceApi.locate(device.device_code);
+    locateMessage.success('定位命令已通过 MQTT 提交');
+  } catch {
+    // 请求客户端已展示服务端或网络错误，结束本次动作后允许重试。
   } finally {
     actionLoading.value = '';
   }
@@ -768,7 +765,7 @@ async function locateDeviceHttp(device: Device) {
 
 async function runDeviceAction(device: Device, kind: 'locate' | 'sync') {
   if (kind === 'locate') {
-    await locateDeviceHttp(device);
+    await locateDevice(device);
     return;
   }
   actionLoading.value = `${device.device_code}:${kind}`;

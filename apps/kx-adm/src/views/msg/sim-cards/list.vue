@@ -31,6 +31,7 @@ import {
 import { downloadFileFromBlob } from '@vben/utils';
 
 import {
+  App,
   AutoComplete,
   Button,
   DatePicker,
@@ -54,12 +55,7 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { ImportExportApi } from '#/api/import-export';
-import {
-  DeviceApi,
-  DeviceLocateError,
-  PhoneGroupApi,
-  SimCardApi,
-} from '#/api/msg';
+import { DeviceApi, PhoneGroupApi, SimCardApi } from '#/api/msg';
 import { BusinessExport, BusinessImport } from '#/components/import-export';
 import { StatusTag } from '#/components/management';
 import GroupPhoneInput from '#/components/management/group-phone-input.vue';
@@ -149,6 +145,7 @@ const canImportRealName = computed(() =>
 const canDiscoverPhoneNumber = computed(() =>
   hasAccessByCodes(['sim_cards:discover-phone-number']),
 );
+const { message: locateMessage } = App.useApp();
 const canLocateDevice = computed(() => hasAccessByCodes(['devices:locate']));
 const canManagePhoneGroups = computed(() =>
   hasAccessByCodes(['phone_groups:manage']),
@@ -763,19 +760,19 @@ function slotCellValue(record: DeviceSlotView, dataIndex: unknown) {
 
 async function locateCardDevice(card: SimCardView) {
   if (!card.device_code) {
-    message.warning('电话卡当前未插入设备');
+    locateMessage.warning('电话卡当前未插入设备');
     return;
   }
   if (card.online_state !== 'online') {
-    message.warning('电话卡所在设备不在线，无法直连定位');
+    locateMessage.warning('电话卡所在设备不在线，无法定位');
     return;
   }
   locatingDeviceCode.value = card.device_code;
   try {
-    const result = await DeviceApi.locateByHttp(card.device_code);
-    message.success(result.message || '卡片所在设备已开始定位提示');
-  } catch (error) {
-    if (error instanceof DeviceLocateError) message.error(error.message);
+    await DeviceApi.locate(card.device_code);
+    locateMessage.success('卡片所在设备的定位命令已通过 MQTT 提交');
+  } catch {
+    // 请求客户端已展示服务端或网络错误，结束本次动作后允许重试。
   } finally {
     locatingDeviceCode.value = '';
   }

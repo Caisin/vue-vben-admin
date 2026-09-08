@@ -27,60 +27,6 @@ export type DeviceConfigKind =
   | 'mqtt_config'
   | 'system_config';
 
-export class DeviceLocateError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DeviceLocateError';
-  }
-}
-
-export interface DeviceHttpAccess {
-  api_token: string;
-  base_url: string;
-  device_code: string;
-}
-
-export interface DeviceHttpCommandResponse {
-  [key: string]: unknown;
-  message?: string;
-}
-
-function deviceCommandUrl(baseUrl: string) {
-  const value = baseUrl.trim();
-  if (!value)
-    throw new DeviceLocateError('设备 HTTP 地址为空，请先刷新设备信息');
-  try {
-    const normalized = value.endsWith('/') ? value : `${value}/`;
-    const url = new URL('api/cmd', normalized);
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      throw new DeviceLocateError('设备 HTTP 地址必须使用 http 或 https');
-    }
-    return url.href;
-  } catch (error) {
-    if (error instanceof DeviceLocateError) throw error;
-    throw new DeviceLocateError('设备 HTTP 地址无效，请先刷新设备信息');
-  }
-}
-
-async function parseDeviceCommandResponse(response: Response) {
-  const text = await response.text();
-  if (!response.ok) {
-    throw new DeviceLocateError(
-      text.trim() || `设备 HTTP 命令失败：${response.status}`,
-    );
-  }
-  if (!text.trim()) return {} satisfies DeviceHttpCommandResponse;
-  try {
-    const value: unknown = JSON.parse(text);
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return value as DeviceHttpCommandResponse;
-    }
-  } catch {
-    // 部分固件可能返回纯文本成功信息，保留为 message 展示。
-  }
-  return { message: text.trim() } satisfies DeviceHttpCommandResponse;
-}
-
 function eventToOperation(event: DeviceEvent): DeviceOperation {
   return {
     command: event.event_kind,
@@ -166,25 +112,4 @@ export const DeviceApi = {
     requestClient.post<{ operation_id: number; status: string }>(
       `/msg/devices/${deviceCode}/actions/locate`,
     ),
-  httpAccess: (deviceCode: string) =>
-    requestClient.get<DeviceHttpAccess>(
-      `/msg/devices/${deviceCode}/http-access`,
-    ),
-  locateByHttp: async (deviceCode: string) => {
-    const data = await DeviceApi.httpAccess(deviceCode);
-    return fetch(deviceCommandUrl(data.base_url), {
-      body: '定位设备',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${data.api_token}`,
-        'Content-Type': 'text/plain',
-      },
-      method: 'POST',
-    })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new DeviceLocateError(`浏览器直连设备失败：${message}`);
-      })
-      .then(parseDeviceCommandResponse);
-  },
 };
