@@ -341,6 +341,12 @@ for (const readonly of [false, true]) {
       name: '编辑账户类型',
       exact: true,
     });
+    for (const index of [1, 2]) {
+      await typeDialog
+        .getByRole('combobox', { name: `非移动端宽度 ${index}`, exact: true })
+        .click();
+      await page.getByTitle('50%', { exact: true }).last().click();
+    }
     await typeDialog
       .getByRole('button', { name: '添加字段', exact: true })
       .click();
@@ -363,12 +369,53 @@ for (const readonly of [false, true]) {
     await page.getByTitle('选择凭证', { exact: true }).click();
     await typeDialog.getByRole('button', { name: /确\s*定|OK/ }).click();
     await expect(typeDialog).toBeHidden();
+    expect(types[0]?.fields[0]?.desktop_span).toBe(6);
+    expect(types[0]?.fields[1]?.desktop_span).toBe(6);
     await page.goto('/account-manager/accounts');
     await page.getByRole('button', { name: '新增账户', exact: true }).click();
     const form = page.getByRole('dialog', { name: '新增账户', exact: true });
     await form
       .getByRole('textbox', { name: '账户名称', exact: true })
       .fill('Stripe 测试账户');
+    const layoutFields = form.locator(
+      '[data-account-field="login_url"], [data-account-field="certified_subject"], [data-account-field="account"]',
+    );
+    // 在同一帧测量，避免 Modal 入场动画期间多次读取产生位置偏差。
+    await expect
+      .poll(() =>
+        layoutFields.evaluateAll((elements) => {
+          const [left, right, full] = elements.map((element) =>
+            element.getBoundingClientRect(),
+          );
+          return (
+            !!left &&
+            !!right &&
+            !!full &&
+            Math.abs(left.y - right.y) < 2 &&
+            right.x > left.x &&
+            Math.abs(left.width * 2 + 16 - full.width) < 3
+          );
+        }),
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 480, height: 900 });
+    await expect
+      .poll(() =>
+        layoutFields.evaluateAll((elements) => {
+          const [left, right] = elements.map((element) =>
+            element.getBoundingClientRect(),
+          );
+          return (
+            !!left &&
+            !!right &&
+            Math.abs(left.x - right.x) < 2 &&
+            right.y > left.y &&
+            Math.abs(left.width - right.width) < 2
+          );
+        }),
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1280, height: 720 });
     for (const [label, value] of [
       ['登录地址', 'https://example.test/login'],
       ['认证主体', '测试公司'],

@@ -292,7 +292,7 @@ onMounted(async () => {
     <Modal
       v-model:open="open"
       :title="editing ? '编辑账户' : '新增账户'"
-      :width="640"
+      width="min(960px, calc(100vw - 32px))"
       :confirm-loading="saving"
       @ok="save"
       @cancel="values = {}"

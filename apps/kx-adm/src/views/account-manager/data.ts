@@ -14,9 +14,14 @@ export const fieldKinds: { label: string; value: FieldKind }[] = [
   { label: '密码', value: 'password' },
   { label: '选择凭证', value: 'credential' },
 ];
+export const desktopWidthOptions = Array.from({ length: 12 }, (_, index) => {
+  const span = 12 - index;
+  return { label: `${Number(((span / 12) * 100).toFixed(1))}%`, value: span };
+});
 export function accountError(error: unknown) {
   const code = requestErrorMessage(error, '操作失败，请稍后重试');
   const messages: Record<string, string> = {
+    account_field_desktop_span_invalid: '请选择有效的非移动端字段宽度。',
     account_type_version_conflict:
       '账户类型已更新，请关闭并重新打开表单后填写。',
     account_version_conflict: '账户已被修改或删除，请刷新后重试。',

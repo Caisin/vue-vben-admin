@@ -41,116 +41,143 @@ function setCleared(key: string, checked: unknown) {
 }
 </script>
 <template>
-  <template
-    v-for="field in fields.filter((value) => value.enabled)"
-    :key="field.key"
-  >
-    <FormItem
-      :label="field.label"
-      :required="field.required"
-      :html-for="`${id}-${field.key}`"
+  <div class="account-dynamic-fields">
+    <div
+      v-for="field in fields.filter((value) => value.enabled)"
+      :key="field.key"
+      class="account-dynamic-field"
+      :data-account-field="field.key"
+      :style="{ '--account-field-span': String(field.desktop_span ?? 12) }"
     >
-      <template v-if="field.sensitive">
+      <FormItem
+        :label="field.label"
+        :required="field.required"
+        :html-for="`${id}-${field.key}`"
+      >
+        <template v-if="field.sensitive">
+          <TextArea
+            v-if="field.kind === 'textarea'"
+            :id="`${id}-${field.key}`"
+            :value="textValue(field.key)"
+            :disabled="values[field.key] === null"
+            :rows="4"
+            :placeholder="
+              configuredSecrets.includes(field.key)
+                ? '已设置，留空保留'
+                : '请输入'
+            "
+            @update:value="writeText(field, $event)"
+          />
+          <InputPassword
+            v-else
+            :id="`${id}-${field.key}`"
+            :value="textValue(field.key)"
+            :disabled="values[field.key] === null"
+            autocomplete="new-password"
+            :placeholder="
+              configuredSecrets.includes(field.key)
+                ? '已设置，留空保留'
+                : '请输入'
+            "
+            @update:value="writeText(field, $event)"
+          />
+          <Checkbox
+            v-if="configuredSecrets.includes(field.key)"
+            :checked="values[field.key] === null"
+            @update:checked="setCleared(field.key, $event)"
+          >
+            清空已保存的{{ field.label }}
+          </Checkbox>
+        </template>
+        <CredentialSelect
+          v-else-if="field.kind === 'credential'"
+          :input-id="`${id}-${field.key}`"
+          :model-value="textValue(field.key) || null"
+          :allow-create="canCreateCredential"
+          create-kind="password"
+          placeholder="搜索并选择已有凭证"
+          @update:model-value="values[field.key] = $event || null"
+        />
         <TextArea
-          v-if="field.kind === 'textarea'"
+          v-else-if="field.kind === 'textarea'"
           :id="`${id}-${field.key}`"
           :value="textValue(field.key)"
-          :disabled="values[field.key] === null"
-          :rows="4"
-          :placeholder="
-            configuredSecrets.includes(field.key)
-              ? '已设置，留空保留'
-              : '请输入'
-          "
+          :rows="3"
           @update:value="writeText(field, $event)"
         />
-        <InputPassword
+        <InputNumber
+          v-else-if="field.kind === 'number'"
+          :id="`${id}-${field.key}`"
+          class="w-full"
+          :value="
+            typeof values[field.key] === 'number'
+              ? (values[field.key] as number)
+              : undefined
+          "
+          @update:value="
+            values[field.key] =
+              typeof $event === 'string' || typeof $event === 'number'
+                ? $event
+                : null
+          "
+        />
+        <Switch
+          v-else-if="field.kind === 'boolean'"
+          :id="`${id}-${field.key}`"
+          :checked="values[field.key] === true"
+          @update:checked="values[field.key] = $event === true"
+        />
+        <Select
+          v-else-if="field.kind === 'select'"
+          :id="`${id}-${field.key}`"
+          :value="textValue(field.key) || undefined"
+          :options="field.options.map((value) => ({ label: value, value }))"
+          allow-clear
+          @update:value="
+            values[field.key] =
+              typeof $event === 'string' || typeof $event === 'number'
+                ? $event
+                : null
+          "
+        />
+        <Input
           v-else
           :id="`${id}-${field.key}`"
           :value="textValue(field.key)"
-          :disabled="values[field.key] === null"
-          autocomplete="new-password"
-          :placeholder="
-            configuredSecrets.includes(field.key)
-              ? '已设置，留空保留'
-              : '请输入'
+          :type="
+            field.kind === 'date'
+              ? 'date'
+              : field.kind === 'email'
+                ? 'email'
+                : field.kind === 'url'
+                  ? 'url'
+                  : 'text'
           "
           @update:value="writeText(field, $event)"
         />
-        <Checkbox
-          v-if="configuredSecrets.includes(field.key)"
-          :checked="values[field.key] === null"
-          @update:checked="setCleared(field.key, $event)"
-        >
-          清空已保存的{{ field.label }}
-        </Checkbox>
-      </template>
-      <CredentialSelect
-        v-else-if="field.kind === 'credential'"
-        :input-id="`${id}-${field.key}`"
-        :model-value="textValue(field.key) || null"
-        :allow-create="canCreateCredential"
-        create-kind="password"
-        placeholder="搜索并选择已有凭证"
-        @update:model-value="values[field.key] = $event || null"
-      />
-      <TextArea
-        v-else-if="field.kind === 'textarea'"
-        :id="`${id}-${field.key}`"
-        :value="textValue(field.key)"
-        :rows="3"
-        @update:value="writeText(field, $event)"
-      />
-      <InputNumber
-        v-else-if="field.kind === 'number'"
-        :id="`${id}-${field.key}`"
-        class="w-full"
-        :value="
-          typeof values[field.key] === 'number'
-            ? (values[field.key] as number)
-            : undefined
-        "
-        @update:value="
-          values[field.key] =
-            typeof $event === 'string' || typeof $event === 'number'
-              ? $event
-              : null
-        "
-      />
-      <Switch
-        v-else-if="field.kind === 'boolean'"
-        :id="`${id}-${field.key}`"
-        :checked="values[field.key] === true"
-        @update:checked="values[field.key] = $event === true"
-      />
-      <Select
-        v-else-if="field.kind === 'select'"
-        :id="`${id}-${field.key}`"
-        :value="textValue(field.key) || undefined"
-        :options="field.options.map((value) => ({ label: value, value }))"
-        allow-clear
-        @update:value="
-          values[field.key] =
-            typeof $event === 'string' || typeof $event === 'number'
-              ? $event
-              : null
-        "
-      />
-      <Input
-        v-else
-        :id="`${id}-${field.key}`"
-        :value="textValue(field.key)"
-        :type="
-          field.kind === 'date'
-            ? 'date'
-            : field.kind === 'email'
-              ? 'email'
-              : field.kind === 'url'
-                ? 'url'
-                : 'text'
-        "
-        @update:value="writeText(field, $event)"
-      />
-    </FormItem>
-  </template>
+      </FormItem>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.account-dynamic-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 16px;
+}
+
+.account-dynamic-field {
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .account-dynamic-fields {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .account-dynamic-field {
+    grid-column: span var(--account-field-span, 12);
+  }
+}
+</style>

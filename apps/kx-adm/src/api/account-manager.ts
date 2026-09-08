@@ -22,6 +22,7 @@ export interface AccountField {
   sensitive: boolean;
   enabled: boolean;
   options: string[];
+  desktop_span?: number;
 }
 export interface AccountType {
   id: number;

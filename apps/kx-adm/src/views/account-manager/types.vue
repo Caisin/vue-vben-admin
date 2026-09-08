@@ -24,9 +24,9 @@ import {
 
 import { AccountManagerApi } from '#/api/account-manager';
 
-import { accountError, fieldKinds } from './data';
+import { accountError, desktopWidthOptions, fieldKinds } from './data';
 
-type FieldDraft = AccountField & { optionsText: string };
+type FieldDraft = AccountField & { optionsText: string; desktop_span: number };
 const { hasAccessByCodes } = useAccess();
 const formId = useId();
 const canWrite = computed(() =>
@@ -76,6 +76,7 @@ function edit(row?: AccountType) {
     fields:
       row?.fields.map((field) => ({
         ...field,
+        desktop_span: field.desktop_span ?? 12,
         options: [...field.options],
         optionsText: field.options.join('\n'),
       })) ?? [],
@@ -90,6 +91,7 @@ function addField() {
     enabled: true,
     required: false,
     sensitive: false,
+    desktop_span: 12,
     options: [],
     optionsText: '',
   });
@@ -116,13 +118,23 @@ async function save() {
     enabled: form.enabled,
     expected_version: editing.value?.version,
     fields: form.fields.map(
-      ({ key, label, kind, enabled, required, sensitive, optionsText }) => ({
+      ({
         key,
         label,
         kind,
         enabled,
         required,
         sensitive,
+        desktop_span,
+        optionsText,
+      }) => ({
+        key,
+        label,
+        kind,
+        enabled,
+        required,
+        sensitive,
+        desktop_span,
         options:
           kind === 'select'
             ? optionsText
@@ -227,13 +239,14 @@ onMounted(load);
         </Checkbox>
         <p class="mb-3">
           已有字段的类型和敏感设置保持不变；停用字段会保留历史值。密码字段加密保存。
+          非移动端宽度可随时调整，手机端每项独占一行。
         </p>
         <div
           v-for="(field, index) in form.fields"
           :key="field.key"
           class="mb-3 rounded border p-3"
         >
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
             <FormItem label="字段名称" required>
               <Input
                 v-model:value="field.label"
@@ -250,6 +263,16 @@ onMounted(load);
                 :disabled="locked.has(field.key)"
                 :options="fieldKinds"
                 @update:value="changeKind(field, $event)"
+              />
+            </FormItem>
+            <FormItem
+              :label="`非移动端宽度 ${index + 1}`"
+              :html-for="`${formId}-width-${index}`"
+            >
+              <Select
+                :id="`${formId}-width-${index}`"
+                v-model:value="field.desktop_span"
+                :options="desktopWidthOptions"
               />
             </FormItem>
           </div>
