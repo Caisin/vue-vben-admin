@@ -7,7 +7,7 @@ import type {
 } from '#/api/msg';
 import type { SystemUser } from '#/api/system/user';
 
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { Page, useVbenDrawer } from '@vben/common-ui';
@@ -15,6 +15,7 @@ import { ExternalLink, Plus, RotateCw, X } from '@vben/icons';
 
 import {
   Button,
+  Input,
   message,
   Modal,
   Popconfirm,
@@ -35,7 +36,10 @@ import { useColumns, useFormSchema } from './data';
 import Form from './modules/form.vue';
 import PopupDrawer from './modules/popup-drawer.vue';
 
-const simDrawerOpen = ref(false);
+const simModalOpen = ref(false);
+const simSearch = ref('');
+const simPage = ref(1);
+const simPageSize = ref(10);
 const userDrawerOpen = ref(false);
 const notificationDrawerOpen = ref(false);
 const simAddOpen = ref(false);
@@ -58,11 +62,48 @@ const router = useRouter();
 const groupSortFields = ['grp_code', 'grp_name', 'order_no'];
 const tablePagination = { pageSize: 10, showSizeChanger: true };
 
+function phoneSearchValue(value: string) {
+  return value.replaceAll(/[\s()+-]/g, '').replace(/^86(?=1\d{10}$)/, '');
+}
+
+const filteredGroupSims = computed(() => {
+  const query = simSearch.value.trim().toLowerCase();
+  if (!query) return groupSims.value;
+  const phoneQuery = phoneSearchValue(query);
+  return groupSims.value.filter(
+    (sim) =>
+      [sim.phone_number, sim.iccid, sim.real_name].some((value) =>
+        value.toLowerCase().includes(query),
+      ) ||
+      (phoneQuery && phoneSearchValue(sim.phone_number).includes(phoneQuery)),
+  );
+});
+const simPagination = computed(() => ({
+  current: simPage.value,
+  pageSize: simPageSize.value,
+  total: filteredGroupSims.value.length,
+  showSizeChanger: true,
+}));
+watch(simSearch, () => {
+  simPage.value = 1;
+});
+watch([() => filteredGroupSims.value.length, simPageSize], () => {
+  simPage.value = Math.min(
+    simPage.value,
+    Math.max(1, Math.ceil(filteredGroupSims.value.length / simPageSize.value)),
+  );
+});
+function changeSimPage(page: { current?: number; pageSize?: number }) {
+  const size = page.pageSize ?? simPageSize.value;
+  simPage.value = size === simPageSize.value ? (page.current ?? 1) : 1;
+  simPageSize.value = size;
+}
+
 const simColumns = [
-  { dataIndex: 'phone_number', title: '号码' },
-  { dataIndex: 'iccid', title: 'ICCID' },
-  { dataIndex: 'carrier', title: '运营商' },
-  { dataIndex: 'real_name', title: '实名' },
+  { dataIndex: 'phone_number', title: '号码', width: 200 },
+  { dataIndex: 'iccid', title: 'ICCID', width: 250 },
+  { dataIndex: 'carrier', title: '运营商', width: 140 },
+  { dataIndex: 'real_name', title: '实名', width: 160 },
   { key: 'actions', title: '操作', width: 80 },
 ];
 const userColumns = [
@@ -127,7 +168,7 @@ const [Grid, gridApi] = useVbenVxeGrid<PhoneGroup>({
   } as VxeTableGridOptions<PhoneGroup>,
 });
 
-const simDrawerTitle = computed(() =>
+const simModalTitle = computed(() =>
   selectedGroup.value
     ? `分配号码：${selectedGroup.value.grp_name}`
     : '分配号码',
@@ -176,7 +217,9 @@ async function openSims(row: PhoneGroup) {
   selectedGroup.value = row;
   selectedIccids.value = [];
   groupSims.value = [];
-  simDrawerOpen.value = true;
+  simSearch.value = '';
+  simPage.value = 1;
+  simModalOpen.value = true;
   assignLoading.value = true;
   try {
     const result = await PhoneGroupApi.sims(row.id);
@@ -444,32 +487,54 @@ async function saveNotificationChannels() {
       </template>
     </Grid>
 
-    <PopupDrawer
-      v-model:open="simDrawerOpen"
-      class="w-full max-w-180"
-      :title="simDrawerTitle"
+    <Modal
+      v-model:open="simModalOpen"
+      :title="simModalTitle"
+      width="min(1100px, calc(100vw - 32px))"
+      :footer="null"
+      :closable="!assignLoading"
+      :mask-closable="!assignLoading"
+      :keyboard="!assignLoading && !simAddOpen && !phoneInputOpen"
     >
-      <div class="mb-3 flex justify-end gap-2">
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <Input
+          v-model:value="simSearch"
+          class="min-w-52 flex-1"
+          aria-label="搜索分组号码"
+          placeholder="搜索号码、ICCID 或实名"
+          allow-clear
+        />
         <Button
           v-access:code="'phone_groups:manage'"
+          :disabled="assignLoading"
           @click="phoneInputOpen = true"
         >
           按行输入号码
         </Button>
         <Button
           v-access:code="'phone_groups:manage'"
+          :disabled="assignLoading"
           type="primary"
           @click="openAddSims"
         >
           <template #icon><Plus /></template>添加号码
         </Button>
       </div>
+      <p class="mb-3 text-sm text-muted-foreground" role="status">
+        分组共 {{ groupSims.length }} 个号码，当前匹配
+        {{ filteredGroupSims.length }} 个。
+      </p>
       <Table
         :columns="simColumns"
-        :data-source="groupSims"
+        :data-source="filteredGroupSims"
         :loading="assignLoading"
-        :pagination="tablePagination"
+        :pagination="simPagination"
+        :scroll="{ x: 830, y: 'min(55vh, 560px)' }"
+        :locale="{
+          emptyText: simSearch.trim() ? '没有匹配的号码' : '分组暂无号码',
+        }"
         row-key="iccid"
+        @change="changeSimPage"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'phone_number'">
@@ -480,12 +545,14 @@ async function saveNotificationChannels() {
               :title="`确认从分组移除 ${record.phone_number || record.iccid}？`"
               @confirm="removeSim(record.iccid)"
             >
-              <Button danger size="small" type="link">移除</Button>
+              <Button :disabled="assignLoading" danger size="small" type="link">
+                移除
+              </Button>
             </Popconfirm>
           </template>
         </template>
       </Table>
-    </PopupDrawer>
+    </Modal>
 
     <Modal
       v-model:open="simAddOpen"

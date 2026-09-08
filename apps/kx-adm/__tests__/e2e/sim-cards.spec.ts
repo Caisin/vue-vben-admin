@@ -56,6 +56,7 @@ for (const scenario of ['管理', '只读', '余额反馈']) {
     const balanceReads = new Map<string, number>();
     const groupMembers = [cards[1]];
     const groupWrites: string[][] = [];
+    const membershipWrites: string[][] = [];
     let rejectDelete = true;
     await page
       .context()
@@ -174,12 +175,24 @@ for (const scenario of ['管理', '只读', '余额反馈']) {
             ],
             total: 1,
           };
-        else if (path === '/msg/phone-groups/1/sims')
+        else if (path === '/msg/phone-groups/1/sims') {
+          if (route.request().method() === 'PUT') {
+            const bytes = route.request().postDataBuffer();
+            if (!bytes) throw new Error('missing group membership payload');
+            const data = JSON.parse(KxEd.decodeText(KxEd.decrypt(bytes))) as {
+              iccids: string[];
+            };
+            membershipWrites.push(data.iccids);
+            const remaining = groupMembers.filter((card) =>
+              data.iccids.includes(card?.iccid ?? ''),
+            );
+            groupMembers.splice(0, groupMembers.length, ...remaining);
+          }
           result = {
             items: groupMembers,
             iccids: groupMembers.map((card) => card?.iccid),
           };
-        else if (path === '/msg/phone-groups/1/sims/actions/add-by-phones') {
+        } else if (path === '/msg/phone-groups/1/sims/actions/add-by-phones') {
           const bytes = route.request().postDataBuffer();
           if (!bytes) throw new Error('missing phone input payload');
           const data = JSON.parse(KxEd.decodeText(KxEd.decrypt(bytes))) as {
@@ -328,8 +341,62 @@ for (const scenario of ['管理', '只读', '余额反馈']) {
       '13800138999',
     ]);
     await groupDialog.getByRole('button', { name: /close|关闭/i }).click();
+    const templateCard = cards[0];
+    if (!templateCard) throw new Error('missing SIM fixture');
+    for (let index = 0; index < 12; index++) {
+      groupMembers.push({
+        ...templateCard,
+        iccid: `8986000000001${String(index).padStart(2, '0')}`,
+        phone_number: `139000000${String(index).padStart(2, '0')}`,
+        real_name: `实名${index}`,
+      });
+    }
     await page.goto('/msg/phone-groups');
-    await page.getByRole('button', { name: '2 个号码', exact: true }).click();
+    await page.getByRole('button', { name: '14 个号码', exact: true }).click();
+    const simModal = page.getByRole('dialog', {
+      name: '分配号码：运营组',
+      exact: true,
+    });
+    await expect(simModal).toBeVisible();
+    await expect
+      .poll(async () => {
+        const bounds = await simModal.boundingBox();
+        return bounds?.width ?? 0;
+      })
+      .toBeGreaterThan(1000);
+    await expect(
+      simModal.getByText('13900000011', { exact: true }),
+    ).toHaveCount(0);
+    const search = simModal.getByRole('textbox', { name: '搜索分组号码' });
+    // 第 14 个成员不在当前页，搜索仍需找到；手机号可带国家码和空格。
+    await search.fill('+86 13900000011');
+    await expect(
+      simModal.getByText('13900000011', { exact: true }),
+    ).toBeVisible();
+    await expect(simModal.getByRole('status')).toContainText('当前匹配 1 个');
+    await search.fill('实名11');
+    await expect(
+      simModal.getByText('13900000011', { exact: true }),
+    ).toBeVisible();
+    await simModal.getByRole('button', { name: '移除', exact: true }).click();
+    await page.getByRole('button', { name: /确\s*定/ }).click();
+    await expect(simModal).toContainText('没有匹配的号码');
+    expect(membershipWrites[0]).toHaveLength(13);
+    expect(membershipWrites[0]).toContain('898600000000001');
+    expect(membershipWrites[0]).toContain('898600000000002');
+    expect(membershipWrites[0]).not.toContain('898600000000111');
+    await search.fill('');
+    await expect(simModal.getByRole('status')).toContainText(
+      '分组共 13 个号码',
+    );
+    await page.setViewportSize({ width: 480, height: 900 });
+    await expect
+      .poll(async () => {
+        const bounds = await simModal.boundingBox();
+        return bounds?.width ?? Infinity;
+      })
+      .toBeLessThanOrEqual(448);
+    await page.setViewportSize({ width: 1280, height: 720 });
     await page
       .getByRole('button', { name: '按行输入号码', exact: true })
       .click();
@@ -345,6 +412,13 @@ for (const scenario of ['管理', '只读', '余额反馈']) {
       .click();
     await expect(inputDialog).toContainText('已存在 1 个');
     expect(groupWrites).toHaveLength(2);
+    await inputDialog.getByRole('button', { name: /close|关闭/i }).click();
+    await expect(simModal).toBeVisible();
+    await search.fill('没有这个号码');
+    await expect(simModal).toContainText('没有匹配的号码');
+    await simModal.getByRole('button', { name: '关闭', exact: true }).click();
+    await page.getByRole('button', { name: '13 个号码', exact: true }).click();
+    await expect(search).toHaveValue('');
     await page.goto('/msg/sim-cards');
     const remove = page.getByRole('button', {
       name: '删除 SIM 卡',
