@@ -17,22 +17,27 @@ export const useNotifyInboxStore = defineStore('notify-inbox', () => {
   const loading = ref(false);
   const loadFailed = ref(false);
   const initialized = ref(false);
+  let requestVersion = 0;
 
   const items = computed(() => inbox.value.items);
   const unreadCount = computed(() => inbox.value.unread_count);
 
   async function load(force = false) {
     if (loading.value && !force) return;
+    const version = ++requestVersion;
     loading.value = true;
     loadFailed.value = false;
     try {
-      inbox.value = await NotifyInboxApi.list({ size: 100 });
+      const result = await NotifyInboxApi.list({ size: 100 });
+      if (version !== requestVersion) return;
+      inbox.value = result;
       initialized.value = true;
     } catch (error) {
+      if (version !== requestVersion) return;
       loadFailed.value = true;
       throw error;
     } finally {
-      loading.value = false;
+      if (version === requestVersion) loading.value = false;
     }
   }
 
@@ -59,10 +64,15 @@ export const useNotifyInboxStore = defineStore('notify-inbox', () => {
 
   async function clear() {
     await NotifyInboxApi.clear();
+    // 清空成功后旧轮询不得回填；新请求只接收清空后仍可见的通知。
+    requestVersion++;
+    inbox.value = { ...EMPTY_INBOX };
+    initialized.value = true;
     await load(true);
   }
 
   function $reset() {
+    requestVersion++;
     inbox.value = { ...EMPTY_INBOX };
     loading.value = false;
     loadFailed.value = false;
