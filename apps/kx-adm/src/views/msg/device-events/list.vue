@@ -23,6 +23,7 @@ import {
   useColumns,
   useFormSchema,
 } from './data';
+import Cleanup from './modules/cleanup.vue';
 import Detail from './modules/detail.vue';
 
 const route = useRoute();
@@ -136,6 +137,16 @@ onMounted(async () => {
     </header>
 
     <Grid class="management-grid" table-title="设备事件">
+      <template #toolbar-tools>
+        <Cleanup
+          @finished="
+            async () => {
+              await gridApi.query();
+              await loadFilterOptions();
+            }
+          "
+        />
+      </template>
       <template #eventKind="{ row }">
         <Tag :color="eventKindColor(row.event_kind)">
           {{ eventKindLabel(row.event_kind) }}

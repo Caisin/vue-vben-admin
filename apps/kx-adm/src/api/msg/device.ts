@@ -69,7 +69,7 @@ export const DeviceApi = {
     } satisfies DeviceOperationDetail;
   },
   sendCommand: (deviceCode: string, command: DeviceCommand) =>
-    requestClient.post<{ operation_id: number; status: string }>(
+    requestClient.post<{ operation_id: null | number; status: string }>(
       `/msg/devices/${deviceCode}/actions/${command}`,
     ),
   updateConfig: (
@@ -77,7 +77,7 @@ export const DeviceApi = {
     _kind: DeviceConfigKind,
     payload: unknown,
   ) =>
-    requestClient.post<{ operation_id: number; status: string }>(
+    requestClient.post<{ operation_id: null | number; status: string }>(
       `/msg/devices/${deviceCode}/actions/update-config`,
       payload,
     ),
@@ -109,7 +109,7 @@ export const DeviceApi = {
       `/msg/devices/${deviceCode}/actions/refresh-card-status`,
     ),
   locate: (deviceCode: string) =>
-    requestClient.post<{ operation_id: number; status: string }>(
+    requestClient.post<{ operation_id: null | number; status: string }>(
       `/msg/devices/${deviceCode}/actions/locate`,
     ),
 };
