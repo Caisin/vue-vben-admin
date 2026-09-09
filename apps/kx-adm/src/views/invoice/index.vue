@@ -1,9 +1,7 @@
 <script lang="ts" setup>
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type {
-  InvoiceExportDispatchView,
   InvoiceExportScope,
-  InvoiceExportView,
   InvoiceFilterOptions,
   InvoiceImportDispatchView,
   InvoiceImportView,
@@ -78,7 +76,7 @@ const detailOpen = ref(false);
 const editOpen = ref(false);
 const exportHistoryOpen = ref(false);
 const activeInvoice = ref<InvoiceItemView>();
-const exportRuns = ref<InvoiceExportDispatchView[]>([]);
+const activeExportId = ref<number | string>();
 const markSubmittedToFinance = ref(false);
 const statistics = ref<InvoiceStatisticsView>({
   amount_tax_total: '0',
@@ -178,17 +176,8 @@ onMounted(async () => {
   const queryValue = Array.isArray(route.query.export_id)
     ? route.query.export_id[0]
     : route.query.export_id;
-  const exportId = Number(queryValue);
-  if (Number.isInteger(exportId) && exportId > 0) {
-    const detail = await InvoiceApi.exportDetail(exportId);
-    exportRuns.value = [
-      {
-        duplicate: false,
-        export: detail,
-        message: '',
-        task_run: null,
-      },
-    ];
+  if (queryValue && /^[1-9]\d*$/.test(queryValue) && canExportInvoice.value) {
+    activeExportId.value = queryValue;
     exportHistoryOpen.value = true;
   }
 });
@@ -352,7 +341,7 @@ async function createExport(scope: InvoiceExportScope) {
             selectedRows: selectedRows.value,
           }),
         );
-        exportRuns.value = [result, ...exportRuns.value];
+        activeExportId.value = result.export.id;
         if (result.duplicate) {
           message.info(result.message || '已有相同导出任务，已展示现有任务');
         } else {
@@ -372,13 +361,9 @@ async function downloadOriginal(row: InvoiceItemView) {
   downloadBlob(blob, row.original_file_name || `invoice-${row.invoice_id}`);
 }
 
-async function downloadExport(row: InvoiceExportView) {
-  const blob = await InvoiceApi.exportContent(row.id);
-  downloadBlob(blob, `invoice-export-${row.id}.zip`);
-}
-
-function onExportRefresh(rows: InvoiceExportDispatchView[]) {
-  exportRuns.value = rows;
+function openExportHistory() {
+  activeExportId.value = undefined;
+  exportHistoryOpen.value = true;
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -453,7 +438,7 @@ function downloadBlob(blob: Blob, fileName: string) {
           </template>
           上传文件夹
         </Button>
-        <Button v-if="canExportInvoice" @click="exportHistoryOpen = true">
+        <Button v-if="canExportInvoice" @click="openExportHistory">
           导出任务
         </Button>
       </Space>
@@ -570,9 +555,7 @@ function downloadBlob(blob: Blob, fileName: string) {
     <UploadResultDrawer v-model:open="uploadResultOpen" :batch="activeImport" />
     <ExportHistoryDrawer
       v-model:open="exportHistoryOpen"
-      :exports="exportRuns"
-      @download="downloadExport"
-      @refresh="onExportRefresh"
+      :initial-export-id="activeExportId"
     />
   </Page>
 </template>

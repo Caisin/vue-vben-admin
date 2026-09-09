@@ -176,6 +176,12 @@ export interface InvoiceExportCreateWrite {
   selected?: InvoiceReferenceKey[];
 }
 
+export interface InvoiceExportListQuery extends PageQuery {
+  id?: number | string;
+  state?: InvoiceExportState;
+  uid?: number | string;
+}
+
 export interface InvoiceExportView {
   actual_count: number | string;
   completed_at?: null | number | string;
@@ -209,6 +215,8 @@ export const InvoiceApi = {
     ),
   exportContent: (id: number | string) =>
     plaintextRequestClient.download<Blob>(`/invoice/exports/${id}/content`),
+  exportList: (params?: InvoiceExportListQuery) =>
+    requestClient.get<Page<InvoiceExportView>>('/invoice/exports', { params }),
   exportDetail: (id: number | string) =>
     requestClient.get<InvoiceExportView>(`/invoice/exports/${id}`),
   fileContent: (id: number | string) =>
