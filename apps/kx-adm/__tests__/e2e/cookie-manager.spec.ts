@@ -7,6 +7,8 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
   test.setTimeout(90_000);
   const now = Math.floor(Date.now() / 1000);
   let loggedIn = false;
+  let loginError = '';
+  let loginAttempts = 0;
   let authorized = false;
   let revoked = false;
   let saved = false;
@@ -43,12 +45,13 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
     created_at: now,
     revoked,
   });
+  const loginState = () => (loggedIn ? 'succeeded' : 'captcha_ready');
   const login = () => ({
     id: 11,
     site_id: 1,
-    state: loggedIn ? 'succeeded' : 'captcha_ready',
+    state: loginError ? 'failed' : loginState(),
     expires_at: now + 600,
-    error_message: '',
+    error_message: loginError,
     captcha_data_url: loggedIn
       ? null
       : 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfZkAAAAASUVORK5CYII=',
@@ -168,18 +171,23 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
               summary: {},
             },
           ];
-        else if (path === '/cookie-manager/sites/1/login')
+        else if (path === '/cookie-manager/sites/1/login') {
+          loginError = '';
           result = {
             ...login(),
             state: 'queued_captcha',
             captcha_data_url: null,
           };
-        else if (path === '/cookie-manager/logins/11') result = login();
+        } else if (path === '/cookie-manager/logins/11') result = login();
         else if (path === '/cookie-manager/logins/11/submit') {
           const bytes = req.postDataBuffer();
           const text = bytes ? KxEd.decryptText(bytes) : '{}';
           expect(JSON.parse(text).code).toBe('1234');
-          loggedIn = true;
+          loginAttempts++;
+          loggedIn = loginAttempts > 1;
+          loginError = loggedIn
+            ? ''
+            : 'dataeye_login_rejected: HTTP 200; statusCode=412; 验证码错误，请重新获取';
           result = login();
         } else if (path === '/cookie-manager/sessions/authorize') {
           authorized = true;
@@ -233,6 +241,15 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
   await expect(
     modal.getByRole('img', { name: '网站登录验证码' }),
   ).toBeVisible();
+  await modal.getByPlaceholder('输入图片验证码').fill('1234');
+  await modal.getByRole('button', { name: '登录并保存Cookie' }).click();
+  await expect(modal.getByText(/验证码错误，请重新获取/)).toBeVisible();
+  expect(loggedIn).toBe(false);
+  await expect(
+    modal.getByText('登录成功，Cookie已保存', { exact: true }),
+  ).toBeHidden();
+  await modal.getByRole('button', { name: '重新获取验证码' }).click();
+  await expect(modal.getByPlaceholder('输入图片验证码')).toBeVisible();
   await modal.getByPlaceholder('输入图片验证码').fill('1234');
   await modal.getByRole('button', { name: '登录并保存Cookie' }).click();
   await expect(

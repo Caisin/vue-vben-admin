@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 
 import { chromium, expect, test } from '@playwright/test';
 
-test('Chrome扩展真实Cookie写入、HttpOnly及同域账号切换', async () => {
+test('Chrome扩展真实Cookie写入、账号切换及离线清空退出', async () => {
   test.setTimeout(60_000);
   const temp = await mkdtemp(join(tmpdir(), 'kx-cookie-extension-'));
   const extension = join(temp, 'extension');
@@ -174,6 +174,69 @@ test('Chrome扩展真实Cookie写入、HttpOnly及同域账号切换', async () 
     expect(result.rows.find((c: any) => c.name === 'unmanaged').value).toBe(
       'keep',
     );
+
+    await popup.evaluate(async () => {
+      const api = (globalThis as any).chrome;
+      await api.cookies.set({
+        url: 'https://app.example.com/api',
+        name: 'account_token',
+        value: 'path-fixture',
+        path: '/api',
+        httpOnly: true,
+        secure: true,
+      });
+      await api.cookies.set({
+        url: 'https://example.com/',
+        name: 'parent_host_only',
+        value: 'keep-parent',
+        secure: true,
+      });
+      await api.cookies.set({
+        url: 'https://other.example.com/',
+        name: 'other_site',
+        value: 'keep-other',
+        secure: true,
+      });
+      await api.cookies.set({
+        url: 'https://app.example.com/',
+        domain: 'example.com',
+        name: 'parent_host_only',
+        value: 'shared-cookie',
+        secure: true,
+      });
+      await api.storage.session.remove('cookieSyncSession');
+      await api.storage.local.set({
+        'syncedSites:production': [
+          {
+            id: 1,
+            name: '测试网站',
+            account_label: 'A',
+            origin: 'https://app.example.com',
+            status: 'local',
+            cookies: [
+              { name: 'account_token', domain: 'example.com', path: '/' },
+            ],
+          },
+        ],
+      });
+    });
+    await popup.reload();
+    await expect(popup.locator('#sites')).toContainText('测试网站');
+    await expect(popup.locator('#sync')).toBeDisabled();
+    await popup
+      .getByRole('button', { name: '退出网站登录（清空 Cookie）', exact: true })
+      .click();
+    await expect(popup.getByRole('status')).toContainText('已清空 4 项Cookie');
+    const remaining = await popup.evaluate(async () => {
+      const api = (globalThis as any).chrome;
+      const rows = await api.cookies.getAll({});
+      return rows.map((c: any) => c.name);
+    });
+    expect(remaining.toSorted()).toEqual(['other_site', 'parent_host_only']);
+    await popup
+      .getByRole('button', { name: '退出网站登录（清空 Cookie）', exact: true })
+      .click();
+    await expect(popup.getByRole('status')).toContainText('已清空 0 项Cookie');
   } finally {
     await context.close();
     await rm(temp, { recursive: true, force: true });
