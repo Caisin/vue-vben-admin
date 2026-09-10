@@ -18,6 +18,9 @@ export interface DeveloperDevice {
 }
 
 export interface DeveloperAccountListItem {
+  renewal_contact_id?: null | number | string;
+  renewal_contact_name: string;
+  renewal_contact_phone: string;
   account: string;
   access_group_count: number;
   access_user_count: number;
@@ -40,6 +43,7 @@ export interface DeveloperAccountListItem {
 }
 
 export interface DeveloperAccountDetail {
+  renewal_contact_id?: null | number | string;
   account: string;
   apps: string[];
   certifier_id?: null | number;
@@ -123,6 +127,21 @@ export interface DeveloperCertifierWrite {
   document_file_id?: null | number;
   remark: string;
   expected_updated_at?: number;
+}
+
+export interface RenewalContact {
+  id: number | string;
+  name: string;
+  phone: string;
+  remark: string;
+  version: number | string;
+  can_edit: boolean;
+}
+export interface RenewalContactWrite {
+  name: string;
+  phone: string;
+  remark: string;
+  expected_version?: number | string;
 }
 
 export interface AppleDevice extends DeveloperDevice {
@@ -235,6 +254,18 @@ export interface TikTokMiniAppWhitelist {
 }
 
 export const DeveloperAccountApi = {
+  renewalContacts: () =>
+    requestClient.get<RenewalContact[]>('/developer-account/renewal-contacts'),
+  createRenewalContact: (data: RenewalContactWrite) =>
+    requestClient.post<RenewalContact>(
+      '/developer-account/renewal-contacts',
+      data,
+    ),
+  updateRenewalContact: (id: number | string, data: RenewalContactWrite) =>
+    requestClient.put<RenewalContact>(
+      `/developer-account/renewal-contacts/${id}`,
+      data,
+    ),
   accessGroups: (
     params?: PageQuery & { enabled?: boolean; keyword?: string },
   ) =>

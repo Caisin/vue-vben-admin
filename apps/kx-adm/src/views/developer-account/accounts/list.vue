@@ -56,6 +56,7 @@ import { Times } from '#/times';
 
 import CredentialReveal from '../../credential/items/modules/reveal.vue';
 import { platformOptions, useColumns, useGridFormSchema } from './data';
+import RenewalContactSelect from './renewal-contact-select.vue';
 
 type FormState = DeveloperAccountWrite & {
   apps_text: string;
@@ -196,6 +197,7 @@ function emptyForm(): FormState {
     platform: 'apple',
     registered_at: 0,
     renewal_due_at: 0,
+    renewal_contact_id: null,
     small_business_applied_at: '',
     small_business_status: '',
     tiktok_us_registered: false,
@@ -605,6 +607,7 @@ async function save() {
         .filter(Boolean),
       certifier_id: form.certifier_id,
       certifier_phone: form.certifier_phone,
+      renewal_contact_id: form.renewal_contact_id ?? null,
       credential_code: form.credential_code,
       // 设备和主体由各自的独立编辑接口维护，账户保存只保留当前关联 ID。
       devices: [],
@@ -783,6 +786,23 @@ async function loadAccessUserOptions() {
           {{ Times.formatOptionalUnix(row.registered_at) }}
         </button>
         <span v-else>{{ Times.formatOptionalUnix(row.registered_at) }}</span>
+      </template>
+      <template #renewalContact="{ row }">
+        <button
+          v-if="canUpdateAccount"
+          class="cell-action"
+          type="button"
+          @click="openEdit(row)"
+        >
+          {{ row.renewal_contact_name || '设置续费人' }}
+        </button>
+        <span v-else>{{ row.renewal_contact_name || '未设置' }}</span>
+        <div
+          v-if="row.renewal_contact_phone"
+          class="text-xs text-muted-foreground"
+        >
+          {{ row.renewal_contact_phone }}
+        </div>
       </template>
       <template #renewalDueAt="{ row }">
         <button
@@ -984,6 +1004,12 @@ async function loadAccessUserOptions() {
                   class="w-full"
                   format="YYYY-MM-DD HH:mm:ss"
                   show-time
+                />
+              </FormItem>
+              <FormItem label="续费人" class="md:col-span-2">
+                <RenewalContactSelect
+                  v-model="form.renewal_contact_id"
+                  @changed="gridApi.query()"
                 />
               </FormItem>
               <FormItem label="小企业状态">
@@ -1403,6 +1429,12 @@ async function loadAccessUserOptions() {
             </DescriptionsItem>
             <DescriptionsItem label="续费时间">
               {{ Times.formatUnix(detail.renewal_due_at) }}
+            </DescriptionsItem>
+            <DescriptionsItem label="续费人" :span="2">
+              <RenewalContactSelect
+                :model-value="detail.renewal_contact_id"
+                readonly
+              />
             </DescriptionsItem>
             <DescriptionsItem label="小企业状态">
               <DicLabel

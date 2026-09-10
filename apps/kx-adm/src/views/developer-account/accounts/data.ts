@@ -72,6 +72,12 @@ export function useColumns(): VxeTableGridColumns<DeveloperAccountListItem> {
       title: '认证电话',
     },
     {
+      field: 'renewal_contact_name',
+      minWidth: 140,
+      title: '续费人',
+      slots: { default: 'renewalContact' },
+    },
+    {
       field: 'registered_at',
       minWidth: 180,
       slots: { default: 'registeredAt' },

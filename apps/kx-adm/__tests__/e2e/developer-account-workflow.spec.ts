@@ -181,6 +181,141 @@ test('developer account relation and credential controls form a complete workflo
   await create.getByRole('button', { name: /取\s*消/ }).click();
 });
 
+test('续费人独立新增编辑、账户保存回填和清空', async ({ page }) => {
+  await mockAuth(page);
+  await mockDeveloperAccount(page);
+  await mockDictionary(page);
+  await mockCredential(page);
+  let selected: null | number | string = null;
+  let version = 0;
+  const contacts: Array<{
+    id: number;
+    name: string;
+    phone: string;
+    remark: string;
+    version: number;
+    can_edit: boolean;
+  }> = [];
+  await page.context().route('**/developer-account/**', async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace(/^\/api(?=\/)/, '');
+    const body = () => {
+      const bytes = req.postDataBuffer();
+      return bytes ? JSON.parse(KxEd.decryptText(bytes)) : {};
+    };
+    if (path === '/developer-account/renewal-contacts') {
+      if (req.method() === 'POST') {
+        const data = body();
+        contacts.push({
+          id: 71,
+          name: data.name,
+          phone: data.phone,
+          remark: data.remark,
+          version: 0,
+          can_edit: true,
+        });
+        await fulfillApi(route, contacts[0]);
+      } else await fulfillApi(route, contacts);
+      return;
+    }
+    if (path === '/developer-account/renewal-contacts/71') {
+      const contact = contacts[0];
+      if (!contact) throw new Error('missing contact');
+      const data = body();
+      expect(data.expected_version).toBe(contact.version);
+      Object.assign(contact, {
+        name: data.name,
+        phone: data.phone,
+        remark: data.remark,
+        version: contact.version + 1,
+      });
+      await fulfillApi(route, contact);
+      return;
+    }
+    if (path === '/developer-account/accounts/1') {
+      if (req.method() === 'PUT') {
+        const data = body();
+        expect(data.certifier_id).toBeNull();
+        expect(data.certifier_phone).toBe('13800002222');
+        expect(data.expected_version).toBe(version);
+        selected = data.renewal_contact_id;
+        version++;
+      }
+      await fulfillApi(route, {
+        ...accountDetail(),
+        certifier_phone: '13800002222',
+        renewal_contact_id: selected,
+        version,
+      });
+      return;
+    }
+    if (path === '/developer-account/accounts') {
+      await fulfillApi(
+        route,
+        pageResult([
+          {
+            ...accountListItem(),
+            renewal_contact_id: selected,
+            renewal_contact_name: selected ? contacts[0]?.name : '',
+            renewal_contact_phone: selected ? '139****1111' : '',
+            version,
+          },
+        ]),
+      );
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto('/');
+  await page.locator("input[name='username']").fill('admin');
+  await page.locator("input[name='password']").fill('test-only');
+  await page.getByRole('button', { name: /登录|login/i }).click();
+  await page.getByRole('button', { name: '设置续费人', exact: true }).click();
+  const accountDialog = page.getByRole('dialog', {
+    name: '编辑开发者账户',
+    exact: true,
+  });
+  await accountDialog
+    .getByRole('button', { name: '新增续费人', exact: true })
+    .click();
+  const contactDialog = page.getByRole('dialog', {
+    name: '新增续费人',
+    exact: true,
+  });
+  await contactDialog.getByPlaceholder('输入续费人姓名').fill('续费人甲');
+  await contactDialog.getByPlaceholder('输入续费人电话').fill('13900001111');
+  await contactDialog.getByRole('button', { name: /确\s*定/ }).click();
+  await expect(contactDialog).toBeHidden();
+  await accountDialog
+    .getByRole('button', { name: '编辑续费人', exact: true })
+    .click();
+  const editor = page.getByRole('dialog', { name: '编辑续费人', exact: true });
+  await editor.getByPlaceholder('输入续费人姓名').fill('续费人乙');
+  await editor.getByRole('button', { name: /确\s*定/ }).click();
+  await expect(editor).toBeHidden();
+  await accountDialog.getByRole('button', { name: /确\s*定/ }).click();
+  await expect(accountDialog).toBeHidden();
+  expect(String(selected)).toBe('71');
+  await page.getByRole('button', { name: '续费人乙', exact: true }).click();
+  await expect(
+    accountDialog.getByText('续费人乙 · 13900001111', { exact: true }),
+  ).toBeVisible();
+  await accountDialog.screenshot({
+    path: test.info().outputPath('renewal-contact.png'),
+  });
+  const selector = accountDialog
+    .locator('.ant-select')
+    .filter({ hasText: '续费人乙' });
+  await selector.hover();
+  await selector.locator('.ant-select-clear').click();
+  await accountDialog.getByRole('button', { name: /确\s*定/ }).click();
+  await expect(accountDialog).toBeHidden();
+  expect(selected).toBeNull();
+  await expect(
+    page.getByRole('button', { name: '设置续费人', exact: true }),
+  ).toBeVisible();
+});
+
 async function mockAuth(page: Page, deviceHome = false) {
   await page.context().route('**/{notify,param}/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -223,7 +358,10 @@ async function mockDeveloperAccount(page: Page) {
       await fulfillApi(route, []);
       return;
     }
-    if (path === '/developer-account/certifiers') {
+    if (
+      path === '/developer-account/certifiers' ||
+      path === '/developer-account/renewal-contacts'
+    ) {
       await fulfillApi(route, []);
       return;
     }
