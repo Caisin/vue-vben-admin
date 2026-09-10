@@ -51,7 +51,13 @@ export interface PhoneGroupNotificationChannelOption {
   channel_type: 'dingtalk_custom_robot' | 'dingtalk_group_bot';
 }
 
+export interface SmsForwardFilter {
+  keywords: string[];
+  mode: 'all' | 'any';
+}
+
 export interface PhoneGroupNotificationChannelsView {
+  filter: SmsForwardFilter;
   channel_ids: number[];
   options: PhoneGroupNotificationChannelOption[];
 }
@@ -122,9 +128,13 @@ export const PhoneGroupApi = {
     requestClient.get<PhoneGroupNotificationChannelsView>(
       `/msg/phone-groups/${id}/notification-channels`,
     ),
-  replaceNotificationChannels: (id: number, channelIds: number[]) =>
+  replaceNotificationChannels: (
+    id: number,
+    channelIds: number[],
+    filter?: SmsForwardFilter,
+  ) =>
     requestClient.put<PhoneGroupNotificationChannelsView>(
       `/msg/phone-groups/${id}/notification-channels`,
-      { channel_ids: channelIds },
+      { channel_ids: channelIds, ...(filter ? { filter } : {}) },
     ),
 };

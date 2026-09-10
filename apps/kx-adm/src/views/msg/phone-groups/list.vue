@@ -4,6 +4,7 @@ import type {
   PhoneGroup,
   PhoneGroupNotificationChannelOption,
   SimCard,
+  SmsForwardFilter,
 } from '#/api/msg';
 import type { SystemUser } from '#/api/system/user';
 
@@ -14,7 +15,9 @@ import { Page, useVbenDrawer } from '@vben/common-ui';
 import { ExternalLink, Plus, RotateCw, X } from '@vben/icons';
 
 import {
+  Alert,
   Button,
+  FormItem,
   Input,
   message,
   Modal,
@@ -42,6 +45,9 @@ const simPage = ref(1);
 const simPageSize = ref(10);
 const userDrawerOpen = ref(false);
 const notificationDrawerOpen = ref(false);
+const notificationReady = ref(false);
+const notificationKeywords = ref('');
+const notificationMode = ref<SmsForwardFilter['mode']>('any');
 const simAddOpen = ref(false);
 const phoneInputOpen = ref(false);
 const userAddOpen = ref(false);
@@ -350,7 +356,6 @@ async function refreshNotificationChannels() {
     const result = await PhoneGroupApi.notificationChannels(
       selectedGroup.value.id,
     );
-    selectedNotificationChannelIds.value = result.channel_ids;
     notificationChannelOptions.value = result.options;
     message.success('通知群列表已刷新');
   } finally {
@@ -372,26 +377,48 @@ async function openNotificationChannels(row: PhoneGroup) {
   selectedGroup.value = row;
   selectedNotificationChannelIds.value = [];
   notificationChannelOptions.value = [];
+  notificationKeywords.value = '';
+  notificationMode.value = 'any';
+  notificationReady.value = false;
   notificationDrawerOpen.value = true;
   assignLoading.value = true;
   try {
     const result = await PhoneGroupApi.notificationChannels(row.id);
     selectedNotificationChannelIds.value = result.channel_ids;
     notificationChannelOptions.value = result.options;
+    notificationKeywords.value = (result.filter?.keywords ?? []).join('\n');
+    notificationMode.value = result.filter?.mode ?? 'any';
+    notificationReady.value = true;
   } finally {
     assignLoading.value = false;
   }
 }
 
 async function saveNotificationChannels() {
-  if (!selectedGroup.value) return;
+  if (!selectedGroup.value || !notificationReady.value) return;
+  const keywords = [
+    ...new Set(
+      notificationKeywords.value
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (
+    keywords.length > 100 ||
+    keywords.some((value) => [...value].length > 200)
+  ) {
+    message.warning('最多100个关键词，每个最多200字符');
+    return;
+  }
   assignLoading.value = true;
   try {
     await PhoneGroupApi.replaceNotificationChannels(
       selectedGroup.value.id,
       selectedNotificationChannelIds.value,
+      { keywords, mode: notificationMode.value },
     );
-    message.success('短信通知群已更新');
+    message.success('短信转发配置已更新');
     notificationDrawerOpen.value = false;
     await gridApi.query();
   } finally {
@@ -656,6 +683,7 @@ async function saveNotificationChannels() {
           <Button
             v-access:code="'phone_groups:manage'"
             :loading="assignLoading"
+            :disabled="!notificationReady"
             type="primary"
             @click="saveNotificationChannels"
           >
@@ -697,9 +725,36 @@ async function saveNotificationChannels() {
           <template #icon><ExternalLink /></template>维护通知通道
         </Button>
       </Space>
-      <div class="mt-3 text-sm text-gray-500">
-        同一号码属于多个分组时，会通知所有分组绑定的不同钉钉群。
-      </div>
+      <FormItem label="转发关键词（每行一个）" class="mt-5">
+        <Input.TextArea
+          v-model:value="notificationKeywords"
+          :rows="6"
+          :disabled="assignLoading || !notificationReady"
+          placeholder="每行一个关键词，例如验证码；留空则全部转发"
+        />
+      </FormItem>
+      <FormItem label="关键词命中条件">
+        <Select
+          v-model:value="notificationMode"
+          class="w-full"
+          :disabled="assignLoading || !notificationReady"
+          :options="[
+            { label: '任意关键词命中即可转发', value: 'any' },
+            { label: '全部关键词同时命中才转发', value: 'all' },
+          ]"
+        />
+      </FormItem>
+      <Alert
+        type="info"
+        show-icon
+        message="关键词留空则全部转发。只匹配短信正文中的原文，区分英文大小写，不匹配号码或分组名。多个分组独立判断，命中的同一通知群只转发一次。"
+      />
+      <Alert
+        v-if="!assignLoading && !notificationReady"
+        class="mt-3"
+        type="error"
+        message="配置加载失败，请关闭后重试；未加载完成不能保存。"
+      />
     </PopupDrawer>
   </Page>
 </template>

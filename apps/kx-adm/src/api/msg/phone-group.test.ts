@@ -33,6 +33,28 @@ describe('phoneGroupApi', () => {
     );
   });
 
+  it('保存全部命中条件并可清空关键词恢复全转发', async () => {
+    await PhoneGroupApi.replaceNotificationChannels(7, [10], {
+      mode: 'all',
+      keywords: ['登录', '验证码'],
+    });
+    expect(put).toHaveBeenLastCalledWith(
+      '/msg/phone-groups/7/notification-channels',
+      {
+        channel_ids: [10],
+        filter: { mode: 'all', keywords: ['登录', '验证码'] },
+      },
+    );
+    await PhoneGroupApi.replaceNotificationChannels(7, [10], {
+      mode: 'any',
+      keywords: [],
+    });
+    expect(put).toHaveBeenLastCalledWith(
+      '/msg/phone-groups/7/notification-channels',
+      { channel_ids: [10], filter: { mode: 'any', keywords: [] } },
+    );
+  });
+
   it('兼容旧版嵌套分组行并保留真实业务 ID', async () => {
     get.mockResolvedValueOnce({
       items: [
