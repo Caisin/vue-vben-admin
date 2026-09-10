@@ -78,6 +78,40 @@ test('Chrome扩展真实Cookie写入、HttpOnly及同域账号切换', async () 
     });
     expect(stale.ok).toBe(false);
     expect(stale.error).toContain('环境已在其它窗口改变');
+    await context.route('https://share.qinjiu8.com/**', (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<html><body>authorization fixture</body></html>',
+      }),
+    );
+    const loginTabPromise = context.waitForEvent('page');
+    await popup
+      .getByRole('button', { name: '账号密码 / 钉钉登录', exact: true })
+      .click();
+    const loginTab = await loginTabPromise;
+    await expect
+      .poll(() => loginTab.url())
+      .toMatch(
+        /^https:\/\/share\.qinjiu8\.com\/#\/cookie-manager\/authorize\?challenge=[a-f0-9]{64}$/,
+      );
+    const authorizationLink = new URL(loginTab.url());
+    const challenge = new URLSearchParams(
+      authorizationLink.hash.split('?')[1],
+    ).get('challenge');
+    const expectedChallenge = await popup.evaluate(async () => {
+      const api = (globalThis as any).chrome;
+      const stored = await api.storage.session.get('cookieSyncSession');
+      const bytes = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(stored.cookieSyncSession.secret),
+      );
+      return Array.from(new Uint8Array(bytes), (b) =>
+        b.toString(16).padStart(2, '0'),
+      ).join('');
+    });
+    expect(challenge).toBe(expectedChallenge);
+    await loginTab.close();
+
     const result = await popup.evaluate(async () => {
       const api = (globalThis as any).chrome;
       const module = await import(api.runtime.getURL('cookie.js'));
