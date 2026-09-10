@@ -15,6 +15,7 @@ const total = ref(0);
 const loading = ref(false);
 const actions: Record<string, string> = {
   create: '创建配置',
+  assign: '分配使用用户',
   update: '修改配置/分配',
   refresh: '手动刷新Cookie',
   refresh_login: '后台登录刷新',

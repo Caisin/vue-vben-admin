@@ -14,7 +14,11 @@ test('Chrome扩展真实Cookie写入、HttpOnly及同域账号切换', async () 
   const manifest = JSON.parse(
     await readFile(join(extension, 'manifest.json'), 'utf8'),
   );
-  manifest.host_permissions = ['https://*.example.com/*'];
+  manifest.host_permissions = [
+    'https://*.example.com/*',
+    'http://localhost/*',
+    'https://share.qinjiu8.com/*',
+  ];
   await writeFile(join(extension, 'manifest.json'), JSON.stringify(manifest));
   const context = await chromium.launchPersistentContext(
     join(temp, 'profile'),
@@ -34,6 +38,46 @@ test('Chrome扩展真实Cookie写入、HttpOnly及同域账号切换', async () 
     await popup.goto(
       `chrome-extension://${new URL(worker.url()).host}/popup.html`,
     );
+    await popup.locator('#environment').selectOption('development');
+    await popup.getByRole('button', { name: '保存环境并授权访问' }).click();
+    await expect(popup.getByRole('status')).toContainText('开发环境已保存');
+    await popup.evaluate(async () => {
+      const api = (globalThis as any).chrome;
+      await api.storage.session.set({
+        cookieSyncSession: {
+          secret: 'test-session',
+          api: 'http://localhost:5555/api',
+        },
+        lastCookieSync: { siteName: 'old' },
+      });
+    });
+    await popup.locator('#environment').selectOption('production');
+    await popup.getByRole('button', { name: '保存环境并授权访问' }).click();
+    await expect(popup.getByRole('status')).toContainText('生产环境已保存');
+    const stored = await popup.evaluate(async () => {
+      const api = (globalThis as any).chrome;
+      return {
+        local: await api.storage.local.get('cookieSyncConfig'),
+        session: await api.storage.session.get([
+          'cookieSyncSession',
+          'lastCookieSync',
+        ]),
+      };
+    });
+    expect(stored.local.cookieSyncConfig.api).toBe(
+      'https://share.qinjiu8.com/api',
+    );
+    expect(stored.session).toEqual({});
+    const stale = await popup.evaluate(async () => {
+      const api = (globalThis as any).chrome;
+      return api.runtime.sendMessage({
+        action: 'sync',
+        environment: 'development',
+        siteId: 1,
+      });
+    });
+    expect(stale.ok).toBe(false);
+    expect(stale.error).toContain('环境已在其它窗口改变');
     const result = await popup.evaluate(async () => {
       const api = (globalThis as any).chrome;
       const module = await import(api.runtime.getURL('cookie.js'));

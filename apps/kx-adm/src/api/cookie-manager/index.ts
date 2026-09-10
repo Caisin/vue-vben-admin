@@ -33,7 +33,7 @@ export interface SiteWrite {
   credential_code?: null | string;
   cookie_text?: string;
   format: 'cookie_header' | 'set_cookie';
-  allowed_uids: Id[];
+  allowed_uids?: Id[];
   enabled: boolean;
   warning_hours: number;
   expected_version?: Id;
@@ -65,11 +65,29 @@ export interface Audit {
   created_at: Id;
 }
 const base = '/cookie-manager';
+export interface AssignedUser {
+  uid: Id;
+  name: string;
+  enabled: boolean;
+  exists: boolean;
+}
+export interface Assignments extends Page<AssignedUser> {
+  version: Id;
+}
 export const CookieApi = {
+  mySites: () => requestClient.get<Site[]>(`${base}/my-sites`),
+  assignments: (id: Id, params: PageQuery & { keyword?: string }) =>
+    requestClient.get<Assignments>(`${base}/sites/${id}/assignments`, {
+      params,
+    }),
+  assign: (
+    id: Id,
+    data: { expected_version: Id; add_uids?: Id[]; remove_uids?: Id[] },
+  ) => requestClient.put<Id>(`${base}/sites/${id}/assignments`, data),
   quickDataeye: (data: {
     username: string;
     password: string;
-    allowed_uids: Id[];
+    allowed_uids?: Id[];
   }) => requestClient.post<Site>(`${base}/sites/quick-dataeye`, data),
   sites: (params: PageQuery & { keyword?: string; status?: string }) =>
     requestClient.get<Page<Site>>(`${base}/sites`, { params }),

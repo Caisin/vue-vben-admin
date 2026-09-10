@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CookieMeta, Id, Site, SiteWrite } from '#/api/cookie-manager';
+import type { CookieMeta, Site, SiteWrite } from '#/api/cookie-manager';
 
 import { ref, watch } from 'vue';
 
@@ -17,7 +17,6 @@ import {
   Table,
 } from 'antdv-next';
 
-import { AdminUserApi } from '#/api/auth/admin';
 import { CookieApi } from '#/api/cookie-manager';
 import CredentialSelect from '#/components/credential/credential-select.vue';
 import { Times } from '#/times';
@@ -30,7 +29,6 @@ const defaults = (): SiteWrite => ({
   account_label: '',
   credential_code: null,
   format: 'set_cookie',
-  allowed_uids: [],
   enabled: true,
   warning_hours: 72,
 });
@@ -38,14 +36,6 @@ const form = ref<SiteWrite>(defaults());
 const text = ref('');
 const busy = ref(false);
 const parsed = ref<CookieMeta[]>([]);
-const users = ref<{ label: string; value: Id }[]>([]);
-async function searchUsers(keyword = '') {
-  const r = await AdminUserApi.list({ page: 1, size: 100, keyword });
-  users.value = r.items.map((u) => ({
-    label: `${u.name}（${u.id}）`,
-    value: String(u.id),
-  }));
-}
 watch(open, async (value) => {
   if (!value) {
     text.value = '';
@@ -59,7 +49,6 @@ watch(open, async (value) => {
         account_label: site.account_label,
         credential_code: site.credential_code,
         format: 'set_cookie',
-        allowed_uids: site.allowed_uids.map(String),
         enabled: site.enabled,
         warning_hours: site.warning_hours,
         expected_version: site.version,
@@ -67,7 +56,6 @@ watch(open, async (value) => {
     : defaults();
   text.value = '';
   parsed.value = site?.cookies ?? [];
-  await searchUsers();
 });
 async function preview() {
   busy.value = true;
@@ -142,17 +130,7 @@ async function save() {
         message="账号密码保存在系统凭证中心。DataEye可以保存后点击“后台登录”获取验证码；其它网站请手动录入Cookie。"
         class="mb-4"
       />
-      <FormItem label="允许使用的用户（管理员分配）">
-        <Select
-          v-model:value="form.allowed_uids"
-          mode="multiple"
-          show-search
-          :filter-option="false"
-          :options="users"
-          placeholder="搜索并选择用户，留空表示不分配"
-          @search="searchUsers"
-        />
-      </FormItem>
+
       <div class="grid grid-cols-2 gap-4">
         <FormItem label="到期提前提醒（小时）">
           <InputNumber

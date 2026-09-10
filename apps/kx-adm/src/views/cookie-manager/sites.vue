@@ -2,6 +2,7 @@
 import type { Site } from '#/api/cookie-manager';
 
 import { onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -16,6 +17,7 @@ import LoginModal from './modules/login-modal.vue';
 import QuickDataeyeModal from './modules/quick-dataeye-modal.vue';
 import SiteModal from './modules/site-modal.vue';
 const { hasAccessByCodes } = useAccess();
+const router = useRouter();
 const rows = ref<Site[]>([]);
 const loading = ref(false);
 const current = ref(1);
@@ -146,7 +148,18 @@ onMounted(load);
 </template><template v-else-if="column.dataIndex === 'refreshed_at'">
           {{ Times.formatOptionalUnix(record.refreshed_at) }}
 </template><template v-else-if="column.dataIndex === 'allowed_uids'">
-          {{ record.allowed_uids.length }}人
+          <Button
+            v-if="hasAccessByCodes(['cookie-manager:assign'])"
+            type="link"
+            @click="
+              router.push({
+                path: '/cookie-manager/assignments',
+                query: { site_id: String(record.id) },
+              })
+            "
+          >
+            {{ record.allowed_uids.length }}人 · 分配
+</Button><span v-else>{{ record.allowed_uids.length }}人</span>
 </template><Space v-else-if="column.dataIndex === 'action'">
           <Button
             v-if="hasAccessByCodes(['cookie-manager:manage'])"

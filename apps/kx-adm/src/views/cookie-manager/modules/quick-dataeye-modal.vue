@@ -1,29 +1,20 @@
 <script setup lang="ts">
-import type { Id, Site } from '#/api/cookie-manager';
+import type { Site } from '#/api/cookie-manager';
 
 import { ref, watch } from 'vue';
 
-import { Form, FormItem, Input, message, Modal, Select } from 'antdv-next';
+import { Form, FormItem, Input, message, Modal } from 'antdv-next';
 
-import { AdminUserApi } from '#/api/auth/admin';
 import { CookieApi } from '#/api/cookie-manager';
 const emit = defineEmits<{ saved: [site: Site] }>();
 const open = defineModel<boolean>('open', { required: true });
 const username = ref('');
 const password = ref('');
-const uids = ref<Id[]>([]);
 const busy = ref(false);
-const users = ref<{ label: string; value: string }[]>([]);
-async function search(keyword = '') {
-  const r = await AdminUserApi.list({ page: 1, size: 100, keyword });
-  users.value = r.items.map((u) => ({ label: u.name, value: String(u.id) }));
-}
 watch(open, (value) => {
   if (value) {
     username.value = '';
     password.value = '';
-    uids.value = [];
-    void search();
   } else password.value = '';
 });
 async function save() {
@@ -36,7 +27,6 @@ async function save() {
     const site = await CookieApi.quickDataeye({
       username: username.value.trim(),
       password: password.value,
-      allowed_uids: uids.value,
     });
     password.value = '';
     open.value = false;
@@ -72,16 +62,6 @@ async function save() {
           v-model:value="password"
           autocomplete="new-password"
           placeholder="输入DataEye密码"
-        />
-</FormItem><FormItem label="分配使用用户">
-        <Select
-          v-model:value="uids"
-          mode="multiple"
-          show-search
-          :filter-option="false"
-          :options="users"
-          placeholder="选择使用者；也可以保存后再分配"
-          @search="search"
         />
       </FormItem>
     </Form>
