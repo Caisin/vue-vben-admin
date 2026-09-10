@@ -13,6 +13,7 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
   let revoked = false;
   let saved = false;
   let assignmentVersion = 1;
+  let assignmentConflict = true;
   let assignedIds = [7];
   const cookie = {
     name: 'test_cookie',
@@ -66,6 +67,8 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
           return route.continue();
         const path = new URL(req.url()).pathname.replace(/^\/api(?=\/)/, '');
         let result: unknown = null;
+        let responseCode = 200;
+        let responseMessage = 'ok';
         if (path === '/auth/user/access_token')
           result = {
             access_token: 'test-only',
@@ -83,11 +86,7 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
             is_guest: false,
           };
         else if (path === '/auth/per/codes')
-          result = [
-            'cookie-manager:manage',
-            'cookie-manager:login',
-            'cookie-manager:assign',
-          ];
+          result = ['cookie-manager:manage', 'cookie-manager:assign'];
         else if (path.startsWith('/auth/user/tz')) result = 'UTC';
         else if (path === '/auth/menu/current')
           result = ['sites', 'authorize', 'audits', 'assignments'].map(
@@ -123,21 +122,31 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
           const body = JSON.parse(KxEd.decryptText(bytes));
           expect(body.username).toBe('快速账号');
           expect(body.password).toBe('fixture-password');
-          result = { ...sites[0], account_label: body.username };
+          result = {
+            ...sites[0],
+            name: 'DataEye',
+            account_label: body.username,
+          };
         } else if (path === '/cookie-manager/sites/1/assignments') {
           if (req.method() === 'PUT') {
             const bytes = req.postDataBuffer();
             if (!bytes) throw new Error('missing body');
             const body = JSON.parse(KxEd.decryptText(bytes));
             expect(Number(body.expected_version)).toBe(assignmentVersion);
-            const removed = new Set((body.remove_uids || []).map(Number));
-            assignedIds = [
-              ...new Set([
-                ...assignedIds,
-                ...(body.add_uids || []).map(Number),
-              ]),
-            ].filter((id) => !removed.has(id));
-            result = ++assignmentVersion;
+            if (assignmentConflict) {
+              assignmentConflict = false;
+              responseCode = 400;
+              responseMessage = '配置已变化，请刷新分配列表';
+            } else {
+              const removed = new Set((body.remove_uids || []).map(Number));
+              assignedIds = [
+                ...new Set([
+                  ...assignedIds,
+                  ...(body.add_uids || []).map(Number),
+                ]),
+              ].filter((id) => !removed.has(id));
+              result = ++assignmentVersion;
+            }
           } else {
             const keyword =
               new URL(req.url()).searchParams.get('keyword') || '';
@@ -154,9 +163,43 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
               );
             result = { items, total: items.length, version: assignmentVersion };
           }
-        } else if (path === '/cookie-manager/sites')
-          result = { items: sites, total: 2 };
-        else if (path === '/cookie-manager/sites/1' && req.method() === 'PUT') {
+        } else if (path === '/cookie-manager/sites') {
+          const search = new URL(req.url()).searchParams.get('keyword') || '';
+          const items = sites.filter((s) =>
+            `${s.name} ${s.account_label} ${s.origin}`.includes(search),
+          );
+          result = {
+            items: items.map((s) => ({
+              ...s,
+              allowed_uids: s.id === 1 ? assignedIds : [],
+            })),
+            total: items.length,
+          };
+        } else if (
+          path === '/cookie-manager/sites/1' &&
+          req.method() === 'GET'
+        ) {
+          result = {
+            ...sites[0],
+            allowed_uids: assignedIds,
+            version: assignmentVersion,
+          };
+        } else if (path === '/cookie-manager/sites/1/name') {
+          const bytes = req.postDataBuffer();
+          if (!bytes) throw new Error('missing rename body');
+          const body = JSON.parse(KxEd.decryptText(bytes));
+          expect(Object.keys(body).toSorted()).toEqual([
+            'expected_version',
+            'name',
+          ]);
+          const firstSite = sites[0];
+          if (!firstSite) throw new Error('missing site fixture');
+          firstSite.name = body.name;
+          result = sites[0];
+        } else if (
+          path === '/cookie-manager/sites/1' &&
+          req.method() === 'PUT'
+        ) {
           saved = true;
           result = sites[0];
         } else if (path === '/cookie-manager/preview') result = [cookie];
@@ -201,7 +244,11 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
           revoked = true;
           result = true;
         }
-        const text = JSON.stringify({ code: 200, msg: 'ok', result });
+        const text = JSON.stringify({
+          code: responseCode,
+          msg: responseMessage,
+          result,
+        });
         await route.fulfill({
           contentType: 'application/json',
           body:
@@ -237,6 +284,11 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
   await modal.getByRole('button', { name: /确\s*定/ }).click();
   await expect(modal).toBeHidden();
   expect(saved).toBe(true);
+  await first.getByRole('button', { name: '改名', exact: true }).click();
+  await modal.getByPlaceholder('输入网站显示名称').fill('运营网站');
+  await modal.getByRole('button', { name: /确\s*定/ }).click();
+  await expect(modal).toBeHidden();
+  await expect(first).toContainText('运营网站');
   await first.getByRole('button', { name: '后台登录' }).click();
   await expect(
     modal.getByRole('img', { name: '网站登录验证码' }),
@@ -278,15 +330,34 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
     page.getByRole('cell', { name: '测试使用人', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: '添加使用用户', exact: true }).click();
-  await modal
+  await expect(
+    page
+      .getByRole('tabpanel')
+      .getByRole('row')
+      .filter({ hasText: '测试使用人' })
+      .getByRole('checkbox'),
+  ).toBeDisabled();
+  await page
+    .getByRole('tabpanel')
     .getByRole('row')
     .filter({ hasText: '新使用者' })
     .getByRole('checkbox')
     .check();
-  await modal
-    .getByRole('button', { name: '添加所选用户', exact: true })
-    .click();
-  await expect(modal).toBeHidden();
+  await page.getByRole('button', { name: '添加所选用户', exact: true }).click();
+  await expect(
+    page
+      .getByRole('region', { name: '使用用户维护' })
+      .getByText('配置已变化，请刷新分配列表', { exact: true }),
+  ).toBeVisible();
+  expect(assignedIds).toEqual([7]);
+  await page.getByRole('button', { name: '刷新授权', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '添加所选用户', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: '添加所选用户', exact: true }).click();
+  await expect(
+    page.getByRole('tab', { name: '已分配用户', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await expect(
     page.getByRole('cell', { name: '新使用者', exact: true }),
   ).toBeVisible();
@@ -296,12 +367,43 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
   await expect(
     page.getByRole('cell', { name: '测试使用人', exact: true }),
   ).toHaveCount(0);
-  await page.getByRole('button', { name: '撤销分配', exact: true }).click();
+  await page
+    .getByRole('tabpanel')
+    .getByRole('row')
+    .filter({ hasText: '新使用者' })
+    .getByRole('checkbox')
+    .check();
+  await page
+    .getByRole('button', { name: '批量撤销（1）', exact: true })
+    .click();
   await page.getByRole('button', { name: /确\s*定/ }).click();
   await expect(
     page.getByRole('cell', { name: '新使用者', exact: true }),
   ).toHaveCount(0);
   expect(assignedIds).toEqual([7]);
+  await page.getByPlaceholder('搜索网站、账号或域名').fill('账号2');
+  await page.getByRole('button', { name: '查找网站', exact: true }).click();
+  await expect(
+    page
+      .getByRole('region', { name: '网站账号列表' })
+      .getByRole('button', { name: '运营网站 · 账号1' }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole('region', { name: '使用用户维护' })
+      .getByRole('heading', { name: '运营网站 · 账号1' }),
+  ).toBeVisible();
+  await page.getByPlaceholder('搜索网站、账号或域名').fill('');
+  await page.getByRole('button', { name: '查找网站', exact: true }).click();
+  await expect(
+    page
+      .getByRole('region', { name: '网站账号列表' })
+      .getByRole('button', { name: '运营网站 · 账号1' }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: test.info().outputPath('cookie-assignments.png'),
+    fullPage: true,
+  });
   await page.goto(`/cookie-manager/authorize?challenge=${'ab'.repeat(32)}`);
   await page.getByRole('button', { name: '确认授权此插件' }).click();
   await expect(

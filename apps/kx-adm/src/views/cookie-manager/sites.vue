@@ -7,7 +7,17 @@ import { useRouter } from 'vue-router';
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
-import { Alert, Button, Input, Select, Space, Table, Tag } from 'antdv-next';
+import {
+  Alert,
+  Button,
+  Input,
+  message,
+  Modal,
+  Select,
+  Space,
+  Table,
+  Tag,
+} from 'antdv-next';
 
 import { CookieApi, cookieStatus } from '#/api/cookie-manager';
 import { requestErrorMessage } from '#/request-errors';
@@ -30,6 +40,32 @@ const active = ref<Site>();
 const editing = ref(false);
 const quickOpen = ref(false);
 const logging = ref(false);
+const renaming = ref(false);
+const newName = ref('');
+const renameBusy = ref(false);
+const renameError = ref('');
+async function saveName() {
+  if (!active.value || !newName.value.trim() || renameBusy.value) return;
+  renameBusy.value = true;
+  renameError.value = '';
+  try {
+    await CookieApi.rename(
+      active.value.id,
+      newName.value.trim(),
+      active.value.version,
+    );
+    renaming.value = false;
+    message.success('网站显示名称已更新');
+    await load();
+  } catch (error) {
+    renameError.value = requestErrorMessage(
+      error,
+      '修改名称失败，请刷新后重试',
+    );
+  } finally {
+    renameBusy.value = false;
+  }
+}
 const columns = [
   { title: '网站', dataIndex: 'name', width: 160 },
   { title: '账号标识', dataIndex: 'account_label', width: 150 },
@@ -64,7 +100,7 @@ function edit(site?: Site) {
 }
 function quickSaved(site: Site) {
   active.value = site;
-  if (hasAccessByCodes(['cookie-manager:login'])) logging.value = true;
+  logging.value = true;
   void load();
 }
 onMounted(load);
@@ -110,9 +146,7 @@ onMounted(load);
       >
         新增网站账号
 </Button><Button
-        v-if="
-          hasAccessByCodes(['cookie-manager:manage', 'cookie-manager:login'])
-        "
+        v-if="hasAccessByCodes(['cookie-manager:manage'])"
         type="primary"
         @click="quickOpen = true"
       >
@@ -134,8 +168,24 @@ onMounted(load);
       "
     >
       <template #bodyCell="{ column, record }">
+        <template v-if="column.dataIndex === 'name'">
+          <span>{{ record.name }}</span>
+          <Button
+            v-if="hasAccessByCodes(['cookie-manager:manage'])"
+            type="link"
+            size="small"
+            @click="
+              active = record as Site;
+              newName = record.name;
+              renameError = '';
+              renaming = true;
+            "
+          >
+            改名
+          </Button>
+        </template>
         <Tag
-          v-if="column.dataIndex === 'status'"
+          v-else-if="column.dataIndex === 'status'"
           :color="cookieStatus[record.status]?.color"
         >
           {{ cookieStatus[record.status]?.label || record.status }}
@@ -168,10 +218,7 @@ onMounted(load);
           >
             维护
 </Button><Button
-            v-if="
-              record.origin === 'https://adxray-app.dataeye.com' &&
-              hasAccessByCodes(['cookie-manager:login'])
-            "
+            v-if="record.origin === 'https://adxray-app.dataeye.com'"
             type="link"
             :disabled="!record.credential_code"
             @click="
@@ -191,5 +238,32 @@ onMounted(load);
       :site="active"
       @saved="load"
     /><LoginModal v-model:open="logging" :site="active" @saved="load" />
+    <Modal
+      :open="renaming"
+      title="修改网站显示名称"
+      :width="480"
+      :confirm-loading="renameBusy"
+      :closable="!renameBusy"
+      :mask-closable="!renameBusy"
+      :ok-button-props="{ disabled: !newName.trim() }"
+      @ok="saveName"
+      @cancel="renaming = false"
+    >
+      <p class="mb-3 text-muted-foreground">
+        {{ active?.account_label }} · {{ active?.origin }}
+      </p>
+      <Input
+        v-model:value="newName"
+        placeholder="输入网站显示名称"
+        :maxlength="100"
+        @press-enter="saveName"
+      />
+      <Alert
+        v-if="renameError"
+        type="error"
+        :message="renameError"
+        class="mt-3"
+      />
+    </Modal>
   </Page>
 </template>

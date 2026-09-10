@@ -75,6 +75,12 @@ export interface Assignments extends Page<AssignedUser> {
   version: Id;
 }
 export const CookieApi = {
+  site: (id: Id) => requestClient.get<Site>(`${base}/sites/${id}`),
+  rename: (id: Id, name: string, expected_version: Id) =>
+    requestClient.put<Site>(`${base}/sites/${id}/name`, {
+      name,
+      expected_version,
+    }),
   mySites: () => requestClient.get<Site[]>(`${base}/my-sites`),
   assignments: (id: Id, params: PageQuery & { keyword?: string }) =>
     requestClient.get<Assignments>(`${base}/sites/${id}/assignments`, {
