@@ -12,6 +12,10 @@ export interface CookieMeta {
   expires_at?: Id | null;
 }
 export interface Site {
+  proxy_enabled: boolean;
+  proxy_origin?: null | string;
+  proxy_resources: Array<{ name: string; origin: string }>;
+  proxy_url?: null | string;
   id: Id;
   name: string;
   origin: string;
@@ -27,6 +31,9 @@ export interface Site {
   expires_at?: Id | null;
 }
 export interface SiteWrite {
+  proxy_enabled?: boolean;
+  proxy_origin?: null | string;
+  proxy_resources?: Array<{ name: string; origin: string }>;
   name: string;
   origin: string;
   account_label: string;
@@ -75,6 +82,11 @@ export interface Assignments extends Page<AssignedUser> {
   version: Id;
 }
 export const CookieApi = {
+  proxyGrant: (site_id: Id, challenge: string) =>
+    requestClient.post<{ url: string }>(`${base}/proxy/grant`, {
+      site_id,
+      challenge,
+    }),
   site: (id: Id) => requestClient.get<Site>(`${base}/sites/${id}`),
   rename: (id: Id, name: string, expected_version: Id) =>
     requestClient.put<Site>(`${base}/sites/${id}/name`, {

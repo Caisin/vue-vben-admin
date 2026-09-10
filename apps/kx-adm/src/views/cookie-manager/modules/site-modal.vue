@@ -31,11 +31,28 @@ const defaults = (): SiteWrite => ({
   format: 'set_cookie',
   enabled: true,
   warning_hours: 72,
+  proxy_enabled: false,
+  proxy_origin: null,
+  proxy_resources: [],
 });
 const form = ref<SiteWrite>(defaults());
 const text = ref('');
 const busy = ref(false);
 const parsed = ref<CookieMeta[]>([]);
+watch(
+  () => form.value.origin,
+  (origin) => {
+    if (
+      !props.site &&
+      origin.replace(/\/$/, '') === 'https://adxray-app.dataeye.com' &&
+      !form.value.proxy_resources?.length
+    ) {
+      form.value.proxy_resources = [
+        { name: 'cdn', origin: 'https://adxray-app-cdn.dataeye.com' },
+      ];
+    }
+  },
+);
 watch(open, async (value) => {
   if (!value) {
     text.value = '';
@@ -52,6 +69,9 @@ watch(open, async (value) => {
         enabled: site.enabled,
         warning_hours: site.warning_hours,
         expected_version: site.version,
+        proxy_enabled: site.proxy_enabled,
+        proxy_origin: site.proxy_origin ?? null,
+        proxy_resources: (site.proxy_resources || []).map((r) => ({ ...r })),
       }
     : defaults();
   text.value = '';
@@ -113,7 +133,7 @@ async function save() {
             :disabled="!!site"
             placeholder="https://adxray-app.dataeye.com"
           />
-</FormItem><FormItem label="启用插件同步">
+</FormItem><FormItem label="启用账号使用">
           <Switch v-model:checked="form.enabled" />
         </FormItem>
       </div>
@@ -130,6 +150,60 @@ async function save() {
         message="账号密码保存在系统凭证中心。DataEye可以保存后点击“后台登录”获取验证码；其它网站请手动录入Cookie。"
         class="mb-4"
       />
+
+      <div class="my-4 rounded border p-4">
+        <FormItem label="启用系统认证代理">
+          <Switch v-model:checked="form.proxy_enabled" />
+        </FormItem>
+        <template v-if="form.proxy_enabled">
+          <FormItem label="代理访问域名">
+            <Input
+              v-model:value="form.proxy_origin"
+              placeholder="https://adx.example.com；留空自动生成独立子域名"
+            />
+          </FormItem>
+          <p class="mb-3 text-sm text-muted-foreground">
+            目标为上方网站HTTPS地址。所有代理域名指向同一个代理服务端口，新增配置无需单独启动进程；DNS和HTTPS证书需在网关配置。
+          </p>
+          <p class="mb-2">
+            附加资源域名（CDN、图片、脚本；不携带主站登录Cookie）
+          </p>
+          <div
+            v-for="(resource, index) in form.proxy_resources"
+            :key="index"
+            class="mb-2 flex gap-2"
+          >
+            <Input
+              v-model:value="resource.name"
+              placeholder="别名，如cdn"
+              class="!w-32"
+            />
+            <Input
+              v-model:value="resource.origin"
+              placeholder="https://cdn.example.com"
+            />
+            <Button danger @click="form.proxy_resources?.splice(index, 1)">
+              移除
+            </Button>
+          </div>
+          <Button
+            @click="
+              (form.proxy_resources ||= []).push({ name: '', origin: '' })
+            "
+          >
+            添加资源域名
+          </Button>
+          <p v-if="site?.proxy_url" class="mt-3 break-all text-sm">
+            当前代理入口：{{ site.proxy_url }}
+          </p>
+          <Alert
+            v-else
+            type="info"
+            message="保存后显示代理入口；若服务未配置，请管理员设置代理监听和系统登录回跳地址。"
+            class="mt-3"
+          />
+        </template>
+      </div>
 
       <div class="grid grid-cols-2 gap-4">
         <FormItem label="到期提前提醒（小时）">

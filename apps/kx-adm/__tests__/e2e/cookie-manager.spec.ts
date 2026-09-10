@@ -30,6 +30,10 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
     origin: 'https://adxray-app.dataeye.com',
     account_label: `账号${id}`,
     credential_code: 'test-login',
+    proxy_enabled: false,
+    proxy_resources: [],
+    proxy_origin: null,
+    proxy_url: null,
     cookies: [cookie],
     allowed_uids: [7],
     enabled: true,
@@ -201,6 +205,14 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
           req.method() === 'PUT'
         ) {
           saved = true;
+          const bytes = req.postDataBuffer();
+          if (!bytes) throw new Error('missing site configuration');
+          const body = JSON.parse(KxEd.decryptText(bytes));
+          expect(body.proxy_enabled).toBe(true);
+          expect(body.proxy_origin).toBe('https://adx.proxy.example.test');
+          expect(body.proxy_resources).toEqual([
+            { name: 'cdn', origin: 'https://adxray-app-cdn.dataeye.com' },
+          ]);
           result = sites[0];
         } else if (path === '/cookie-manager/preview') result = [cookie];
         else if (path.includes('/credential/items/all'))
@@ -272,6 +284,21 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
   await first.getByRole('button', { name: /维\s*护/ }).click();
   const modal = page.getByRole('dialog');
   await expect(modal.locator('textarea')).toHaveValue('');
+  await modal
+    .locator('.ant-form-item')
+    .filter({ hasText: '启用系统认证代理' })
+    .getByRole('switch')
+    .click();
+  await modal
+    .getByPlaceholder('https://adx.example.com；留空自动生成独立子域名')
+    .fill('https://adx.proxy.example.test');
+  await modal
+    .getByRole('button', { name: '添加资源域名', exact: true })
+    .click();
+  await modal.getByPlaceholder('别名，如cdn').fill('cdn');
+  await modal
+    .getByPlaceholder('https://cdn.example.com')
+    .fill('https://adxray-app-cdn.dataeye.com');
   await modal
     .locator('textarea')
     .fill(

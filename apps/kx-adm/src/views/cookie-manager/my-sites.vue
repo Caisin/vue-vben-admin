@@ -2,7 +2,7 @@
 import type { Site } from '#/api/cookie-manager';
 
 import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
 
@@ -12,6 +12,40 @@ import { CookieApi, cookieStatus } from '#/api/cookie-manager';
 import { requestErrorMessage } from '#/request-errors';
 import { Times } from '#/times';
 const router = useRouter();
+const route = useRoute();
+const opening = ref<string>();
+const challenge = computed(() =>
+  typeof route.query.proxy_challenge === 'string'
+    ? route.query.proxy_challenge
+    : '',
+);
+const proxySite = computed(() =>
+  typeof route.query.proxy_site_id === 'string'
+    ? route.query.proxy_site_id
+    : '',
+);
+async function openProxy(site: Site) {
+  if (opening.value || !site.proxy_url) return;
+  opening.value = String(site.id);
+  errorText.value = '';
+  try {
+    if (
+      /^[a-f0-9]{64}$/.test(challenge.value) &&
+      proxySite.value === String(site.id)
+    ) {
+      const result = await CookieApi.proxyGrant(site.id, challenge.value);
+      await router.replace({ path: route.path });
+      window.location.assign(result.url);
+    } else window.location.assign(site.proxy_url);
+  } catch (error) {
+    errorText.value = requestErrorMessage(
+      error,
+      '进入代理失败，请刷新授权后重试',
+    );
+  } finally {
+    opening.value = undefined;
+  }
+}
 const sites = ref<Site[]>([]);
 const keyword = ref('');
 const loading = ref(false);
@@ -45,7 +79,7 @@ onMounted(load);
       type="info"
       show-icon
       class="mb-4"
-      message="这里只展示管理员分配给你的账号。请使用Cookie同步插件选择对应账号登录网站；过期或未配置Cookie时联系管理员刷新。"
+      message="这里只展示管理员分配给你的账号。启用代理后可直接进入，网站登录由服务端完成，无需插件；Cookie过期时联系管理员刷新。"
     /><Space class="mb-4">
       <Input
         v-model:value="keyword"
@@ -54,6 +88,11 @@ onMounted(load);
         插件登录与会话
       </Button>
 </Space><Alert
+      v-if="challenge"
+      type="info"
+      message="已回到系统认证，请核对网站与账号，点击“确认并进入代理”。不同网站账号使用独立域名。"
+      class="mb-3"
+    /><Alert
       v-if="errorText"
       type="error"
       :message="errorText"
@@ -69,12 +108,32 @@ onMounted(load);
         { title: '网站地址', dataIndex: 'origin' },
         { title: 'Cookie状态', dataIndex: 'status' },
         { title: '最早到期', dataIndex: 'expires_at' },
+        { title: '代理访问', dataIndex: 'proxy' },
       ]"
       :pagination="{ pageSize: 20, showSizeChanger: true }"
     >
       <template #bodyCell="{ column, record }">
+        <template v-if="column.dataIndex === 'proxy'">
+          <Button
+            v-if="record.proxy_url"
+            type="primary"
+            :loading="opening === String(record.id)"
+            :disabled="
+              !!opening || ['expired', 'missing'].includes(record.status)
+            "
+            @click="openProxy(record as Site)"
+          >
+            {{
+              challenge && proxySite === String(record.id)
+                ? '确认并进入代理'
+                : '进入代理网站'
+            }}
+</Button><span v-else>{{
+            record.proxy_enabled ? '等待代理服务配置' : '未启用代理'
+          }}</span>
+        </template>
         <Tag
-          v-if="column.dataIndex === 'status'"
+          v-else-if="column.dataIndex === 'status'"
           :color="cookieStatus[record.status]?.color"
         >
           {{ cookieStatus[record.status]?.label || record.status }}

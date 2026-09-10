@@ -73,6 +73,7 @@ const columns = [
   { title: '有效期状态', dataIndex: 'status', width: 150 },
   { title: '最早到期', dataIndex: 'expires_at', width: 185 },
   { title: '分配用户', dataIndex: 'allowed_uids', width: 100 },
+  { title: '代理入口', dataIndex: 'proxy', width: 240 },
   { title: '最近刷新', dataIndex: 'refreshed_at', width: 185 },
   { title: '操作', dataIndex: 'action', width: 190, fixed: 'right' as const },
 ];
@@ -210,6 +211,17 @@ onMounted(load);
           >
             {{ record.allowed_uids.length }}人 · 分配
 </Button><span v-else>{{ record.allowed_uids.length }}人</span>
+</template><template v-else-if="column.dataIndex === 'proxy'">
+          <a
+            v-if="record.proxy_url"
+            :href="record.proxy_url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="break-all text-primary"
+            >{{ record.proxy_url }}</a>
+          <span v-else>{{
+            record.proxy_enabled ? '等待服务端配置' : '未启用'
+          }}</span>
 </template><Space v-else-if="column.dataIndex === 'action'">
           <Button
             v-if="hasAccessByCodes(['cookie-manager:manage'])"
