@@ -238,28 +238,6 @@ onMounted(loadPage);
       </header>
 
       <Form layout="vertical">
-        <section class="settings-panel">
-          <h2>网站代理设置</h2>
-          <p>保存后服务端下一次请求生效；留空代理公网地址会关闭代理。</p>
-          <FormItem label="代理公网地址">
-            <Input
-              v-model:value="form.cookie_proxy_public"
-              placeholder="https://proxy.example.com"
-            />
-          </FormItem>
-          <FormItem label="系统认证回跳地址">
-            <Input
-              v-model:value="form.cookie_proxy_admin"
-              placeholder="https://admin.example.com/#/cookie-manager/my-sites"
-            />
-          </FormItem>
-          <FormItem label="代理监听地址">
-            <Input
-              v-model:value="form.cookie_proxy_listen"
-              placeholder="127.0.0.1:18890"
-            />
-          </FormItem>
-        </section>
         <div class="form-grid">
           <FormItem label="展示名字" required>
             <Input
