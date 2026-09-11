@@ -109,6 +109,11 @@ async function removeSite(site: Site) {
   message.success('网站账号已删除');
   await load();
 }
+async function copyCookies(site: Site) {
+  const text = await CookieApi.export(site.id);
+  await navigator.clipboard.writeText(text);
+  message.success('Cookie 已复制，可在开发环境维护窗口粘贴导入');
+}
 onMounted(load);
 </script>
 <template>
@@ -255,9 +260,19 @@ onMounted(load);
             danger
             type="link"
             @click="removeSite(record as Site)"
-            >
-删除
-</Button>
+          >
+            删除
+          </Button>
+          <Button
+            v-if="
+              hasAccessByCodes(['cookie-manager:manage']) &&
+              record.cookies.length
+            "
+            type="link"
+            @click="copyCookies(record as Site)"
+          >
+            复制 Cookie
+          </Button>
         </Space>
       </template>
 </Table><QuickDataeyeModal

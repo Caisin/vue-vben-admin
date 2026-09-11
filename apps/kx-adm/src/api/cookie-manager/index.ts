@@ -88,6 +88,7 @@ export const CookieApi = {
       challenge,
     }),
   site: (id: Id) => requestClient.get<Site>(`${base}/sites/${id}`),
+  export: (id: Id) => requestClient.get<string>(`${base}/sites/${id}/export`),
   rename: (id: Id, name: string, expected_version: Id) =>
     requestClient.put<Site>(`${base}/sites/${id}/name`, {
       name,
