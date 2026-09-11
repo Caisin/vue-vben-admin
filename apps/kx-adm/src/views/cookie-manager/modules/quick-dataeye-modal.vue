@@ -3,7 +3,7 @@ import type { Site } from '#/api/cookie-manager';
 
 import { ref, watch } from 'vue';
 
-import { Form, FormItem, Input, message, Modal } from 'antdv-next';
+import { Form, FormItem, Input, message, Modal, Select } from 'antdv-next';
 
 import { CookieApi } from '#/api/cookie-manager';
 import CredentialSelect from '#/components/credential/credential-select.vue';
