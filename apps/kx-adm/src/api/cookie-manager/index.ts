@@ -103,8 +103,10 @@ export const CookieApi = {
     data: { expected_version: Id; add_uids?: Id[]; remove_uids?: Id[] },
   ) => requestClient.put<Id>(`${base}/sites/${id}/assignments`, data),
   quickDataeye: (data: {
+    origin: string;
     username: string;
-    password: string;
+    password?: string;
+    credential_code?: null | string;
     allowed_uids?: Id[];
   }) => requestClient.post<Site>(`${base}/sites/quick-dataeye`, data),
   sites: (params: PageQuery & { keyword?: string; status?: string }) =>
@@ -113,6 +115,10 @@ export const CookieApi = {
     id
       ? requestClient.put<Site>(`${base}/sites/${id}`, data)
       : requestClient.post<Site>(`${base}/sites`, data),
+  disable: (id: Id, expected_version: Id) =>
+    requestClient.delete<boolean>(`${base}/sites/${id}`, {
+      data: { expected_version },
+    }),
   preview: (origin: string, cookie_text: string, format: string) =>
     requestClient.post<CookieMeta[]>(`${base}/preview`, {
       origin,

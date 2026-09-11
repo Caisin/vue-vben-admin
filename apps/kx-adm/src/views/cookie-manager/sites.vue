@@ -104,6 +104,11 @@ function quickSaved(site: Site) {
   logging.value = true;
   void load();
 }
+async function removeSite(site: Site) {
+  await CookieApi.disable(site.id, site.version);
+  message.success('网站账号已删除');
+  await load();
+}
 onMounted(load);
 </script>
 <template>
@@ -245,6 +250,14 @@ onMounted(load);
           >
             后台登录
           </Button>
+          <Button
+            v-if="hasAccessByCodes(['cookie-manager:manage'])"
+            danger
+            type="link"
+            @click="removeSite(record as Site)"
+            >
+删除
+</Button>
         </Space>
       </template>
 </Table><QuickDataeyeModal
