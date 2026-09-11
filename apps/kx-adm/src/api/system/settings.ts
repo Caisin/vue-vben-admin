@@ -12,6 +12,9 @@ export interface SystemSettings {
   meilisearch_source: 'custom' | 'installation' | string;
   meilisearch_url: string;
   system_name: string;
+  cookie_proxy_public: string;
+  cookie_proxy_admin: string;
+  cookie_proxy_listen: string;
 }
 
 export interface MfaKeyStatusView {

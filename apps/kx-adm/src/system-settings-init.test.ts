@@ -44,6 +44,9 @@ const baseSettings: SystemSettings = {
   meilisearch_source: 'custom',
   meilisearch_installation_id: null,
   meilisearch_credential_code: '',
+  cookie_proxy_public: '',
+  cookie_proxy_admin: '',
+  cookie_proxy_listen: '127.0.0.1:18890',
 };
 
 describe('public system settings init', () => {
