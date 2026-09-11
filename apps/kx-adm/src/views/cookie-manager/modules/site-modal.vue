@@ -137,8 +137,7 @@ async function save() {
 </FormItem><FormItem label="网站HTTPS地址" required>
           <Input
             v-model:value="form.origin"
-            :disabled="!!site"
-            placeholder="https://adxray-app.dataeye.com"
+            placeholder="https://adxray-app.dataeye.com；海外版 https://oversea-v2.dataeye.com"
           />
 </FormItem><FormItem label="启用账号使用">
           <Switch v-model:checked="form.enabled" />
