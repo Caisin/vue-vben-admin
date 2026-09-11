@@ -39,17 +39,24 @@ const form = ref<SiteWrite>(defaults());
 const text = ref('');
 const busy = ref(false);
 const parsed = ref<CookieMeta[]>([]);
+const dataeyeCdns: Record<string, string> = {
+  'https://adxray-app.dataeye.com': 'https://adxray-app-cdn.dataeye.com',
+  'https://oversea-v2.dataeye.com': 'https://oversea-v2-cdn.dataeye.com',
+};
 watch(
   () => form.value.origin,
-  (origin) => {
+  (origin, previous) => {
+    if (props.site) return;
+    const cdn = dataeyeCdns[origin.replace(/\/$/, '')];
+    const oldCdn = dataeyeCdns[(previous || '').replace(/\/$/, '')];
+    const resources = form.value.proxy_resources || [];
     if (
-      !props.site &&
-      origin.replace(/\/$/, '') === 'https://adxray-app.dataeye.com' &&
-      !form.value.proxy_resources?.length
+      resources.length === 0 ||
+      (resources.length === 1 &&
+        resources[0]?.name === 'cdn' &&
+        resources[0]?.origin === oldCdn)
     ) {
-      form.value.proxy_resources = [
-        { name: 'cdn', origin: 'https://adxray-app-cdn.dataeye.com' },
-      ];
+      form.value.proxy_resources = cdn ? [{ name: 'cdn', origin: cdn }] : [];
     }
   },
 );
@@ -147,7 +154,7 @@ async function save() {
 </FormItem><Alert
         type="info"
         show-icon
-        message="账号密码保存在系统凭证中心。DataEye可以保存后点击“后台登录”获取验证码；其它网站请手动录入Cookie。"
+        message="账号密码保存在系统凭证中心。DataEye国内版和海外版可以保存后点击“后台登录”获取验证码；其它网站请手动录入Cookie。"
         class="mb-4"
       />
 

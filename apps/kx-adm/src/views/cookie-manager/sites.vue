@@ -230,7 +230,12 @@ onMounted(load);
           >
             维护
 </Button><Button
-            v-if="record.origin === 'https://adxray-app.dataeye.com'"
+            v-if="
+              [
+                'https://adxray-app.dataeye.com',
+                'https://oversea-v2.dataeye.com',
+              ].includes(record.origin)
+            "
             type="link"
             :disabled="!record.credential_code"
             @click="
