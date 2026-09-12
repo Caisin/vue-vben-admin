@@ -3,14 +3,12 @@ import { Buffer } from 'node:buffer';
 import { KxEd } from '@kx/admin-core';
 import { expect, test } from '@playwright/test';
 test.use({ headless: true, actionTimeout: 10_000 });
-test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ page }) => {
+test('Cookie多账号配置、验证码登录与用户分配', async ({ page }) => {
   test.setTimeout(90_000);
   const now = Math.floor(Date.now() / 1000);
   let loggedIn = false;
   let loginError = '';
   let loginAttempts = 0;
-  let authorized = false;
-  let revoked = false;
   let saved = false;
   let assignmentVersion = 1;
   let assignmentConflict = true;
@@ -43,13 +41,6 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
     status: 'expiring',
     expires_at: now + 3600,
   }));
-  const session = () => ({
-    id: 1,
-    uid: 7,
-    expires_at: now + 43_200,
-    created_at: now,
-    revoked,
-  });
   const loginState = () => (loggedIn ? 'succeeded' : 'captcha_ready');
   const login = () => ({
     id: 11,
@@ -93,29 +84,25 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
           result = ['cookie-manager:manage', 'cookie-manager:assign'];
         else if (path.startsWith('/auth/user/tz')) result = 'UTC';
         else if (path === '/auth/menu/current')
-          result = ['sites', 'authorize', 'audits', 'assignments'].map(
-            (name, i) => ({
-              id: i + 1,
-              pid: 0,
-              name: `Cookie${name}`,
-              title: ['网站Cookie', '插件授权', 'Cookie审计', '使用用户分配'][
-                i
-              ],
-              path: `/cookie-manager/${name}`,
-              component: `/cookie-manager/${name}`,
-              perm_type: 'menu',
-              enabled: true,
-              order_no: i,
-              meta: {},
-            }),
-          );
-        else if (path === '/auth/user-admin')
+          result = ['sites', 'audits', 'assignments'].map((name, i) => ({
+            id: i + 1,
+            pid: 0,
+            name: `Cookie${name}`,
+            title: ['网站Cookie', 'Cookie审计', '使用用户分配'][i],
+            path: `/cookie-manager/${name}`,
+            component: `/cookie-manager/${name}`,
+            perm_type: 'menu',
+            enabled: true,
+            order_no: i,
+            meta: {},
+          }));
+        else if (path === '/cookie-manager/assignment-candidates')
           result = {
             items: [
-              { id: 7, name: '测试使用人', enabled: true },
-              { id: 8, name: '新使用者', enabled: true },
+              { uid: 7, name: '测试使用人', enabled: true, exists: true },
+              { uid: 8, name: '新使用者', enabled: true, exists: true },
             ],
-            total: 1,
+            total: 2,
           };
         else if (path === '/notify/inbox')
           result = { items: [], unread_count: 0 };
@@ -244,17 +231,6 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
             ? ''
             : 'dataeye_login_rejected: HTTP 200; statusCode=412; 验证码错误，请重新获取';
           result = login();
-        } else if (path === '/cookie-manager/sessions/authorize') {
-          authorized = true;
-          result = session();
-        } else if (path === '/cookie-manager/sessions')
-          result = authorized ? [session()] : [];
-        else if (
-          path === '/cookie-manager/sessions/1' &&
-          req.method() === 'DELETE'
-        ) {
-          revoked = true;
-          result = true;
         }
         const text = JSON.stringify({
           code: responseCode,
@@ -431,16 +407,6 @@ test('Cookie多账号配置、验证码登录与插件授权撤销', async ({ pa
     path: test.info().outputPath('cookie-assignments.png'),
     fullPage: true,
   });
-  await page.goto(`/cookie-manager/authorize?challenge=${'ab'.repeat(32)}`);
-  await page.getByRole('button', { name: '确认授权此插件' }).click();
-  await expect(
-    page.getByText('授权完成，请回到插件点击“已授权，刷新网站”。'),
-  ).toBeVisible();
-  expect(authorized).toBe(true);
-  await page.getByRole('button', { name: /撤\s*销/ }).click();
-  await page.getByRole('button', { name: /确\s*定/ }).click();
-  await expect(page.getByText('已撤销', { exact: true })).toBeVisible();
-  expect(revoked).toBe(true);
 });
 
 test('Cookie使用者只看自己的授权并在撤销后刷新消失', async ({ page }) => {
@@ -526,6 +492,9 @@ test('Cookie使用者只看自己的授权并在撤销后刷新消失', async ({
   ).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: '添加使用用户', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '插件登录与会话' }),
   ).toHaveCount(0);
   revoked = true;
   await page.getByRole('button', { name: '刷新授权', exact: true }).click();

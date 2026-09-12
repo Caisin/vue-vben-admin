@@ -45,13 +45,6 @@ export interface SiteWrite {
   warning_hours: number;
   expected_version?: Id;
 }
-export interface Session {
-  id: Id;
-  uid: Id;
-  expires_at: Id;
-  revoked: boolean;
-  created_at: Id;
-}
 export interface Login {
   id: Id;
   site_id: Id;
@@ -148,10 +141,6 @@ export const CookieApi = {
       cookie_text,
       format,
     }),
-  authorize: (challenge: string) =>
-    requestClient.post<Session>(`${base}/sessions/authorize`, { challenge }),
-  sessions: () => requestClient.get<Session[]>(`${base}/sessions`),
-  revoke: (id: Id) => requestClient.delete<boolean>(`${base}/sessions/${id}`),
   audits: (params: PageQuery) =>
     requestClient.get<Page<Audit>>(`${base}/audits`, { params }),
   login: (id: Id) => requestClient.post<Login>(`${base}/sites/${id}/login`),

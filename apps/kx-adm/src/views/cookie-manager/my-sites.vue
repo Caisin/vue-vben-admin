@@ -79,14 +79,12 @@ onMounted(load);
       type="info"
       show-icon
       class="mb-4"
-      message="这里只展示管理员分配给你的账号。启用代理后可直接进入，网站登录由服务端完成，无需插件；Cookie过期时联系管理员刷新。"
+      message="这里只展示管理员分配给你的账号。启用代理后可直接进入，网站登录由服务端完成；Cookie过期时联系管理员刷新。"
     /><Space class="mb-4">
       <Input
         v-model:value="keyword"
         placeholder="搜索网站、账号或域名"
-      /><Button :loading="loading" @click="load">刷新授权</Button><Button type="primary" @click="router.push('/cookie-manager/authorize')">
-        插件登录与会话
-      </Button>
+      /><Button :loading="loading" @click="load">刷新授权</Button>
 </Space><Alert
       v-if="challenge"
       type="info"

@@ -3,6 +3,8 @@ import { Buffer } from 'node:buffer';
 import { KxEd } from '@kx/admin-core';
 import { expect, test } from '@playwright/test';
 
+test.use({ headless: true });
+
 test('代理入口要求系统登录并确认已授权网站账号，票据只放fragment', async ({
   page,
 }) => {
@@ -99,6 +101,9 @@ test('代理入口要求系统登录并确认已授权网站账号，票据只�
   await expect(
     page.getByRole('cell', { name: '授权账号A', exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '插件登录与会话' }),
+  ).toHaveCount(0);
   expect(grantCount).toBe(0);
   await page
     .getByRole('button', { name: '确认并进入代理', exact: true })
