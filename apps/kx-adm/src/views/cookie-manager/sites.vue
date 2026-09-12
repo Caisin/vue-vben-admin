@@ -124,7 +124,8 @@ onMounted(load);
       show-icon
       class="mb-4"
       message="同一域名可保存多个账号，分别分配使用用户。只显示Cookie属性，不回显敏感值。DataEye可通过绑定凭证和图片验证码登录刷新。"
-    /><Space class="mb-4" wrap>
+    />
+    <Space class="mb-4" wrap>
       <Input
         v-model:value="keyword"
         placeholder="搜索网站名称"
@@ -132,7 +133,8 @@ onMounted(load);
           current = 1;
           load();
         "
-      /><Select
+      />
+      <Select
         v-model:value="status"
         allow-clear
         placeholder="有效期状态"
@@ -143,27 +145,33 @@ onMounted(load);
             label: item.label,
           }))
         "
-      /><Button
+      />
+      <Button
         @click="
           current = 1;
           load();
         "
       >
         查询
-</Button><Button @click="load">刷新</Button><Button
+      </Button>
+      <Button @click="load">刷新</Button>
+      <Button
         v-if="hasAccessByCodes(['cookie-manager:manage'])"
         type="primary"
         @click="edit()"
       >
         新增网站账号
-</Button><Button
+      </Button>
+      <Button
         v-if="hasAccessByCodes(['cookie-manager:manage'])"
         type="primary"
         @click="quickOpen = true"
       >
         快速新增 DataEye
       </Button>
-</Space><Alert v-if="errorText" type="error" :message="errorText" /><Table
+    </Space>
+    <Alert v-if="errorText" type="error" :message="errorText" />
+    <Table
       :columns="columns"
       :data-source="rows"
       :loading="loading"
@@ -200,17 +208,25 @@ onMounted(load);
           :color="cookieStatus[record.status]?.color"
         >
           {{ cookieStatus[record.status]?.label || record.status }}
-</Tag><template v-else-if="column.dataIndex === 'expires_at'">
+        </Tag>
+        <template v-else-if="column.dataIndex === 'expires_at'">
           {{
             record.expires_at
               ? Times.formatOptionalUnix(record.expires_at)
               : '未指定'
           }}
-</template><template v-else-if="column.dataIndex === 'refreshed_at'">
+        </template>
+        <template v-else-if="column.dataIndex === 'refreshed_at'">
           {{ Times.formatOptionalUnix(record.refreshed_at) }}
-</template><template v-else-if="column.dataIndex === 'allowed_uids'">
+        </template>
+        <template v-else-if="column.dataIndex === 'allowed_uids'">
           <Button
-            v-if="hasAccessByCodes(['cookie-manager:assign'])"
+            v-if="
+              hasAccessByCodes([
+                'cookie-manager:assign',
+                'cookie-manager:manage',
+              ])
+            "
             type="link"
             @click="
               router.push({
@@ -220,26 +236,32 @@ onMounted(load);
             "
           >
             {{ record.allowed_uids.length }}人 · 分配
-</Button><span v-else>{{ record.allowed_uids.length }}人</span>
-</template><template v-else-if="column.dataIndex === 'proxy'">
+          </Button>
+          <span v-else>{{ record.allowed_uids.length }}人</span>
+        </template>
+        <template v-else-if="column.dataIndex === 'proxy'">
           <a
             v-if="record.proxy_url"
             :href="record.proxy_url"
             target="_blank"
             rel="noopener noreferrer"
             class="break-all text-primary"
-            >{{ record.proxy_url }}</a>
+          >
+            {{ record.proxy_url }}
+          </a>
           <span v-else>{{
             record.proxy_enabled ? '等待服务端配置' : '未启用'
           }}</span>
-</template><Space v-else-if="column.dataIndex === 'action'">
+        </template>
+        <Space v-else-if="column.dataIndex === 'action'">
           <Button
             v-if="hasAccessByCodes(['cookie-manager:manage'])"
             type="link"
             @click="edit(record as Site)"
           >
             维护
-</Button><Button
+          </Button>
+          <Button
             v-if="
               [
                 'https://adxray-app.dataeye.com',
@@ -275,14 +297,10 @@ onMounted(load);
           </Button>
         </Space>
       </template>
-</Table><QuickDataeyeModal
-      v-model:open="quickOpen"
-      @saved="quickSaved"
-    /><SiteModal
-      v-model:open="editing"
-      :site="active"
-      @saved="load"
-    /><LoginModal v-model:open="logging" :site="active" @saved="load" />
+    </Table>
+    <QuickDataeyeModal v-model:open="quickOpen" @saved="quickSaved" />
+    <SiteModal v-model:open="editing" :site="active" @saved="load" />
+    <LoginModal v-model:open="logging" :site="active" @saved="load" />
     <Modal
       :open="renaming"
       title="修改网站显示名称"

@@ -64,6 +64,10 @@ function toDeptWrite(data: SystemDeptWrite): AdminDeptWrite {
 }
 
 export const SystemDeptApi = {
+  async companies() {
+    const list = await requestClient.get<AdminDept[]>('/auth/dept/companies');
+    return list.map((dept) => toSystemDept(dept));
+  },
   async list() {
     const list = await requestClient.get<AdminDept[]>('/auth/dept/list');
     return list.map((dept) => toSystemDept(dept));

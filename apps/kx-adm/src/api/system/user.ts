@@ -10,6 +10,8 @@ import type {
 } from '#/api/system/shared';
 import type { TaskRun } from '#/api/task';
 
+import dayjs from 'dayjs';
+
 import { plaintextRequestClient, requestClient } from '#/api/request';
 import {
   enabledFromStatus,
@@ -243,6 +245,14 @@ export const SystemUserApi = {
     >('/auth/user-admin', {
       params: {
         ...pageParams(params),
+        id: params.id || undefined,
+        remark: params.remark || undefined,
+        created_from: params.startTime
+          ? dayjs(params.startTime).startOf('day').unix()
+          : undefined,
+        created_to: params.endTime
+          ? dayjs(params.endTime).endOf('day').unix()
+          : undefined,
         dept_id: params.deptId || undefined,
         dept_ids: params.deptIds?.length ? params.deptIds.join(',') : undefined,
         keyword: params.keyword,

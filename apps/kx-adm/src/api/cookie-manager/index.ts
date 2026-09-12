@@ -75,13 +75,23 @@ const base = '/cookie-manager';
 export interface AssignedUser {
   uid: Id;
   name: string;
+  dept_id: Id;
   enabled: boolean;
   exists: boolean;
+}
+export interface AssignmentScope {
+  manager_uid: Id;
+  allowed_uids: Id[];
+  version: Id;
 }
 export interface Assignments extends Page<AssignedUser> {
   version: Id;
 }
 export const CookieApi = {
+  candidates: (params: PageQuery & { keyword?: string }) =>
+    requestClient.get<Page<AssignedUser>>(`${base}/assignment-candidates`, {
+      params,
+    }),
   proxyGrant: (site_id: Id, challenge: string) =>
     requestClient.post<{ url: string }>(`${base}/proxy/grant`, {
       site_id,
@@ -99,6 +109,18 @@ export const CookieApi = {
     requestClient.get<Assignments>(`${base}/sites/${id}/assignments`, {
       params,
     }),
+  assignmentScope: (managerUid: Id) =>
+    requestClient.get<AssignmentScope>(
+      `${base}/assignment-scopes/${managerUid}`,
+    ),
+  saveAssignmentScope: (
+    managerUid: Id,
+    data: { allowed_uids: Id[]; expected_version: Id },
+  ) =>
+    requestClient.put<AssignmentScope>(
+      `${base}/assignment-scopes/${managerUid}`,
+      data,
+    ),
   assign: (
     id: Id,
     data: { expected_version: Id; add_uids?: Id[]; remove_uids?: Id[] },

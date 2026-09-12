@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { AdminUser } from '#/api/auth/admin';
 import type { AssignedUser, Id, Site } from '#/api/cookie-manager';
+import type { SystemDept } from '#/api/system/dept';
 
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -20,15 +20,34 @@ import {
   TabPane,
   Tabs,
   Tag,
+  TreeSelect,
 } from 'antdv-next';
 
-import { AdminUserApi } from '#/api/auth/admin';
 import { CookieApi } from '#/api/cookie-manager';
 import { requestErrorMessage } from '#/request-errors';
 
+import LoginModal from './modules/login-modal.vue';
+
 const route = useRoute();
-const { hasAccessByCodes } = useAccess();
-const canAssign = computed(() => hasAccessByCodes(['cookie-manager:assign']));
+const { hasAccessByCodes, hasAccessByRoles } = useAccess();
+const canAssign = computed(() =>
+  hasAccessByCodes(['cookie-manager:assign', 'cookie-manager:manage']),
+);
+const canManageScope = computed(() => hasAccessByRoles(['admin']));
+const scopeManager = ref('');
+const scopeUsers = ref<string[]>([]);
+const scopeTree = ref<any[]>([]);
+const scopeVersion = ref<Id>();
+watch(scopeManager, () => {
+  scopeVersion.value = undefined;
+  scopeUsers.value = [];
+  scopeTree.value = [];
+});
+const scopeLoading = ref(false);
+const logging = ref(false);
+const canLogin = computed(() =>
+  hasAccessByCodes(['cookie-manager:manage', 'cookie-manager:login']),
+);
 const siteId = ref<string>();
 const site = ref<Site>();
 const sites = ref<Site[]>([]);
@@ -53,7 +72,7 @@ let generation = 0;
 const userKeyword = ref('');
 const userPage = ref(1);
 const userTotal = ref(0);
-const users = ref<AdminUser[]>([]);
+const users = ref<AssignedUser[]>([]);
 const userLoading = ref(false);
 const userError = ref('');
 const selected = ref<string[]>([]);
@@ -126,7 +145,7 @@ async function searchUsers() {
   const request = ++userGeneration;
   userLoading.value = true;
   try {
-    const r = await AdminUserApi.list({
+    const r = await CookieApi.candidates({
       page: userPage.value,
       size: 20,
       keyword: userKeyword.value,
@@ -145,6 +164,78 @@ async function searchUsers() {
     }
   } finally {
     if (request === userGeneration) userLoading.value = false;
+  }
+}
+
+async function loadCompanyDepartments() {
+  const deptApi = await import('#/api/system/dept');
+  return deptApi.SystemDeptApi.companies();
+}
+
+async function loadScope() {
+  if (!scopeManager.value || scopeLoading.value) return;
+  scopeLoading.value = true;
+  try {
+    const manager = scopeManager.value;
+    const [r, departments, members] = await Promise.all([
+      CookieApi.assignmentScope(manager),
+      loadCompanyDepartments(),
+      CookieApi.candidates({ page: 1, size: 1000 }),
+    ]);
+    if (manager !== scopeManager.value) return;
+    scopeUsers.value = r.allowed_uids.map((id) => `u:${id}`);
+    const byDept = new Map<string, AssignedUser[]>();
+    for (const member of members.items) {
+      const key = String(member.dept_id || '0');
+      byDept.set(key, [...(byDept.get(key) || []), member]);
+    }
+    function decorate(nodes: SystemDept[]): any[] {
+      return nodes.map((dept) => ({
+        key: `d:${dept.id}`,
+        value: `d:${dept.id}`,
+        title: dept.name,
+        selectable: false,
+        children: [
+          ...decorate(dept.children || []),
+          ...(byDept.get(String(dept.id)) || []).map((member) => ({
+            key: `u:${member.uid}`,
+            value: `u:${member.uid}`,
+            title: `${member.name}（${member.uid}）`,
+            isLeaf: true,
+          })),
+        ],
+      }));
+    }
+    scopeTree.value = decorate(departments);
+    scopeVersion.value = r.version;
+  } catch (error) {
+    message.error(requestErrorMessage(error, '读取负责人范围失败'));
+  } finally {
+    scopeLoading.value = false;
+  }
+}
+async function saveScope() {
+  if (
+    !scopeManager.value ||
+    scopeLoading.value ||
+    scopeVersion.value === undefined
+  )
+    return;
+  scopeLoading.value = true;
+  try {
+    const ids = scopeUsers.value
+      .filter((value) => value.startsWith('u:'))
+      .map((value) => value.slice(2));
+    const r = await CookieApi.saveAssignmentScope(scopeManager.value, {
+      allowed_uids: ids,
+      expected_version: scopeVersion.value,
+    });
+    scopeVersion.value = r.version;
+    message.success('负责人可分配用户范围已保存');
+  } catch (error) {
+    message.error(requestErrorMessage(error, '保存负责人范围失败'));
+  } finally {
+    scopeLoading.value = false;
   }
 }
 function chooseSite(id: Id) {
@@ -227,6 +318,38 @@ onMounted(async () => {
 <template>
   <Page>
     <h1 class="mb-3 text-xl font-semibold">网站使用授权</h1>
+    <section v-if="canManageScope" class="mb-4 rounded-lg border bg-card p-4">
+      <h2 class="mb-2 font-semibold">负责人分配范围（超级管理员）</h2>
+      <p class="mb-3 text-sm text-muted-foreground">
+        选择负责人后，在公司、部门和成员组织树中勾选可分配人员。
+      </p>
+      <Space wrap>
+        <Input
+          v-model:value="scopeManager"
+          :disabled="scopeLoading"
+          placeholder="负责人 UID"
+        />
+        <TreeSelect
+          v-model:value="scopeUsers"
+          class="min-w-[420px]"
+          tree-checkable
+          tree-default-expand-all
+          :tree-data="scopeTree"
+          :disabled="scopeLoading"
+          placeholder="请选择组织架构下的成员"
+          show-search
+        />
+        <Button :loading="scopeLoading" @click="loadScope">读取</Button>
+        <Button
+          type="primary"
+          :disabled="scopeVersion === undefined"
+          :loading="scopeLoading"
+          @click="saveScope"
+        >
+          保存范围
+        </Button>
+      </Space>
+    </section>
     <p class="mb-4 text-muted-foreground">
       选择网站账号，再添加或撤销使用用户。使用者还需“Cookie使用者”角色。
     </p>
@@ -331,6 +454,20 @@ onMounted(async () => {
                 {{ site?.allowed_uids.length || 0 }} 人
               </p>
             </div>
+            <Button
+              v-if="
+                canLogin &&
+                site &&
+                [
+                  'https://adxray-app.dataeye.com',
+                  'https://oversea-v2.dataeye.com',
+                ].includes(site.origin)
+              "
+              :disabled="!site.credential_code || saving"
+              @click="logging = true"
+            >
+              后台登录
+            </Button>
             <Button :loading="loading" :disabled="saving" @click="load">
               刷新授权
             </Button>
@@ -475,7 +612,7 @@ onMounted(async () => {
                 <Input
                   v-model:value="userKeyword"
                   allow-clear
-                  placeholder="搜索系统用户"
+                  placeholder="搜索可分配的组织成员"
                   :disabled="saving"
                   @press-enter="
                     userPage = 1;
@@ -516,7 +653,7 @@ onMounted(async () => {
               />
               <Table
                 :data-source="users"
-                :row-key="(r) => String(r.id)"
+                :row-key="(r) => String(r.uid)"
                 :loading="userLoading"
                 :scroll="{ x: 400 }"
                 :row-selection="{
@@ -527,12 +664,12 @@ onMounted(async () => {
                   },
                   getCheckboxProps: (r) => ({
                     disabled:
-                      blocked || !r.enabled || assignedIds.has(String(r.id)),
+                      blocked || !r.enabled || assignedIds.has(String(r.uid)),
                   }),
                 }"
                 :columns="[
                   { title: '名称', dataIndex: 'name' },
-                  { title: '用户ID', dataIndex: 'id' },
+                  { title: '用户ID', dataIndex: 'uid' },
                   { title: '授权状态', dataIndex: 'assigned' },
                 ]"
                 :pagination="{
@@ -552,11 +689,13 @@ onMounted(async () => {
                 <template #bodyCell="{ column, record }">
                   <template v-if="column.dataIndex === 'assigned'">
                     <Tag
-                      v-if="assignedIds.has(String(record.id))"
+                      v-if="assignedIds.has(String(record.uid))"
                       color="success"
                     >
                       已分配
-</Tag><Tag v-else-if="!record.enabled">用户已停用</Tag><span v-else>未分配</span>
+                    </Tag>
+                    <Tag v-else-if="!record.enabled">用户已停用</Tag>
+                    <span v-else>未分配</span>
                   </template>
                 </template>
               </Table>
@@ -566,5 +705,6 @@ onMounted(async () => {
         <Empty v-else description="请从左侧选择网站账号" />
       </section>
     </div>
+    <LoginModal v-model:open="logging" :site="site" @saved="load" />
   </Page>
 </template>

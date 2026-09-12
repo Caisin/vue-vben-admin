@@ -361,7 +361,7 @@ function onCreate() {
 
 async function loadDeptList() {
   try {
-    const res = await SystemDeptApi.list();
+    const res = await SystemDeptApi.companies();
     allDeptList.value = res;
     deptList.value = res;
   } catch (error) {
@@ -380,7 +380,7 @@ function applyDeptSelection(value?: number | string) {
     suppressNextDeptQuery = false;
     return;
   }
-  gridApi.query();
+  gridApi.reload();
 }
 
 function findDeptName(nodes: SystemDept[], id: string): string {
@@ -1051,7 +1051,7 @@ watch(selectedDeptId, (value) => {
               </Button>
               <Button
                 v-access:code="'user:weekly-report-export'"
-                :disabled="!selectedDeptId"
+                :disabled="!selectedDeptId || Number(selectedDeptId) <= 0"
                 @click="openWeeklyReportExport"
               >
                 <Download class="size-5" />
@@ -1059,7 +1059,7 @@ watch(selectedDeptId, (value) => {
               </Button>
               <Button
                 v-access:code="'user:weekly-report-dingtalk'"
-                :disabled="!selectedDeptId"
+                :disabled="!selectedDeptId || Number(selectedDeptId) <= 0"
                 @click="openWeeklyReportDingTalk"
               >
                 发布到钉钉
