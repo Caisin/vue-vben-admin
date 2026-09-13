@@ -24,18 +24,22 @@ import {
 } from 'antdv-next';
 
 import { DataSyncApi } from '#/api/data-sync';
+import { requestErrorMessage } from '#/request-errors';
 import { useTaskPolling } from '#/task-polling';
 
 import { operations, states } from './data';
 import { formatSyncDuration } from './duration';
 import ForceStopButton from './force-stop-button.vue';
+import OperationsPanel from './operations-panel.vue';
 import {
   isSchemaConflict,
   schemaConflictErrors,
   schemaSettingsQuery,
 } from './schema-conflict';
+import StatusOverview from './status-overview.vue';
 import { stopJob } from './sync-control';
 
+const selectedJobs = ref<number[]>([]);
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
 const execute = computed(() => hasAccessByCodes(['data-sync:execute']));
@@ -44,7 +48,7 @@ const status = ref('running');
 const operation = ref<string>();
 const keyword = ref('');
 const auto = ref(true);
-const error = ref('');
+const errorText = ref('');
 const rows = ref<RunListItem[]>([]);
 const loading = ref(false);
 const cancelling = ref<number[]>([]);
@@ -92,32 +96,65 @@ async function load() {
     if (version !== generation) return;
     rows.value = page.items;
     pagination.total = page.total;
-    error.value = '';
-  } catch {
-    error.value = '执行记录加载失败';
+    errorText.value = '';
+  } catch (error) {
+    if (version === generation)
+      errorText.value = requestErrorMessage(error, '执行记录加载失败');
   } finally {
     if (version === generation) loading.value = false;
   }
 }
-const polling = useTaskPolling({ delay: 3000, load, accept: () => {} });
+const polling = useTaskPolling({
+  delay: () =>
+    rows.value.some((r) => ['cancelling', 'running'].includes(r.state))
+      ? 3000
+      : 30_000,
+  load,
+  accept: () => {},
+});
 watch([status, operation], () => {
   pagination.current = 1;
   load();
 });
 watch(auto, (enabled) => (enabled ? polling.start() : polling.stop()));
-async function show(row: RunListItem) {
-  detail.value = await DataSyncApi.run(row.id);
-  batchPage.current = 1;
-  await batches();
+let detailGeneration = 0;
+let batchGeneration = 0;
+const detailError = ref('');
+const detailLoading = ref(false);
+async function show(row: Pick<RunListItem, 'id'>) {
+  const generation = ++detailGeneration;
+  detailLoading.value = true;
+  detailError.value = '';
+  try {
+    const current = await DataSyncApi.run(row.id);
+    if (generation !== detailGeneration) return;
+    detail.value = current;
+    batchPage.current = 1;
+    await batches();
+  } catch (error) {
+    if (generation === detailGeneration)
+      detailError.value = requestErrorMessage(error, '明细加载失败');
+  } finally {
+    if (generation === detailGeneration) detailLoading.value = false;
+  }
 }
 async function batches() {
-  if (!detail.value) return;
-  const page = await DataSyncApi.batches(detail.value.run.id, {
-    page: batchPage.current,
-    size: batchPage.pageSize,
-  });
-  batchRows.value = page.items;
-  batchPage.total = page.total;
+  const id = detail.value?.run.id;
+  if (!id) return;
+  const generation = ++batchGeneration;
+  try {
+    const page = await DataSyncApi.batches(id, {
+      page: batchPage.current,
+      size: batchPage.pageSize,
+    });
+    if (generation !== batchGeneration || detail.value?.run.id !== id) return;
+    batchRows.value = page.items;
+    batchPage.total = page.total;
+    detailError.value = '';
+  } catch (error) {
+    if (generation === batchGeneration)
+      detailError.value = requestErrorMessage(error, '批次加载失败');
+  }
 }
 async function cancel(row: RunListItem) {
   Modal.confirm({
@@ -141,6 +178,11 @@ onMounted(() => polling.start());
 </script>
 <template>
   <Page title="同步执行监控">
+    <OperationsPanel
+      :targets="selectedJobs.map((id) => ({ kind: 'job' as const, id }))"
+      :history="false"
+      @finished="load"
+    />
     <Tabs v-model:active-key="status">
       <TabPane key="schema_conflict" tab="结构冲突" />
       <TabPane key="running" tab="正在进行" /><TabPane
@@ -184,9 +226,20 @@ onMounted(() => polling.start());
         un-checked-children="暂停刷新"
       />
     </div>
-    <Alert v-if="error" :message="error" type="error" />
+    <Alert v-if="errorText" :message="errorText" type="error" />
     <Table
       :data-source="rows"
+      :row-selection="
+        execute
+          ? {
+              selectedRowKeys: rows
+                .filter((r) => selectedJobs.includes(r.job_id))
+                .map((r) => r.id),
+              onChange: (_keys: (number | string)[], selected: RunListItem[]) =>
+                (selectedJobs = [...new Set(selected.map((r) => r.job_id))]),
+            }
+          : undefined
+      "
       :columns="columns"
       row-key="id"
       :loading="loading"
@@ -289,11 +342,25 @@ onMounted(() => polling.start());
       title="运行明细"
       width="min(96vw, 1400px)"
       :footer="null"
-      @cancel="detail = undefined"
+      @cancel="
+        detailGeneration++;
+        batchGeneration++;
+        detail = undefined;
+      "
     >
       <template v-if="detail">
+        <StatusOverview :target="{ kind: 'job', id: detail.run.job_id }" />
+        <OperationsPanel
+          :targets="[{ kind: 'job', id: detail.run.job_id }]"
+          :history="false"
+          @finished="load"
+        />
         <p>同步耗时：{{ formatSyncDuration(detail.run) }}</p>
-        <Button @click="detail && show({ id: detail.run.id } as RunListItem)">
+        <Alert v-if="detailError" type="error" :message="detailError" />
+        <Button
+          :loading="detailLoading"
+          @click="detail && show({ id: detail.run.id })"
+        >
           刷新明细
         </Button>
         <Table
@@ -327,6 +394,7 @@ onMounted(() => polling.start());
           @change="
             (p) => {
               batchPage.current = p.current ?? 1;
+              batchPage.pageSize = p.pageSize ?? 20;
               batches();
             }
           "

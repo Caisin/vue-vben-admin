@@ -47,7 +47,9 @@ import {
 import { formatSyncDuration } from './duration';
 import ForceStopButton from './force-stop-button.vue';
 import MetadataSelect from './metadata-select.vue';
+import OperationsPanel from './operations-panel.vue';
 import SourceFields from './source-fields.vue';
+import StatusOverview from './status-overview.vue';
 import StrategyFields from './strategy-fields.vue';
 import { startDatabase, stopDatabase } from './sync-control';
 import TableFrequency from './table-frequency.vue';
@@ -59,6 +61,8 @@ const props = defineProps<{
   instances: Instance[];
 }>();
 const emit = defineEmits<{ job: [Job] }>();
+
+const selectedDatabases = ref<number[]>([]);
 const route = useRoute();
 const Refresh = createIconifyIcon('lucide:refresh-cw');
 const Trash = createIconifyIcon('lucide:trash-2');
@@ -786,7 +790,10 @@ onMounted(async () => {
   polling.start();
 });
 const polling = useTaskPolling({
-  delay: 5000,
+  delay: () =>
+    rows.value.some((r) => r.active_task_id) || taskPending.value
+      ? 5000
+      : 30_000,
   load: async () => {
     const query = { page: pagination.current, size: pagination.pageSize };
     const id = open.value ? selected.value?.id : undefined;
@@ -838,6 +845,21 @@ const polling = useTaskPolling({
 });
 </script>
 <template>
+  <div class="mb-3">
+    <OperationsPanel
+      :targets="
+        selectedDatabases.map((id) => ({ kind: 'database' as const, id }))
+      "
+      :history="false"
+      @finished="load"
+    /><Button
+      v-if="selectedDatabases.length"
+      type="link"
+      @click="selectedDatabases = []"
+    >
+      清空选择
+    </Button>
+  </div>
   <div>
     <div class="toolbar">
       <Button v-if="configure" type="primary" @click="show()">
@@ -851,6 +873,16 @@ const polling = useTaskPolling({
     </div>
     <Table
       :data-source="rows"
+      :row-selection="
+        configure || execute
+          ? {
+              selectedRowKeys: selectedDatabases,
+              preserveSelectedRowKeys: true,
+              onChange: (keys: (number | string)[]) =>
+                (selectedDatabases = keys.map(Number)),
+            }
+          : undefined
+      "
       row-key="id"
       :pagination="pagination"
       :scroll="{ x: 750 }"
@@ -934,6 +966,16 @@ const polling = useTaskPolling({
       :z-index="2100"
       @cancel="open = false"
     >
+      <OperationsPanel
+        v-if="selected"
+        :targets="[{ kind: 'database', id: selected.id }]"
+        :history="false"
+        @finished="load"
+      />
+      <StatusOverview
+        v-if="selected"
+        :target="{ kind: 'database', id: selected.id }"
+      />
       <Alert
         v-if="taskError || selected?.last_error || failedTables.length"
         type="error"

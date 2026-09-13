@@ -39,6 +39,27 @@ describe('task polling', () => {
       }),
     ).rejects.toThrow('still running');
   });
+  it('uses the latest activity delay without overlapping requests', async () => {
+    vi.useFakeTimers();
+    let delay = 10_000;
+    const load = vi.fn().mockResolvedValue('ok');
+    const poll = createTaskPolling({
+      load,
+      accept: () => {},
+      delay: () => delay,
+    });
+    poll.start();
+    await vi.advanceTimersByTimeAsync(1);
+    delay = 30_000;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(load).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(load).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(load).toHaveBeenCalledTimes(3);
+    poll.stop();
+  });
+
   it('stops at a terminal result', async () => {
     vi.useFakeTimers();
     const load = vi.fn().mockResolvedValue('done');

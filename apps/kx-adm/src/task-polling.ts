@@ -2,7 +2,7 @@ import { onScopeDispose } from 'vue';
 
 interface PollOptions<T> {
   accept: (value: T) => Promise<void> | void;
-  delay?: number;
+  delay?: (() => number) | number;
   done?: (value: T) => boolean;
   load: () => Promise<T>;
   onError?: (error: unknown) => void;
@@ -43,7 +43,12 @@ export function createTaskPolling<T>(options: PollOptions<T>) {
         const hidden = typeof document !== 'undefined' && document.hidden;
         const delay =
           current === generation
-            ? Math.max(options.delay ?? 1500, hidden ? 10_000 : 0)
+            ? Math.max(
+                (typeof options.delay === 'function'
+                  ? options.delay()
+                  : options.delay) ?? 1500,
+                hidden ? 10_000 : 0,
+              )
             : 0;
         timer = setTimeout(() => void tick(), delay);
       }

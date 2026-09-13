@@ -34,6 +34,7 @@ import {
 
 import { DataSyncApi } from '#/api/data-sync';
 import { DatabaseSyncApi } from '#/api/data-sync-database';
+import { requestErrorMessage } from '#/request-errors';
 import { useTaskPolling } from '#/task-polling';
 
 import { operations, states } from './data';
@@ -42,14 +43,17 @@ import { formatSyncDuration } from './duration';
 import ForceStopButton from './force-stop-button.vue';
 import InstanceEditor from './instance-editor.vue';
 import JobEditor from './job-editor.vue';
+import OperationsPanel from './operations-panel.vue';
 import {
   isSchemaConflict,
   schemaConflictErrors,
   schemaSettingsQuery,
 } from './schema-conflict';
 import SqlPreview from './sql-preview.vue';
+import StatusOverview from './status-overview.vue';
 import { startDatabase, startJob, stopDatabase, stopJob } from './sync-control';
 
+const selectedJobs = ref<number[]>([]);
 const route = useRoute();
 const router = useRouter();
 const activeTab = ref(route.query.database_id ? 'databases' : 'jobs');
@@ -64,6 +68,9 @@ const execute = computed(() => hasAccessByCodes(['data-sync:execute']));
 const jobs = ref<Job[]>([]);
 const instances = ref<Instance[]>([]);
 const loading = ref(false);
+const loadError = ref('');
+let loadGeneration = 0;
+let showGeneration = 0;
 const keyword = ref('');
 const mode = ref('all');
 const frequency = ref('all');
@@ -156,6 +163,7 @@ function instanceName(id: number) {
   );
 }
 async function load(spinner = true) {
+  const generation = ++loadGeneration;
   if (spinner) loading.value = true;
   try {
     const page = await DataSyncApi.jobs({
@@ -166,11 +174,17 @@ async function load(spinner = true) {
       page: pagination.current,
       size: pagination.pageSize,
     });
+    if (generation !== loadGeneration) return;
     jobs.value = page.items;
     pagination.total = page.total;
-    instances.value = await DataSyncApi.instances();
+    loadError.value = '';
+    const sourceInstances = await DataSyncApi.instances();
+    if (generation === loadGeneration) instances.value = sourceInstances;
+  } catch (error) {
+    if (generation === loadGeneration)
+      loadError.value = requestErrorMessage(error, '任务列表加载失败，请重试');
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 async function loadRuns(id: number) {
@@ -184,9 +198,13 @@ async function loadRuns(id: number) {
   }
 }
 async function show(job: Job) {
-  detail.value = await DataSyncApi.detail(job.id);
+  const generation = ++showGeneration;
+  const current = await DataSyncApi.detail(job.id);
+  if (generation !== showGeneration) return;
+  detail.value = current;
   runPage.current = 1;
   const saved = await DataSyncApi.schedule(job.id);
+  if (generation !== showGeneration || detail.value?.job.id !== job.id) return;
   scheduleId.value = saved?.id;
   Object.assign(
     schedule,
@@ -203,6 +221,7 @@ async function show(job: Job) {
         },
   );
   await loadRuns(job.id);
+  polling.start();
 }
 async function edit(job?: Job) {
   editorDetail.value = job ? await DataSyncApi.detail(job.id) : undefined;
@@ -258,6 +277,7 @@ async function dispatch(
         : await DataSyncApi.dispatch(job.id, action, request);
     message.success(`任务已提交 #${task.id}`);
     await load(false);
+    polling.start();
   } finally {
     actionBusy.value = false;
   }
@@ -358,8 +378,12 @@ async function saveSchedule() {
   }
 }
 const polling = useTaskPolling({
-  delay: 5000,
+  delay: () =>
+    jobs.value.some((j) => j.active_run_id) || detail.value || runDetail.value
+      ? 5000
+      : 30_000,
   load: async () => {
+    const requestGeneration = loadGeneration;
     const query = {
       keyword: keyword.value,
       mode: mode.value,
@@ -382,6 +406,7 @@ const polling = useTaskPolling({
         runId ? DataSyncApi.batches(runId, batchQuery) : undefined,
       ]);
     return {
+      requestGeneration,
       query,
       jobId,
       runId,
@@ -395,7 +420,11 @@ const polling = useTaskPolling({
       batchHistory,
     };
   },
+  onError: (error) => {
+    loadError.value = requestErrorMessage(error, '自动刷新失败，正在重试');
+  },
   accept: (result) => {
+    if (result.requestGeneration !== loadGeneration) return;
     if (
       result.query.keyword === keyword.value &&
       result.query.mode === mode.value &&
@@ -408,6 +437,7 @@ const polling = useTaskPolling({
       jobs.value = result.page.items;
       pagination.total = result.page.total;
     }
+    loadError.value = '';
     instances.value = result.sourceInstances;
     if (result.job && detail.value?.job.id === result.jobId) {
       detail.value = result.job;
@@ -464,6 +494,18 @@ onMounted(async () => {
 
 <template>
   <Page title="数据同步" class="management-page">
+    <div class="mb-3">
+      <OperationsPanel
+        :targets="selectedJobs.map((id) => ({ kind: 'job' as const, id }))"
+        @finished="forceStopped"
+      /><Button
+        v-if="selectedJobs.length"
+        type="link"
+        @click="selectedJobs = []"
+      >
+        清空选择
+      </Button>
+    </div>
     <Tabs v-model:active-key="activeTab">
       <TabPane key="databases" tab="全库同步">
         <DatabasePanel
@@ -517,9 +559,25 @@ onMounted(async () => {
             <Plus class="size-4" />新增任务
           </Button>
         </div>
+        <Alert
+          v-if="loadError"
+          type="error"
+          :message="loadError"
+          class="mb-3"
+        />
         <Table
           :columns="columns"
           :data-source="jobs"
+          :row-selection="
+            execute || configure
+              ? {
+                  selectedRowKeys: selectedJobs,
+                  preserveSelectedRowKeys: true,
+                  onChange: (keys: (string | number)[]) =>
+                    (selectedJobs = keys.map(Number)),
+                }
+              : undefined
+          "
           row-key="id"
           :loading="loading"
           :pagination="pagination"
@@ -701,9 +759,18 @@ onMounted(async () => {
       :title="detail?.job.name"
       size="min(1000px, 100vw)"
       :z-index="2000"
-      @close="detail = undefined"
+      @close="
+        showGeneration++;
+        detail = undefined;
+      "
     >
       <template v-if="detail">
+        <StatusOverview :target="{ kind: 'job', id: detail.job.id }" />
+        <OperationsPanel
+          :targets="[{ kind: 'job', id: detail.job.id }]"
+          :history="false"
+          @finished="forceStopped"
+        />
         <div class="toolbar">
           <Tag :color="color(detail.job.state)">
             {{ states[detail.job.state] }}
