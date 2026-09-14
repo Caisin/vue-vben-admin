@@ -32,9 +32,11 @@ interface DirectUploadOptions {
   addUploaded: (files: FileUploadView[]) => Promise<void>;
   presignComplete?: (
     data: PresignedUploadCompleteWrite,
+    storageCode?: string,
   ) => Promise<FileUploadView>;
   presignUpload?: (
     data: PresignedUploadPrepareWrite,
+    storageCode?: string,
   ) => Promise<PresignedUploadPrepareView>;
   reload: () => Promise<void>;
 }
@@ -171,13 +173,16 @@ export function useDirectUpload(options: DirectUploadOptions) {
       options.presignComplete ??
       ((data: PresignedUploadCompleteWrite) =>
         StorageFileApi.presignComplete(storageCode, data));
-    const presigned = await prepare({
-      file_ext: fileExt,
-      file_name: fileName,
-      group_id: groupId,
-      md5_hash: md5Hash,
-      size: file.size,
-    });
+    const presigned = await prepare(
+      {
+        file_ext: fileExt,
+        file_name: fileName,
+        group_id: groupId,
+        md5_hash: md5Hash,
+        size: file.size,
+      },
+      storageCode,
+    );
     if (!presigned.upload_required) {
       if (!presigned.file) throw new Error('直传秒传响应缺少文件信息');
       onProgress(100);
@@ -186,15 +191,18 @@ export function useDirectUpload(options: DirectUploadOptions) {
     const etag = await putPresignedObject(presigned, file, (value) =>
       onProgress(5 + value * 0.9),
     );
-    return await complete({
-      etag,
-      file_ext: fileExt,
-      file_name: fileName,
-      group_id: groupId,
-      key: presigned.key,
-      md5_hash: md5Hash,
-      size: file.size,
-    });
+    return await complete(
+      {
+        etag,
+        file_ext: fileExt,
+        file_name: fileName,
+        group_id: groupId,
+        key: presigned.key,
+        md5_hash: md5Hash,
+        size: file.size,
+      },
+      storageCode,
+    );
   }
 
   async function uploadFile(file: File, onProgress: (percent: number) => void) {

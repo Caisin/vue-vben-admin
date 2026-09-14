@@ -31,15 +31,17 @@ export interface FilePickerAdapter {
   list: (params?: UploadFilePageQuery) => Promise<Page<UploadFile>>;
   presignComplete?: (
     data: PresignedUploadCompleteWrite,
+    storageCode?: string,
   ) => Promise<FileUploadView>;
   presignUpload?: (
     data: PresignedUploadPrepareWrite,
+    storageCode?: string,
   ) => Promise<PresignedUploadPrepareView>;
   rename?: (id: FileId, data: RenameFileWrite) => Promise<UploadFile>;
   storageOptions?: () => Promise<
     Array<{ label: string; storage_type?: string; value: string }>
   >;
-  upload: (file: File) => Promise<FileUploadView[]>;
+  upload: (file: File, storageCode?: string) => Promise<FileUploadView[]>;
   urls?: (ids: FileId[]) => Promise<FileAccessView[]>;
 }
 

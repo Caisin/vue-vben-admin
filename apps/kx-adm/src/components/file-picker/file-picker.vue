@@ -15,6 +15,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 
 import { useVbenModal } from '@vben/common-ui';
 import { IconifyIcon } from '@vben/icons';
+import { getPopupContainer } from '@vben/utils';
 
 import {
   Button,
@@ -370,6 +371,7 @@ async function loadFiles() {
   try {
     if (adapter.value) {
       const result = await adapter.value.list({
+        storage_code: active_storage_code.value,
         file_kind: activeFileKindParam(),
         name_prefix: name_prefix.value.trim() || undefined,
         page: page.value,
@@ -563,7 +565,7 @@ async function uploadServerFile(file: File) {
     throw new Error('文件类型不符合当前选择限制');
   }
   const result = upload
-    ? await upload(file)
+    ? await upload(file, storageCode)
     : await StorageFileApi.upload(storageCode ?? '', file);
   await addUploadedResults(result);
   message.success('上传成功');
@@ -701,6 +703,7 @@ defineExpose<FilePickerExpose>({ close, open });
               (!useArticleAdapter || storage_options.length > 0)
             "
             v-model:value="active_storage_code"
+            :get-popup-container="getPopupContainer"
             class="storage-select"
             :options="storage_options"
             placeholder="选择 storage"

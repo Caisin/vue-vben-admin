@@ -647,7 +647,7 @@ onMounted(load);
             <TabPane key="images" tab="图片与截图">
               <Alert
                 type="info"
-                message="支持PNG、JPEG、WebP和GIF；单图不超过8MiB。构建时会复制所有图片，静态包无需连接文件库。"
+                message="官网素材仅使用公共存储。支持PNG、JPEG、WebP和GIF，单图不超过8MiB；构建时复制到静态包。旧私有素材请重新上传或选择。"
               />
               <div class="image-grid">
                 <ImageField

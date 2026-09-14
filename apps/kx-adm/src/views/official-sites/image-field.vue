@@ -7,11 +7,12 @@ import type {
 
 import { ref, watch } from 'vue';
 
-import { Button } from 'antdv-next';
+import { Button, message } from 'antdv-next';
 
+import { OfficialSiteAssetsApi } from '#/api/official-site-assets';
 import { siteResourceUrl } from '#/api/official-sites';
-import { StorageFileShareApi } from '#/api/storage';
 import { FilePicker } from '#/components/file-picker';
+import { requestErrorMessage } from '#/request-errors';
 
 const props = defineProps<{
   label: string;
@@ -22,24 +23,26 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 const picker = ref<FilePickerExpose>();
 const preview = ref('');
-const error = ref('');
+const previewError = ref('');
 const adapter: FilePickerAdapter = {
-  list: StorageFileShareApi.pickerFiles,
-  detail: StorageFileShareApi.pickerFile,
-  urls: StorageFileShareApi.pickerUrls,
-  upload: StorageFileShareApi.pickerUpload,
-  rename: StorageFileShareApi.pickerRename,
-  presignUpload: StorageFileShareApi.pickerPresignUpload,
-  presignComplete: StorageFileShareApi.pickerPresignComplete,
+  list: OfficialSiteAssetsApi.list,
+  detail: OfficialSiteAssetsApi.detail,
+  urls: OfficialSiteAssetsApi.urls,
+  upload: OfficialSiteAssetsApi.upload,
+  rename: OfficialSiteAssetsApi.rename,
+  presignUpload: OfficialSiteAssetsApi.presignUpload,
+  presignComplete: OfficialSiteAssetsApi.presignComplete,
   storageOptions: async () => {
-    const storage = await StorageFileShareApi.pickerStorage();
-    return [
-      {
-        value: storage.code,
-        label: storage.storage_name,
-        storage_type: storage.storage_type,
-      },
-    ];
+    const storages = await OfficialSiteAssetsApi.storages();
+    if (storages.length === 0) {
+      message.error('未配置公共存储，请先在存储管理中添加公共存储');
+      throw new Error('未配置公共存储');
+    }
+    return storages.map((storage) => ({
+      value: storage.code,
+      label: storage.storage_name,
+      storage_type: storage.storage_type,
+    }));
   },
 };
 let generation = 0;
@@ -48,18 +51,21 @@ watch(
   async (value) => {
     const current = ++generation;
     preview.value = '';
-    error.value = '';
+    previewError.value = '';
     if (value.startsWith('builtin:')) {
       preview.value = siteResourceUrl(`/_official/template/${value.slice(8)}`);
       return;
     }
     if (value.startsWith('file:')) {
       try {
-        const files = await StorageFileShareApi.pickerUrls([value.slice(5)]);
+        const files = await OfficialSiteAssetsApi.urls([value.slice(5)]);
         if (current === generation) preview.value = files[0]?.url ?? '';
-      } catch {
+      } catch (error) {
         if (current === generation)
-          error.value = '图片暂时无法预览，请重新选择';
+          previewError.value = requestErrorMessage(
+            error,
+            '图片暂时无法预览，请从公共存储重新选择',
+          );
       }
     }
   },
@@ -75,7 +81,7 @@ function selected(files: SelectedStorageFile[]) {
     <span class="image-label">{{ label }}</span>
     <div class="image-preview">
       <img v-if="preview" :src="preview" :alt="label" /><span v-else>{{
-        error || '请选择图片'
+        previewError || '请选择图片'
       }}</span>
     </div>
     <div v-if="!disabled" class="image-actions">
