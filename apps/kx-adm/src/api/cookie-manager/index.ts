@@ -85,6 +85,10 @@ export const CookieApi = {
     requestClient.get<Page<AssignedUser>>(`${base}/assignment-candidates`, {
       params,
     }),
+  proxyGrantDirect: (site_id: Id) =>
+    requestClient.post<{ url: string }>(`${base}/proxy/grant-direct`, {
+      site_id,
+    }),
   proxyGrant: (site_id: Id, challenge: string) =>
     requestClient.post<{ url: string }>(`${base}/proxy/grant`, {
       site_id,
