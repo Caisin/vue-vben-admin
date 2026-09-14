@@ -6,6 +6,7 @@ import { enabledFromStatus, statusFromEnabled } from './shared';
 
 interface AdminDept {
   children?: AdminDept[];
+  source_id?: string;
   created_at: number | string;
   enabled: boolean;
   id: number | string;
@@ -26,6 +27,8 @@ interface AdminDeptWrite {
 
 export interface SystemDept {
   children?: SystemDept[];
+  sourceId?: string;
+  disabled?: boolean;
   createTime?: number | string;
   id: string;
   name: string;
@@ -43,6 +46,8 @@ export type SystemDeptWrite = Omit<
 function toSystemDept(dept: AdminDept): SystemDept {
   return {
     children: dept.children?.map((child) => toSystemDept(child)),
+    sourceId: dept.source_id,
+    disabled: Boolean(dept.source_id),
     createTime: dept.created_at,
     id: String(dept.id),
     name: dept.name,
@@ -68,8 +73,10 @@ export const SystemDeptApi = {
     const list = await requestClient.get<AdminDept[]>('/auth/dept/companies');
     return list.map((dept) => toSystemDept(dept));
   },
-  async list() {
-    const list = await requestClient.get<AdminDept[]>('/auth/dept/list');
+  async list(sourceId?: string) {
+    const list = await requestClient.get<AdminDept[]>('/auth/dept/list', {
+      params: { source_id: sourceId },
+    });
     return list.map((dept) => toSystemDept(dept));
   },
   async create(data: SystemDeptWrite) {

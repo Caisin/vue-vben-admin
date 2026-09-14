@@ -12,6 +12,7 @@ export interface LegacyPageQuery extends PageQuery {
   name?: string;
   pageSize?: number;
   remark?: string;
+  sourceId?: string;
   startTime?: number | string;
   status?: StatusValue;
   tel?: string;

@@ -96,6 +96,7 @@ const inputSearchValue = ref('');
 const selectedDeptId = ref<string>();
 const selectedDeptIds = ref<string[]>([]);
 const selectedDeptName = ref('');
+const selectedSourceId = ref<string>();
 let suppressNextDeptQuery = false;
 const weeklyReportOpen = ref(false);
 const weeklyReportLoading = ref(false);
@@ -188,6 +189,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
       selectedDeptId.value = undefined;
       selectedDeptIds.value = [];
       selectedDeptName.value = '';
+      selectedSourceId.value = undefined;
     },
     schema: useGridFormSchema(),
     submitOnChange: true,
@@ -204,6 +206,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
             pageSize: page.pageSize,
             ...formValues,
             deptIds: selectedDeptIds.value,
+            sourceId: selectedSourceId.value,
           });
         },
       },
@@ -376,11 +379,26 @@ function applyDeptSelection(value?: number | string) {
     deptId,
   );
   selectedDeptName.value = findDeptName(allDeptList.value, deptId);
+  selectedSourceId.value = findDeptSource(allDeptList.value, deptId);
   if (suppressNextDeptQuery) {
     suppressNextDeptQuery = false;
     return;
   }
   gridApi.reload();
+}
+
+function findDeptSource(
+  nodes: SystemDept[],
+  id: string,
+  inherited?: string,
+): string | undefined {
+  for (const node of nodes) {
+    const source = node.sourceId ?? inherited;
+    if (String(node.id) === id) return source;
+    const child = findDeptSource(node.children ?? [], id, source);
+    if (child) return child;
+  }
+  return undefined;
 }
 
 function findDeptName(nodes: SystemDept[], id: string): string {

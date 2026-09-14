@@ -88,7 +88,7 @@ export function useFormSchema(
       component: 'ApiTreeSelect',
       componentProps: {
         allowClear: true,
-        api: SystemDeptApi.list,
+        api: SystemDeptApi.companies,
         afterFetch: (items: SystemDept[]) =>
           prependTreeOption(items, {
             id: '0',
@@ -99,6 +99,7 @@ export function useFormSchema(
         labelField: 'name',
         valueField: 'id',
         childrenField: 'children',
+        disabledField: 'disabled',
       },
       fieldName: 'deptId',
       label: $t('system.user.dept'),

@@ -255,6 +255,7 @@ export const SystemUserApi = {
           : undefined,
         dept_id: params.deptId || undefined,
         dept_ids: params.deptIds?.length ? params.deptIds.join(',') : undefined,
+        source_id: params.sourceId || undefined,
         keyword: params.keyword,
       },
     });

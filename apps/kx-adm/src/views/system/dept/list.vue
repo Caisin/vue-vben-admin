@@ -5,10 +5,12 @@ import type {
 } from '#/adapter/vxe-table';
 import type { SystemDept } from '#/api/system/dept';
 
+import { ref } from 'vue';
+
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
-import { Button, message } from 'antdv-next';
+import { Button, message, Select } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { SystemDeptApi } from '#/api/system/dept';
@@ -99,6 +101,15 @@ async function onStatusChange(status: SystemDept['status'], row: SystemDept) {
   return true;
 }
 
+const selectedSource = ref<string>();
+const companyOptions = ref<Array<{ label: string; value: string }>>([]);
+async function loadCompanies() {
+  const companies = await SystemDeptApi.companies();
+  companyOptions.value = companies
+    .map((item) => ({ label: item.name, value: item.sourceId ?? '' }))
+    .filter((item) => item.value);
+}
+
 const [Grid, gridApi] = useVbenVxeGrid({
   gridEvents: {},
   gridOptions: {
@@ -111,7 +122,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
     proxyConfig: {
       ajax: {
         query: async (_params) => {
-          return await SystemDeptApi.list();
+          return await SystemDeptApi.list(selectedSource.value);
         },
       },
     },
@@ -135,6 +146,13 @@ const [Grid, gridApi] = useVbenVxeGrid({
 function refreshGrid() {
   gridApi.query();
 }
+
+async function changeCompany(value?: string) {
+  selectedSource.value = value;
+  await gridApi.query();
+}
+
+void loadCompanies();
 </script>
 <template>
   <Page
@@ -145,6 +163,14 @@ function refreshGrid() {
     <FormModal @success="refreshGrid" />
     <Grid class="management-grid" table-title="部门列表">
       <template #toolbar-tools>
+        <Select
+          v-model:value="selectedSource"
+          allow-clear
+          :options="companyOptions"
+          placeholder="按公司筛选部门"
+          class="company-select"
+          @change="changeCompany"
+        />
         <Button type="primary" @click="onCreate">
           <Plus class="size-5" />
           {{ $t('ui.actionTitle.create', [$t('system.dept.name')]) }}
