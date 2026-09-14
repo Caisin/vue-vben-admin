@@ -31,6 +31,7 @@ import { requestErrorMessage } from '#/request-errors';
 import { useTaskPolling } from '#/task-polling';
 
 import ImageField from './image-field.vue';
+import { layouts, themes } from './style-options';
 
 const { hasAccessByCodes } = useAccess();
 const manage = computed(() => hasAccessByCodes(['official-site:manage']));
@@ -62,31 +63,6 @@ const previewUrl = computed(() =>
 const buildActive = computed(
   () => !!build.value && ['queued', 'running'].includes(build.value.state),
 );
-const themes = [
-  {
-    value: 'guyan',
-    label: '参考复刻',
-    detail: '暖色背景 · 应用展示',
-    color: '#72574f',
-  },
-  {
-    value: 'light',
-    label: '明亮简洁',
-    detail: '轻盈留白 · 清爽阅读',
-    color: '#dce4ff',
-  },
-  {
-    value: 'cinema',
-    label: '深色影院',
-    detail: '沉浸暗色 · 海报视觉',
-    color: '#1c162a',
-  },
-];
-const layouts = [
-  { value: 'split', label: '左右分栏' },
-  { value: 'centered', label: '居中展示' },
-  { value: 'showcase', label: '海报墙排版' },
-];
 const images: Array<{
   key: keyof Pick<
     SiteConfig,
@@ -229,12 +205,14 @@ async function offline(site: Site) {
     },
   });
 }
-function chooseTheme(value: string) {
-  if (form.value && manage.value) {
-    form.value.config.theme = value as SiteConfig['theme'];
-    form.value.config.accent =
-      { cinema: '#d99946', light: '#4667db', guyan: '#6938ef' }[value] ??
-      '#6938ef';
+function chooseTheme(value: SiteConfig['theme']) {
+  const theme = themes.find((item) => item.value === value);
+  if (form.value && manage.value && theme) {
+    Object.assign(form.value.config, {
+      theme: theme.value,
+      accent: theme.accent,
+      layout: theme.layout,
+    });
   }
 }
 function moveSection(index: number, direction: number) {
@@ -528,6 +506,9 @@ onMounted(load);
               </div>
             </TabPane>
             <TabPane key="style" tab="主题与排版">
+              <p class="muted">
+                选择主题会应用推荐排版和强调色，文案与图片保留；下方可独立调整排版。
+              </p>
               <div class="themes">
                 <button
                   v-for="theme in themes"
@@ -540,8 +521,10 @@ onMounted(load);
                 >
                   <span
                     class="theme-sample"
+                    :class="`sample-${theme.value}`"
                     :style="{ background: theme.color }"
-                    ><span></span><i></i></span><strong>{{ theme.label }}</strong><small>{{ theme.detail }}</small>
+                    aria-hidden="true"
+                    ><span>{{ theme.sample }}</span><i></i><em></em></span><strong>{{ theme.label }}</strong><small>{{ theme.detail }}</small>
                 </button>
               </div>
               <div class="fields">
@@ -557,6 +540,12 @@ onMounted(load);
                     class="color-input"
                 /></label>
               </div>
+              <p class="muted">
+                {{
+                  layouts.find((item) => item.value === form?.config.layout)
+                    ?.detail
+                }}
+              </p>
               <h3>区块顺序与显示</h3>
               <div
                 v-for="(section, index) in form.config.sections"
@@ -863,13 +852,13 @@ onMounted(load);
 .muted,
 small {
   font-size: 12px;
-  color: var(--muted-foreground);
+  color: hsl(var(--muted-foreground));
 }
 
 .editor-actions {
   padding-bottom: 14px;
   margin-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .form-body {
@@ -908,45 +897,171 @@ small {
   gap: 10px;
   padding: 14px;
   text-align: left;
-  background: var(--background);
-  border: 2px solid var(--border);
+  background: hsl(var(--background));
+  border: 2px solid hsl(var(--border));
   border-radius: 12px;
 }
 
 .theme-card.chosen {
-  border-color: var(--primary);
+  border-color: hsl(var(--primary));
 }
 
 .theme-sample {
+  position: relative;
   display: flex;
-  gap: 20px;
+  gap: 16px;
   align-items: center;
   justify-content: center;
-  height: 100px;
+  height: 120px;
+  overflow: hidden;
+  color: white;
   border-radius: 6px;
 }
 
 .theme-sample span {
-  width: 38%;
-  height: 25px;
-  border-top: 6px solid #fff;
-  border-bottom: 3px solid #fff8;
+  z-index: 1;
+  font:
+    900 24px/1 Arial,
+    sans-serif;
+  letter-spacing: -1px;
 }
 
 .theme-sample i {
-  width: 32px;
-  height: 67px;
+  width: 34px;
+  height: 76px;
   background: #fffc;
   border: 3px solid #fff;
   border-radius: 7px;
   transform: rotate(-6deg);
 }
 
+.theme-sample em {
+  position: absolute;
+  bottom: 12px;
+  left: 18px;
+  width: 36px;
+  height: 8px;
+  background: #fff9;
+}
+
+.sample-light {
+  flex-direction: column;
+  gap: 12px;
+  color: #202437;
+}
+
+.sample-light i {
+  width: 28px;
+  height: 42px;
+  background: #b3bcdf;
+  transform: none;
+}
+
+.sample-light em {
+  display: none;
+}
+
+.sample-cinema {
+  align-items: flex-end;
+  padding-bottom: 25px;
+}
+
+.sample-cinema span {
+  font-size: 21px;
+}
+
+.sample-cinema i {
+  position: absolute;
+  top: 4px;
+  right: 30px;
+  width: 55px;
+  height: 125px;
+  opacity: 0.3;
+  transform: rotate(20deg);
+}
+
+.sample-cinema em {
+  bottom: 12px;
+  background: #d99946;
+}
+
+.sample-editorial {
+  flex-direction: column;
+  gap: 12px;
+  color: #282a24;
+}
+
+.sample-editorial span {
+  font:
+    italic 34px/1 Georgia,
+    serif;
+}
+
+.sample-editorial i {
+  width: 78%;
+  height: 38px;
+  background: #b7472944;
+  border: 0;
+  border-top: 1px solid #282a24;
+  border-radius: 0;
+  transform: none;
+}
+
+.sample-editorial em {
+  display: none;
+}
+
+.sample-neon {
+  color: #d5ff47;
+  background-image:
+    linear-gradient(#ffffff14 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff14 1px, transparent 1px) !important;
+  background-size: 15px 15px !important;
+}
+
+.sample-neon span {
+  padding: 14px 8px;
+  font-family: monospace;
+  border: 1px solid #d5ff4755;
+  border-radius: 10px;
+}
+
+.sample-neon i {
+  background: #d5ff47;
+  border: 0;
+  border-radius: 12px;
+  transform: none;
+}
+
+.sample-neon em {
+  background: #d5ff47;
+  border-radius: 10px;
+}
+
+.sample-playful span {
+  font-size: 30px;
+  color: #f6dc54;
+  transform: rotate(-8deg);
+}
+
+.sample-playful i {
+  background: #f6dc54;
+  border: 2px solid #17245c;
+  border-radius: 0;
+  box-shadow: 5px 5px 0 #17245c;
+  transform: rotate(12deg);
+}
+
+.sample-playful em {
+  background: #fff;
+  border: 1px solid #17245c;
+}
+
 .color-input {
   width: 100%;
   height: 38px;
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
 }
 
@@ -966,7 +1081,7 @@ small {
   gap: 12px;
   padding: 18px;
   margin: 18px 0;
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   border-radius: 10px;
 }
 
@@ -1011,6 +1126,7 @@ h3 {
   }
 
   .themes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 

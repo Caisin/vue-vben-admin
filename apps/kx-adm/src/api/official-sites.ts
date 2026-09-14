@@ -27,8 +27,14 @@ export interface SiteConfig {
   android_package: string;
   ios_bundle: string;
   copyright: string;
-  theme: 'cinema' | 'guyan' | 'light';
-  layout: 'centered' | 'showcase' | 'split';
+  theme: 'cinema' | 'editorial' | 'guyan' | 'light' | 'neon' | 'playful';
+  layout:
+    | 'centered'
+    | 'immersive'
+    | 'magazine'
+    | 'mosaic'
+    | 'showcase'
+    | 'split';
   accent: string;
   logo: string;
   app_icon: string;
