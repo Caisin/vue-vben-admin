@@ -126,8 +126,9 @@ export function runColumns(): VxeTableGridColumns<OrgSyncRun> {
     },
     {
       field: 'source_id',
+      slots: { default: 'runSource' },
       minWidth: 180,
-      title: '数据源',
+      title: '钉钉账号（AppKey）',
     },
     {
       field: 'department_total',

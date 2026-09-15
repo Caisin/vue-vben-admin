@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import type { DepartmentRow } from './company-tree';
+
 import type {
   OnActionClickParams,
   VxeTableGridOptions,
@@ -10,12 +12,13 @@ import { ref } from 'vue';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
-import { Button, message, Select } from 'antdv-next';
+import { Button, message, Switch, Tag } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { SystemDeptApi } from '#/api/system/dept';
 import { $t } from '#/locales';
 
+import { buildCompanyDepartmentTree } from './company-tree';
 import { useColumns } from './data';
 import Form from './modules/form.vue';
 
@@ -73,7 +76,8 @@ function onDelete(row: SystemDept) {
 /**
  * 表格操作按钮的回调函数
  */
-function onActionClick({ code, row }: OnActionClickParams<SystemDept>) {
+function onActionClick({ code, row }: OnActionClickParams<DepartmentRow>) {
+  if (row.isCompany) return;
   switch (code) {
     case 'append': {
       onAppend(row);
@@ -90,30 +94,32 @@ function onActionClick({ code, row }: OnActionClickParams<SystemDept>) {
   }
 }
 
-async function onStatusChange(status: SystemDept['status'], row: SystemDept) {
-  await SystemDeptApi.update(row.id, {
-    name: row.name,
-    pid: row.pid,
-    remark: row.remark,
-    sortNo: row.sortNo,
-    status,
-  });
-  return true;
-}
-
-const selectedSource = ref<string>();
-const companyOptions = ref<Array<{ label: string; value: string }>>([]);
-async function loadCompanies() {
-  const companies = await SystemDeptApi.companies();
-  companyOptions.value = companies
-    .map((item) => ({ label: item.name, value: item.sourceId ?? '' }))
-    .filter((item) => item.value);
+const statusLoading = ref<Record<string, boolean>>({});
+async function onStatusChange(
+  status: SystemDept['status'],
+  row: DepartmentRow,
+) {
+  if (row.isCompany) return;
+  statusLoading.value[row.id] = true;
+  try {
+    await SystemDeptApi.update(row.id, {
+      name: row.name,
+      pid: row.pid,
+      remark: row.remark,
+      sortNo: row.sortNo,
+      status,
+    });
+    row.status = status;
+  } finally {
+    statusLoading.value[row.id] = false;
+  }
 }
 
 const [Grid, gridApi] = useVbenVxeGrid({
   gridEvents: {},
   gridOptions: {
-    columns: useColumns(onActionClick, onStatusChange),
+    columns: useColumns(onActionClick),
+    rowConfig: { keyField: 'id' },
     height: 'auto',
     keepSource: true,
     pagerConfig: {
@@ -122,7 +128,11 @@ const [Grid, gridApi] = useVbenVxeGrid({
     proxyConfig: {
       ajax: {
         query: async (_params) => {
-          return await SystemDeptApi.list(selectedSource.value);
+          const [companies, departments] = await Promise.all([
+            SystemDeptApi.companies(),
+            SystemDeptApi.list(),
+          ]);
+          return buildCompanyDepartmentTree(companies, departments);
         },
       },
     },
@@ -133,6 +143,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
       zoom: true,
     },
     treeConfig: {
+      reserve: true,
       parentField: 'pid',
       rowField: 'id',
       transform: false,
@@ -146,13 +157,6 @@ const [Grid, gridApi] = useVbenVxeGrid({
 function refreshGrid() {
   gridApi.query();
 }
-
-async function changeCompany(value?: string) {
-  selectedSource.value = value;
-  await gridApi.query();
-}
-
-void loadCompanies();
 </script>
 <template>
   <Page
@@ -162,15 +166,20 @@ void loadCompanies();
   >
     <FormModal @success="refreshGrid" />
     <Grid class="management-grid" table-title="部门列表">
-      <template #toolbar-tools>
-        <Select
-          v-model:value="selectedSource"
-          allow-clear
-          :options="companyOptions"
-          placeholder="按公司筛选部门"
-          class="company-select"
-          @change="changeCompany"
+      <template #deptStatus="{ row }">
+        <Tag v-if="row.isCompany" color="blue">公司分组</Tag>
+        <Switch
+          v-else
+          :checked="row.status === 1"
+          :loading="statusLoading[row.id]"
+          checked-children="启用"
+          un-checked-children="禁用"
+          @change="(value) => onStatusChange(value ? 1 : 0, row)"
         />
+      </template>
+      <template #toolbar-tools>
+        <Button @click="gridApi.grid.setAllTreeExpand(true)">展开全部</Button>
+        <Button @click="gridApi.grid.setAllTreeExpand(false)">收起全部</Button>
         <Button type="primary" @click="onCreate">
           <Plus class="size-5" />
           {{ $t('ui.actionTitle.create', [$t('system.dept.name')]) }}

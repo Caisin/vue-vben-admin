@@ -1,5 +1,7 @@
 import type { VxeTableGridColumns } from '@vben/plugins/vxe-table';
 
+import type { DepartmentRow } from './company-tree';
+
 import type { VbenFormSchema } from '#/adapter/form';
 import type { OnActionClickFn } from '#/adapter/vxe-table';
 import type { SystemDept } from '#/api/system/dept';
@@ -83,33 +85,27 @@ export function useSchema(): VbenFormSchema[] {
  * @param onActionClick 表格操作按钮点击事件
  */
 export function useColumns(
-  onActionClick?: OnActionClickFn<SystemDept>,
-  onStatusChange?: (
-    status: SystemDept['status'],
-    row: SystemDept,
-  ) => PromiseLike<boolean | undefined>,
-): VxeTableGridColumns<SystemDept> {
+  onActionClick?: OnActionClickFn<DepartmentRow>,
+): VxeTableGridColumns<DepartmentRow> {
   return [
     {
       align: 'left',
       field: 'name',
       fixed: 'left',
-      title: $t('system.dept.deptName'),
+      title: '公司 / 部门',
       treeNode: true,
-      width: 150,
+      minWidth: 300,
     },
     {
-      cellRender: {
-        attrs: { beforeChange: onStatusChange },
-        name: onStatusChange ? 'CellSwitch' : 'CellTag',
-      },
+      slots: { default: 'deptStatus' },
       field: 'status',
       title: $t('system.dept.status'),
       width: 100,
     },
     {
       field: 'createTime',
-      formatter: ({ row }) => Times.formatUnix(row.createTime),
+      formatter: ({ row }) =>
+        row.isCompany ? '—' : Times.formatUnix(row.createTime),
       title: $t('system.dept.createTime'),
       width: 180,
     },
@@ -129,11 +125,13 @@ export function useColumns(
         options: [
           {
             code: 'append',
+            show: (row: DepartmentRow) => !row.isCompany,
             text: '新增下级',
           },
-          'edit', // 默认的编辑按钮
+          { code: 'edit', show: (row: DepartmentRow) => !row.isCompany },
           {
             code: 'delete', // 默认的删除按钮
+            show: (row: DepartmentRow) => !row.isCompany,
             disabled: (row: SystemDept) => {
               return !!(row.children && row.children.length > 0);
             },

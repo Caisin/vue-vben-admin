@@ -9,6 +9,7 @@ import type {
 
 import { computed, nextTick, onMounted, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { RotateCw } from '@vben/icons';
 
@@ -26,7 +27,6 @@ import {
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { OrgSyncApi } from '#/api/auth';
-import { TaskRunApi } from '#/api/task';
 import { displayValue } from '#/management';
 import { useTaskPolling } from '#/task-polling';
 import { Times } from '#/times';
@@ -40,6 +40,7 @@ import {
   useRunFormSchema,
   useUserFormSchema,
 } from './data';
+import CompanyAccess from './modules/company-access.vue';
 import History from './modules/history.vue';
 import PopupModal from './modules/popup-modal.vue';
 
@@ -53,6 +54,8 @@ const userSortFields = [
   'rejoin_count',
 ];
 
+const { hasAccessByRoles } = useAccess();
+const companyAccessOpen = ref(false);
 const activeTab = ref('runs');
 const sources = ref<OrgSyncSource[]>([]);
 const sourcesLoading = ref(false);
@@ -61,6 +64,7 @@ const syncing = ref(false);
 const contactOpen = ref(false);
 const selectedContactUser = ref<OrgUserLink>();
 const syncingUserIds = ref(new Set<string>());
+const pendingTaskIds = new Set<string>();
 
 const sourceOptions = computed(() =>
   sources.value.map((source) => ({
@@ -95,6 +99,14 @@ const [RunGrid, runGridApi] = useVbenVxeGrid<OrgSyncRun>({
             source: selectedSource.value?.code,
             status: formValues.status as OrgSyncStatus | undefined,
           });
+          for (const run of result.items) {
+            const taskId = String(run.task_run_id ?? '');
+            if (run.status !== 'running' && pendingTaskIds.delete(taskId)) {
+              if (run.status === 'succeeded')
+                message.success(`组织同步任务 #${taskId} 已完成`);
+              else message.error(run.error_message || '组织同步失败');
+            }
+          }
           return { items: result.items, total: result.total };
         },
       },
@@ -176,31 +188,21 @@ async function runSync() {
   syncing.value = true;
   try {
     const task = await OrgSyncApi.run({ source: source.code });
+    pendingTaskIds.add(String(task.id));
     message.success(`组织同步执行已提交：#${task.id}`);
-    pollTask(task.id);
-    await reloadActiveGrid();
+    activeTab.value = 'runs';
+    await runGridApi.formApi.setValues({ status: undefined });
+    await runGridApi.reload();
   } finally {
     syncing.value = false;
   }
 }
 
-let pollingTaskId: number | string = '';
 const taskPolling = useTaskPolling({
   delay: 3000,
-  load: () => TaskRunApi.detail(pollingTaskId),
-  accept: async (task) => {
-    if (task.status === 'succeeded')
-      message.success(`组织同步任务 #${task.id} 已完成`);
-    else if (task.status === 'failed')
-      message.error(task.error_message || '组织同步失败');
-    await runGridApi.reload();
-  },
-  done: (task) => !['queued', 'retrying', 'running'].includes(task.status),
+  load: () => runGridApi.query(),
+  accept: () => {},
 });
-function pollTask(taskId: number | string) {
-  pollingTaskId = taskId;
-  taskPolling.start();
-}
 
 function refreshForSource() {
   void reloadActiveGrid();
@@ -236,6 +238,7 @@ async function syncSystemUser(row: OrgUserLink) {
 onMounted(async () => {
   await loadSources();
   refreshForSource();
+  taskPolling.start();
 });
 </script>
 
@@ -280,6 +283,11 @@ onMounted(async () => {
       </Descriptions>
     </PopupModal>
 
+    <CompanyAccess
+      v-if="companyAccessOpen && selectedSource"
+      :source="selectedSource"
+      @close="companyAccessOpen = false"
+    />
     <header class="page-heading">
       <h1>组织同步</h1>
       <Space wrap>
@@ -290,6 +298,13 @@ onMounted(async () => {
           placeholder="组织数据源"
           @change="refreshForSource"
         />
+        <Button
+          v-if="hasAccessByRoles(['admin'])"
+          :disabled="!selectedSource?.code.startsWith('dingtalk:')"
+          @click="companyAccessOpen = true"
+        >
+          公司数据权限
+        </Button>
         <Button
           v-access:code="'org_sync:run'"
           :disabled="!selectedSource"
@@ -310,6 +325,16 @@ onMounted(async () => {
     >
       <TabPane key="runs" tab="同步任务">
         <RunGrid class="management-grid" table-title="同步任务">
+          <template #runSource="{ row }">
+            <div>
+              {{
+                sources.find(
+                  (s) => s.code === `${row.provider}:${row.source_id}`,
+                )?.name || row.source_id
+              }}
+            </div>
+            <div class="muted-summary">{{ row.source_id }}</div>
+          </template>
           <template #runTime="{ row }">
             {{ Times.formatUnix(row.started_at) }}
           </template>

@@ -24,6 +24,7 @@ export interface OrgSyncRequest {
 }
 
 export interface OrgSyncRun {
+  task_run_id?: null | number | string;
   department_created: number;
   department_left: number;
   department_total: number;
@@ -111,7 +112,23 @@ export interface OrgUserSystemSyncResult {
   uid: number | string;
 }
 
+export interface CompanyManager {
+  uid: number | string;
+  name: string;
+}
 export const OrgSyncApi = {
+  companyManagers: (source: string) =>
+    requestClient.get<CompanyManager[]>(
+      `/auth/org-sync/companies/${encodeURIComponent(source)}/managers`,
+    ),
+  grantCompany: (source: string, uid: number | string) =>
+    requestClient.put(
+      `/auth/org-sync/companies/${encodeURIComponent(source)}/managers/${uid}`,
+    ),
+  revokeCompany: (source: string, uid: number | string) =>
+    requestClient.delete(
+      `/auth/org-sync/companies/${encodeURIComponent(source)}/managers/${uid}`,
+    ),
   dingtalk_operators: (appKey: string, params?: DingtalkOperatorQuery) =>
     requestClient.get<Page<DingtalkOperatorOption>>(
       `/auth/dingtalk-operators/${appKey}`,
