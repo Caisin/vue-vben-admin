@@ -2,7 +2,7 @@
 import type { Batch, RunDetail, RunListItem } from '#/api/data-sync';
 
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -29,24 +29,31 @@ import { useTaskPolling } from '#/task-polling';
 
 import { operations, states } from './data';
 import { formatSyncDuration } from './duration';
+import FailureDetail from './failure-detail.vue';
 import ForceStopButton from './force-stop-button.vue';
 import OperationsPanel from './operations-panel.vue';
+import ReconcileButton from './reconcile-button.vue';
 import {
   isSchemaConflict,
   schemaConflictErrors,
   schemaSettingsQuery,
 } from './schema-conflict';
 import StatusOverview from './status-overview.vue';
-import { stopJob } from './sync-control';
+import { startJob, stopJob } from './sync-control';
 
 const selectedJobs = ref<number[]>([]);
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
 const execute = computed(() => hasAccessByCodes(['data-sync:execute']));
 const configure = computed(() => hasAccessByCodes(['data-sync:configure']));
-const status = ref('running');
+const route = useRoute();
+const status = ref(
+  typeof route.query.state === 'string' ? route.query.state : 'running',
+);
 const operation = ref<string>();
-const keyword = ref('');
+const keyword = ref(
+  typeof route.query.keyword === 'string' ? route.query.keyword : '',
+);
 const auto = ref(true);
 const errorText = ref('');
 const rows = ref<RunListItem[]>([]);
@@ -70,7 +77,7 @@ const columns = [
   { title: '操作', key: 'operation', width: 110 },
   { title: '状态', key: 'state', width: 100 },
   { title: '同步耗时', key: 'duration', width: 130 },
-  { title: '读取 / 写入', key: 'rows', width: 150 },
+  { title: '本次同步总数', key: 'rows', width: 160 },
   { title: '数据量', key: 'bytes', width: 100 },
   { title: '开始时间', key: 'started', width: 180 },
   { title: '失败原因', key: 'error', width: 280 },
@@ -106,6 +113,7 @@ async function load() {
 }
 const polling = useTaskPolling({
   delay: () =>
+    status.value === 'running' ||
     rows.value.some((r) => ['cancelling', 'running'].includes(r.state))
       ? 3000
       : 30_000,
@@ -156,7 +164,22 @@ async function batches() {
       detailError.value = requestErrorMessage(error, '批次加载失败');
   }
 }
-async function cancel(row: RunListItem) {
+async function restart(row: RunListItem) {
+  Modal.confirm({
+    title: '重新启动同步？',
+    content: `${row.target_database}.${row.target_table}：保留已取消记录 #${row.id}，创建新的运行继续同步。${row.database_id ? '必要时恢复所属全库调度，本次仅同步本表。' : ''}`,
+    okText: '重新启动',
+    cancelText: '取消',
+    onOk: async () => {
+      const task = await startJob({ id: row.job_id });
+      message.success(`新运行已提交 #${task.id}，原取消记录保留`);
+      status.value = 'running';
+      await load();
+      polling.start();
+    },
+  });
+}
+function cancel(row: RunListItem) {
   Modal.confirm({
     title: '停止本表同步？',
     okText: '停止',
@@ -265,21 +288,25 @@ onMounted(() => polling.start());
           operations[record.operation] ?? record.operation
         }}</span>
         <div v-else-if="column.key === 'error'">
-          <span>{{
+          {{
             schemaConflictErrors[record.error_code ?? ''] ?? record.error_code
-          }}</span>
+          }}
           <div
-            v-if="isSchemaConflict(record.error_code)"
-            class="text-xs text-muted-foreground"
+            v-if="record.error_code && record.message !== record.error_code"
+            class="whitespace-pre-wrap break-all text-xs"
           >
-            {{ record.error_code }}
+            {{ record.message }}
           </div>
         </div>
         <span v-else-if="column.key === 'duration'">{{
           formatSyncDuration(record)
         }}</span>
-        <span v-else-if="column.key === 'rows'">{{ Number(record.read_rows).toLocaleString() }} /
-          {{ Number(record.written_rows).toLocaleString() }}</span>
+        <Tooltip
+          v-else-if="column.key === 'rows'"
+          title="本轮所有来源、所有批次累计确认写入的行数；执行中持续更新"
+        >
+          <span>{{ Number(record.written_rows).toLocaleString() }} 条</span>
+        </Tooltip>
         <span v-else-if="column.key === 'bytes'">{{ (Number(record.bytes) / 1048576).toFixed(2) }} MiB</span>
         <span v-else-if="column.key === 'started'">{{
           new Date(Number(record.started_at) * 1000).toLocaleString()
@@ -302,7 +329,26 @@ onMounted(() => polling.start());
                 ? '处理冲突'
                 : '配置'
             }}
-</Button><Button
+          </Button>
+          <Button
+            v-if="
+              execute &&
+              record.operation === 'sync' &&
+              record.state === 'cancelled'
+            "
+            size="small"
+            @click="restart(record)"
+          >
+            重新启动
+          </Button>
+          <ReconcileButton
+            v-if="record.state === 'blocked'"
+            :id="record.job_id"
+            :database-id="record.database_id"
+            compact
+            @finished="load"
+          />
+          <Button
             v-if="execute && record.state === 'running'"
             size="small"
             danger
@@ -312,10 +358,7 @@ onMounted(() => polling.start());
             停止本表
           </Button>
           <Button
-            v-if="
-              execute &&
-              ['running', 'cancelling', 'blocked'].includes(record.state)
-            "
+            v-if="execute && ['running', 'cancelling'].includes(record.state)"
             danger
             size="small"
             @click="forceStop(record)"
@@ -349,13 +392,50 @@ onMounted(() => polling.start());
       "
     >
       <template v-if="detail">
-        <StatusOverview :target="{ kind: 'job', id: detail.run.job_id }" />
+        <FailureDetail
+          :code="detail.run.error_code"
+          :message="detail.run.message"
+        />
+        <StatusOverview
+          :target="{ kind: 'job', id: detail.run.job_id }"
+          @finished="load"
+        />
+        <Button
+          v-if="execute"
+          class="mb-3"
+          @click="
+            router.push({
+              path: '/data-sync/jobs',
+              query: { job_id: detail.run.job_id },
+            })
+          "
+        >
+          进入任务恢复同步
+        </Button>
         <OperationsPanel
           :targets="[{ kind: 'job', id: detail.run.job_id }]"
           :history="false"
           @finished="load"
         />
-        <p>同步耗时：{{ formatSyncDuration(detail.run) }}</p>
+        <p>
+          本次同步总数：{{
+            Number(detail.run.written_rows).toLocaleString()
+          }}
+          条；累计读取：{{
+            Number(detail.run.read_rows).toLocaleString()
+          }}
+          条；同步耗时：{{ formatSyncDuration(detail.run) }}
+        </p>
+        <p
+          v-if="
+            detail.run.operation === 'sync' &&
+            detail.run.state === 'succeeded' &&
+            !detail.run.read_rows &&
+            !detail.run.written_rows
+          "
+        >
+          无新增数据：每表保留一条零数据记录，时间为最近一次同步。
+        </p>
         <Alert v-if="detailError" type="error" :message="detailError" />
         <Button
           :loading="detailLoading"
@@ -390,6 +470,7 @@ onMounted(() => polling.start());
             { title: '状态', dataIndex: 'state' },
             { title: '读取行数', dataIndex: 'read_rows' },
             { title: '错误', dataIndex: 'error_code' },
+            { title: '目标查询编号', dataIndex: 'query_id' },
           ]"
           @change="
             (p) => {

@@ -63,6 +63,7 @@ export interface SyncConfig {
   sources: Binding[];
   limits: {
     id_span: number;
+    id_concurrency?: number;
     max_bytes: number;
     max_rows: number;
     overlap_seconds: number;
@@ -140,6 +141,7 @@ export interface JobDetail {
   checkpoints: Checkpoint[];
 }
 export interface SyncRun {
+  message?: string;
   id: number;
   job_id: number;
   task_run_id: number;

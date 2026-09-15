@@ -1,6 +1,8 @@
 import type { Job, RunListItem } from '#/api/data-sync';
 
 export const schemaConflictErrors: Record<string, string> = {
+  data_sync_activation_interrupted: '建表执行已中止，需要重新检查并批准',
+
   data_sync_source_schema_drift: '源表结构与已启用快照不一致',
   data_sync_target_schema_drift: '目标表结构与已启用计划不一致',
   data_sync_target_schema_mismatch: '目标表结构与待启用计划不一致',

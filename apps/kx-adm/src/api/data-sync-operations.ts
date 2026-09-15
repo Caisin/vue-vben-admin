@@ -17,6 +17,7 @@ export interface SyncSummary extends SyncTarget {
   database_id?: null | number;
   plan_hash?: null | string;
   pending_batches: number;
+  prepared_batches?: number;
   last_error?: null | string;
   actions: { action: string; allowed: boolean; reason?: null | string }[];
   stamp: string;

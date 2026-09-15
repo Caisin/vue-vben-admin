@@ -6,6 +6,8 @@ test.use({ headless: true });
 test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
   const queries: URLSearchParams[] = [];
   const cancellations: string[] = [];
+  let restarted = false;
+  const restartRequests: string[] = [];
   await page
     .context()
     .route('**/{auth,notify,param,data-sync}/**', async (route) => {
@@ -69,7 +71,40 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
         ];
       else if (path === '/notify/inbox')
         result = { items: [], unread_count: 0 };
-      else if (path === '/data-sync/jobs/2/state') {
+      else if (
+        path === '/data-sync/jobs/2' &&
+        route.request().method() === 'GET'
+      )
+        result = {
+          job: {
+            id: 2,
+            database_id: 99,
+            target_table: 'orders',
+            state: 'paused',
+            schedule_paused: true,
+            version: 7,
+            active_run_id: null,
+          },
+        };
+      else if (
+        path === '/data-sync/databases/99' &&
+        route.request().method() === 'GET'
+      )
+        result = {
+          id: 99,
+          state: 'paused',
+          schedule_paused: true,
+          version: 8,
+          active_task_id: null,
+        };
+      else if (path === '/data-sync/databases/99/state') {
+        restartRequests.push(path);
+        result = { id: 99, state: 'ready', schedule_paused: false, version: 9 };
+      } else if (path === '/data-sync/databases/99/sync') {
+        restartRequests.push(path);
+        restarted = true;
+        result = { id: 501, status: 'running' };
+      } else if (path === '/data-sync/jobs/2/state') {
         cancellations.push(path);
         result = {
           id: 2,
@@ -83,7 +118,7 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
         result = {
           items: [
             {
-              id: 1,
+              id: restarted && query.get('state') === 'running' ? 2 : 1,
               job_id: 2,
               database_id: 99,
               job_name: '订单汇总',
@@ -114,7 +149,13 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
             id: 1,
             started_at: 1_788_700_000,
             finished_at: 1_788_700_065,
-            state: 'succeeded',
+            state: 'failed',
+            job_id: 2,
+            read_rows: 12_000,
+            written_rows: 10_000,
+            error_code: 'data_sync_databend_write_failed',
+            message:
+              'databend_write_failed; server_code=1006; query_id=query-fixture-123',
           },
           sources: [
             {
@@ -133,6 +174,7 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
           items: [
             {
               id: 'batch-test',
+              query_id: 'query-fixture-123',
               binding_id: 7,
               seq: 1,
               state: 'committed',
@@ -161,6 +203,12 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
   await expect(page).toHaveURL(/data-sync\/runs/, { timeout: 30_000 });
   await expect(page.getByText('订单汇总', { exact: true })).toBeVisible();
   expect(queries[0]?.get('state')).toBe('running');
+  await expect(
+    page.getByRole('columnheader', { name: '本次同步总数', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: '10,000 条', exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', { name: '停止全库', exact: true }),
   ).toHaveCount(0);
@@ -200,7 +248,19 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
   await page.getByRole('button', { name: /明\s*细/, exact: true }).click();
   const modal = page.getByRole('dialog', { name: '运行明细' });
   await expect(
-    modal.getByText('同步耗时：1m5s', { exact: true }),
+    modal.getByText(
+      'databend_write_failed; server_code=1006; query_id=query-fixture-123',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    modal.getByText('query-fixture-123', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    modal.getByText(
+      '本次同步总数：10,000 条；累计读取：12,000 条；同步耗时：1m5s',
+      { exact: true },
+    ),
   ).toBeVisible();
   await expect(modal.getByText('batch-test', { exact: true })).toBeVisible();
   await expect(page.getByText('登录成功', { exact: true })).toBeHidden();
@@ -221,4 +281,17 @@ test('统一运行监控筛选、分页与详情', async ({ page }, info) => {
     path: info.outputPath('monitor-mobile.png'),
     fullPage: true,
   });
+  await modal.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.getByRole('tab', { name: '已取消', exact: true }).click();
+  await page.getByRole('button', { name: '重新启动', exact: true }).click();
+  const restart = page.getByRole('dialog', { name: '重新启动同步？' });
+  await expect(restart).toContainText('保留已取消记录 #1');
+  await restart.getByRole('button', { name: '重新启动', exact: true }).click();
+  await expect
+    .poll(() => restartRequests)
+    .toEqual(['/data-sync/databases/99/state', '/data-sync/databases/99/sync']);
+  await expect(page.locator('tr[data-row-key="2"]')).toBeVisible();
+  await page.getByRole('tab', { name: '已取消', exact: true }).click();
+  await expect(page.locator('tr[data-row-key="1"]')).toBeVisible();
 });

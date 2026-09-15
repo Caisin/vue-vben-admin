@@ -10,7 +10,9 @@ import { requestErrorMessage } from '#/request-errors';
 
 import { states } from './data';
 import { actionLabels, recoveryAdvice } from './operation-data';
+import ReconcileButton from './reconcile-button.vue';
 const props = defineProps<{ target: SyncTarget }>();
+const emit = defineEmits<{ finished: [] }>();
 const data = ref<SyncSummary>();
 const errorText = ref('');
 const busy = ref(false);
@@ -49,7 +51,7 @@ watch(
     <template v-if="data">
       <Space wrap>
         <Tag>配置：{{ states[data.configuration] || data.configuration }}</Tag><Tag>运行：{{ states[data.state] || data.state }}</Tag><Tag>{{ data.schedule_paused ? '调度已暂停' : '调度未暂停' }}</Tag><Tag v-if="data.pending_batches" color="warning">
-          {{ data.pending_batches }} 个批次待对账
+          {{ data.pending_batches }} 个未完成批次
         </Tag>
       </Space>
       <Alert
@@ -67,8 +69,27 @@ watch(
         }}
       </div>
       <div v-if="data.pending_batches" class="mt-2 text-sm">
-        先核对回执，再恢复同步；强制停止不会跳过未知提交。
+        {{
+          ['ready', 'paused'].includes(data.state) &&
+          !data.active_id &&
+          data.pending_batches === data.prepared_batches
+            ? '已准备批次可继续同步；如调度暂停，请先恢复调度。'
+            : '先核对回执，再恢复同步；强制停止不会跳过未知提交。'
+        }}
       </div>
+      <ReconcileButton
+        v-if="
+          data.state === 'blocked' ||
+          data.pending_batches > (data.prepared_batches ?? 0)
+        "
+        :id="target.id"
+        :database="target.kind === 'database'"
+        :database-id="data.database_id"
+        @finished="
+          load();
+          emit('finished');
+        "
+      />
       <details class="mt-2">
         <summary>查看操作限制</summary>
         <p v-for="a in data.actions.filter((a) => !a.allowed)" :key="a.action">

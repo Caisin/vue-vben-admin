@@ -7,6 +7,7 @@ import type {
 } from '#/api/official-sites';
 
 import { computed, onMounted, ref, toRaw } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -34,6 +35,7 @@ import ImageField from './image-field.vue';
 import { layouts, themes } from './style-options';
 
 const { hasAccessByCodes } = useAccess();
+const route = useRoute();
 const manage = computed(() => hasAccessByCodes(['official-site:manage']));
 const canPreview = computed(() => hasAccessByCodes(['official-site:preview']));
 const canPublish = computed(() => hasAccessByCodes(['official-site:publish']));
@@ -313,7 +315,18 @@ async function viewBuild(value: SiteBuild) {
   progressOpen.value = true;
   if (buildActive.value) polling.start();
 }
-onMounted(load);
+onMounted(async () => {
+  await load();
+  if (route.query.draft === '1' && typeof route.query.theme === 'string') {
+    await edit();
+    chooseTheme(route.query.theme as SiteConfig['theme']);
+    tab.value = 'style';
+    if (route.query.preview === '1' && canPreview.value) {
+      const draft = await save();
+      if (draft) await start('preview', draft);
+    }
+  }
+});
 </script>
 <template>
   <Page

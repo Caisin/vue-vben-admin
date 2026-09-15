@@ -27,6 +27,30 @@ function valid() {
   return form;
 }
 describe('同步配置', () => {
+  it('默认每批十万条，手工值在重载配置后保留', () => {
+    const original = valid();
+    expect(original.config.limits.max_rows).toBe(100_000);
+    expect(original.config.limits.id_span).toBe(100_000);
+    expect(original.config.limits.id_concurrency).toBe(4);
+    original.config.limits.id_concurrency = 6;
+    original.config.limits.max_rows = 250_000;
+    const restored = jobForm({
+      job: {
+        ...original,
+        id: 1,
+        code: 'job',
+        state: 'ready',
+        version: 1,
+        schedule_paused: false,
+      },
+      draft: { id: 1, revision_no: 1, state: 'draft', config: original.config },
+      active: null,
+      instances: [],
+      checkpoints: [],
+    });
+    expect(restored.config.limits.max_rows).toBe(250_000);
+    expect(restored.config.limits.id_concurrency).toBe(6);
+  });
   it('新建目标默认允许不加密，已保存 TLS 配置保持不变', () => {
     expect(jobForm().allow_insecure).toBe(true);
     const original = valid();

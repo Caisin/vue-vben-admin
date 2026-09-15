@@ -40,10 +40,12 @@ import { useTaskPolling } from '#/task-polling';
 import { operations, states } from './data';
 import DatabasePanel from './database-panel.vue';
 import { formatSyncDuration } from './duration';
+import FailureDetail from './failure-detail.vue';
 import ForceStopButton from './force-stop-button.vue';
 import InstanceEditor from './instance-editor.vue';
 import JobEditor from './job-editor.vue';
 import OperationsPanel from './operations-panel.vue';
+import ReconcileButton from './reconcile-button.vue';
 import {
   isSchemaConflict,
   schemaConflictErrors,
@@ -51,6 +53,7 @@ import {
 } from './schema-conflict';
 import SqlPreview from './sql-preview.vue';
 import StatusOverview from './status-overview.vue';
+import { syncActions } from './sync-actions';
 import { startDatabase, startJob, stopDatabase, stopJob } from './sync-control';
 
 const selectedJobs = ref<number[]>([]);
@@ -119,8 +122,9 @@ const runColumns = [
   { title: '状态', key: 'state' },
   { title: '同步耗时', key: 'duration', width: 130 },
   { title: '读取行数', dataIndex: 'read_rows' },
-  { title: '写入行数', dataIndex: 'written_rows' },
+  { title: '本次同步总数', dataIndex: 'written_rows' },
   { title: '错误', dataIndex: 'error_code' },
+  { title: '诊断', dataIndex: 'message' },
 ];
 const sourceColumns = [
   { title: '源实例', key: 'instance' },
@@ -638,7 +642,10 @@ onMounted(async () => {
               >
                 处理冲突
               </Button>
-              <Tooltip v-if="execute" title="启动本表同步">
+              <Tooltip
+                v-if="execute && syncActions(record).start"
+                title="启动本表同步"
+              >
                 <Button
                   type="text"
                   aria-label="启动本表同步"
@@ -653,7 +660,10 @@ onMounted(async () => {
                   <Play class="size-4" />
                 </Button>
               </Tooltip>
-              <Tooltip v-if="execute" title="停止本表同步">
+              <Tooltip
+                v-if="execute && syncActions(record).stop"
+                title="停止本表同步"
+              >
                 <Button
                   type="text"
                   danger
@@ -669,7 +679,16 @@ onMounted(async () => {
                   <Square class="size-4" />
                 </Button>
               </Tooltip>
+              <ReconcileButton
+                v-if="record.state === 'blocked'"
+                :id="record.id"
+                :database-id="record.database_id"
+                compact
+                :disabled="actionBusy"
+                @finished="forceStopped"
+              />
               <ForceStopButton
+                :hidden="!syncActions(record).forceStop"
                 :id="record.id"
                 :expected-id="record.active_run_id"
                 :target="`${record.target_database}.${record.target_table}`"
@@ -678,7 +697,11 @@ onMounted(async () => {
                 @finished="forceStopped"
               />
               <Dropdown
-                v-if="execute && record.database_id"
+                v-if="
+                  execute &&
+                  record.database_id &&
+                  !syncActions(record).reconcile
+                "
                 :trigger="['click']"
                 :menu="{
                   items: [
@@ -698,7 +721,15 @@ onMounted(async () => {
                   <Database class="size-4" />
                 </Button>
               </Dropdown>
-              <Tooltip v-if="configure && !record.database_id" title="编辑配置">
+              <Tooltip
+                v-if="
+                  configure &&
+                  !record.database_id &&
+                  !record.active_run_id &&
+                  !['blocked', 'superseded'].includes(record.state)
+                "
+                title="编辑配置"
+              >
                 <Button
                   type="text"
                   :disabled="!!record.active_run_id"
@@ -765,7 +796,10 @@ onMounted(async () => {
       "
     >
       <template v-if="detail">
-        <StatusOverview :target="{ kind: 'job', id: detail.job.id }" />
+        <StatusOverview
+          :target="{ kind: 'job', id: detail.job.id }"
+          @finished="forceStopped"
+        />
         <OperationsPanel
           :targets="[{ kind: 'job', id: detail.job.id }]"
           :history="false"
@@ -777,14 +811,24 @@ onMounted(async () => {
             {{ detail.job.schedule_paused ? ' / 调度已停止' : '' }}
           </Tag>
           <Button
-            v-if="configure && !detail.job.database_id"
+            v-if="
+              configure &&
+              !detail.job.database_id &&
+              !detail.job.active_run_id &&
+              !['blocked', 'superseded'].includes(detail.job.state)
+            "
             :disabled="!!detail.job.active_run_id"
             @click="edit(detail.job)"
           >
             编辑配置
           </Button>
           <Button
-            v-if="configure && !detail.job.database_id"
+            v-if="
+              configure &&
+              !detail.job.database_id &&
+              !detail.job.active_run_id &&
+              !['blocked', 'superseded'].includes(detail.job.state)
+            "
             :disabled="!!detail.job.active_run_id"
             :loading="actionBusy"
             @click="dispatch('inspect')"
@@ -792,7 +836,12 @@ onMounted(async () => {
             检查结构
           </Button>
           <Button
-            v-if="configure && !detail.job.database_id"
+            v-if="
+              configure &&
+              !detail.job.database_id &&
+              !detail.job.active_run_id &&
+              !['blocked', 'superseded'].includes(detail.job.state)
+            "
             :disabled="
               detail.draft?.state !== 'validated' || !!detail.job.active_run_id
             "
@@ -801,7 +850,7 @@ onMounted(async () => {
             确认建表并启用
           </Button>
           <Button
-            v-if="execute"
+            v-if="execute && syncActions(detail.job).start"
             type="primary"
             :disabled="
               !['ready', 'paused'].includes(detail.job.state) ||
@@ -813,7 +862,7 @@ onMounted(async () => {
             <Play class="size-4" />启动本表同步
           </Button>
           <Button
-            v-if="execute"
+            v-if="execute && syncActions(detail.job).stop"
             danger
             :disabled="
               (detail.job.schedule_paused && !detail.job.active_run_id) ||
@@ -823,17 +872,8 @@ onMounted(async () => {
           >
             <Square class="size-4" />停止本表同步
           </Button>
-          <Button
-            v-if="execute && !detail.job.database_id"
-            :disabled="
-              !detail.job.active_revision_id && !detail.job.draft_revision_id
-            "
-            :loading="actionBusy"
-            @click="dispatch('reconcile')"
-          >
-            回执对账
-          </Button>
           <ForceStopButton
+            :hidden="!syncActions(detail.job).forceStop"
             :id="detail.job.id"
             :expected-id="detail.job.active_run_id"
             :target="`${detail.job.target_database}.${detail.job.target_table}`"
@@ -841,7 +881,11 @@ onMounted(async () => {
             @finished="forceStopped"
           />
           <Button
-            v-if="configure && !detail.job.database_id"
+            v-if="
+              configure &&
+              !detail.job.database_id &&
+              syncActions(detail.job).start
+            "
             :disabled="
               !!detail.job.active_run_id || !detail.job.active_revision_id
             "
@@ -861,6 +905,17 @@ onMounted(async () => {
           show-icon
           class="mb-4"
         />
+        <Button
+          class="mb-3"
+          @click="
+            router.push({
+              path: '/data-sync/runs',
+              query: { keyword: detail.job.target_table, state: '' },
+            })
+          "
+        >
+          查看本表运行与失败原因
+        </Button>
         <Tabs>
           <TabPane key="progress" tab="水位与运行">
             <Table
@@ -1017,12 +1072,9 @@ onMounted(async () => {
             停止本表同步
           </Button>
         </div>
-        <Alert
-          v-if="runDetail.run.error_code"
-          type="error"
-          :message="runDetail.run.error_code"
-          show-icon
-          class="mb-4"
+        <FailureDetail
+          :code="runDetail.run.error_code"
+          :message="runDetail.run.message"
         />
         <Table
           :columns="sourceColumns"

@@ -6,7 +6,7 @@ import type {
   SyncTarget,
 } from '#/api/data-sync-operations';
 
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -95,7 +95,7 @@ const denied = computed(() => [
         '当前状态不允许操作',
     })),
 ]);
-function prepare(targets = props.targets, chosenAction?: string) {
+async function prepare(targets = props.targets, chosenAction?: string) {
   polling.stop();
   if (chosenAction) action.value = chosenAction;
   generation++;
@@ -108,6 +108,10 @@ function prepare(targets = props.targets, chosenAction?: string) {
   operation.value = undefined;
   errorText.value = '';
   open.value = true;
+  if (chosenAction) {
+    await nextTick();
+    await preflight();
+  }
 }
 watch(action, () => {
   generation++;
@@ -472,11 +476,13 @@ defineExpose({ prepare, view });
       <Alert
         type="info"
         :message="
-          action === 'sync'
-            ? '只同步一次，不恢复已暂停的调度；已暂停对象需先恢复。'
-            : action === 'force_stop'
-              ? '强制停止将暂停调度并撤销发布权，未确认批次保留待对账。'
-              : '只执行选定动作；确认建表需要已检查的计划，结构变化后必须重新确认。'
+          action === 'reconcile'
+            ? '核对所选对象的未完成批次回执；托管表通过所属全库处理。对账不会自动启动同步；已暂停的调度保持暂停，对账成功后可点击启动同步。'
+            : action === 'sync'
+              ? '只同步一次，不恢复已暂停的调度；已暂停对象需先恢复。'
+              : action === 'force_stop'
+                ? '强制停止将暂停调度并撤销发布权，未确认批次保留待对账。'
+                : '只执行选定动作；确认建表需要已检查的计划，结构变化后必须重新确认。'
         "
         class="mb-3"
       />
@@ -496,7 +502,7 @@ defineExpose({ prepare, view });
           { title: '对象', dataIndex: 'name' },
           { title: '目标', dataIndex: 'target' },
           { title: '状态', dataIndex: 'state' },
-          { title: '待对账', dataIndex: 'pending_batches' },
+          { title: '未完成批次', dataIndex: 'pending_batches' },
           { title: '预检结果', key: 'reason' },
         ]"
       >

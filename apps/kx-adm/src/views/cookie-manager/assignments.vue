@@ -15,6 +15,7 @@ import {
   Input,
   message,
   Popconfirm,
+  Select,
   Space,
   Table,
   TabPane,
@@ -35,6 +36,7 @@ const canAssign = computed(() =>
 );
 const canManageScope = computed(() => hasAccessByRoles(['admin']));
 const scopeManager = ref('');
+const scopeManagerOptions = ref<Array<{ label: string; value: string }>>([]);
 const scopeUsers = ref<string[]>([]);
 const scopeTree = ref<any[]>([]);
 const scopeVersion = ref<Id>();
@@ -165,6 +167,14 @@ async function searchUsers() {
   } finally {
     if (request === userGeneration) userLoading.value = false;
   }
+}
+
+async function loadScopeManagers() {
+  const result = await CookieApi.candidates({ page: 1, size: 1000 });
+  scopeManagerOptions.value = result.items.map((user) => ({
+    label: `${user.name}（${user.uid}）`,
+    value: String(user.uid),
+  }));
 }
 
 async function loadCompanyDepartments() {
@@ -307,7 +317,7 @@ watch(
   },
 );
 onMounted(async () => {
-  await searchSites();
+  await Promise.all([searchSites(), loadScopeManagers()]);
   const id =
     typeof route.query.site_id === 'string'
       ? route.query.site_id
@@ -324,10 +334,14 @@ onMounted(async () => {
         选择负责人后，在公司、部门和成员组织树中勾选可分配人员。
       </p>
       <Space wrap>
-        <Input
+        <Select
           v-model:value="scopeManager"
+          :options="scopeManagerOptions"
+          show-search
+          option-filter-prop="label"
           :disabled="scopeLoading"
-          placeholder="负责人 UID"
+          placeholder="选择负责人"
+          class="min-w-[260px]"
         />
         <TreeSelect
           v-model:value="scopeUsers"

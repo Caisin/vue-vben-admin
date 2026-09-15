@@ -12,6 +12,8 @@ import { DatabaseSyncApi } from '#/api/data-sync-database';
 import { requestErrorMessage } from '#/request-errors';
 import { useTaskPolling } from '#/task-polling';
 
+import ReconcileButton from './reconcile-button.vue';
+
 const props = defineProps<{
   id: number;
   expectedId?: null | number;
@@ -27,7 +29,7 @@ const allowed = computed(() => hasAccessByCodes(['data-sync:execute']));
 const open = ref(false);
 const sending = ref(false);
 const task = ref<TaskRun>();
-const error = ref('');
+const errorText = ref('');
 const active = computed(
   () =>
     task.value && ['queued', 'retrying', 'running'].includes(task.value.status),
@@ -57,7 +59,7 @@ const polling = useTaskPolling({
   },
   accept: (value) => {
     task.value = value;
-    error.value = '';
+    errorText.value = '';
     if (
       !['queued', 'retrying', 'running'].includes(value.status) &&
       completed !== value.id
@@ -68,7 +70,10 @@ const polling = useTaskPolling({
   },
   done: (value) => !['queued', 'retrying', 'running'].includes(value.status),
   onError: (value) => {
-    error.value = requestErrorMessage(value, '强停进度暂时不可用，正在重试');
+    errorText.value = requestErrorMessage(
+      value,
+      '强停进度暂时不可用，正在重试',
+    );
   },
 });
 watch(
@@ -80,7 +85,7 @@ watch(
   },
 );
 watch(open, (value) => {
-  if (value && active.value) polling.start();
+  if (value && task.value) polling.start();
   else if (!value) polling.stop();
 });
 function confirm() {
@@ -93,7 +98,7 @@ function confirm() {
   if (!expected) return;
   Modal.confirm({
     title: props.database ? '强制停止全库同步？' : '强制停止本表同步？',
-    content: `${props.target}：撤销本轮后续发布权并暂停调度。已提交数据保留，未确认批次保留待对账；正在执行的外部调用可能需要等待退出。${props.database ? '' : '不会取消其它表的共享 worker。'}`,
+    content: `${props.target}：立即中止本轮执行并暂停后续调度。已提交数据保留，未确认批次保留待对账。${props.database ? '' : '不会取消其它表的共享 worker。'}`,
     okText: '强制停止',
     okType: 'danger',
     cancelText: '取消',
@@ -104,7 +109,14 @@ function confirm() {
         task.value = props.database
           ? await DatabaseSyncApi.forceStop(props.id, expected)
           : await DataSyncApi.forceStop(props.id, expected);
-        error.value = '';
+        errorText.value = '';
+        if (open.value) polling.start();
+        else open.value = true;
+      } catch (error) {
+        errorText.value = requestErrorMessage(
+          error,
+          '强制停止提交失败，请刷新状态后重试',
+        );
         open.value = true;
       } finally {
         sending.value = false;
@@ -133,7 +145,7 @@ defineExpose({ confirm });
     :z-index="2500"
   >
     <p>{{ target }}</p>
-    <Alert v-if="error" type="error" :message="error" show-icon />
+    <Alert v-if="errorText" type="error" :message="errorText" show-icon />
     <template v-if="task">
       <p>任务 #{{ task.id }}</p>
       <Spin v-if="active" size="small" />
@@ -160,9 +172,24 @@ defineExpose({ confirm });
         "
         show-icon
       />
+      <Button
+        v-if="task && !active && !needsReconcile && task.status !== 'succeeded'"
+        @click="confirm"
+      >
+        重新提交强制停止
+      </Button>
       <p v-if="needsReconcile">
-        请在同步配置中执行“回执对账”，核实批次后再启动同步。
+        本次同步已停止。未确认批次保留待对账，对账成功后再恢复调度并继续同步。
       </p>
+      <ReconcileButton
+        v-if="needsReconcile"
+        :id="id"
+        :database="database"
+        @finished="
+          open = false;
+          emit('finished');
+        "
+      />
     </template>
   </Modal>
 </template>

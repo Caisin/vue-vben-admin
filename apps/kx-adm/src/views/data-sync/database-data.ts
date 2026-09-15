@@ -8,6 +8,8 @@ import { jobForm, validateForm } from './data';
 import { schemaConflictErrors } from './schema-conflict';
 
 export const databaseErrors: Record<string, string> = {
+  data_sync_table_plan_not_activated: '本表配置已变更但尚未启用，请检查结构并确认启用；仅调整批量或并发参数可直接保存生效',
+
   ...schemaConflictErrors,
   data_sync_database_no_ready_tables:
     '没有已启用且配置未变的表，请先检查并批准需要同步的表',

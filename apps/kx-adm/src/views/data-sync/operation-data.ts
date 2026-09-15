@@ -20,6 +20,8 @@ export const operationStates: Record<string, string> = {
   cancelled: '已取消',
 };
 export const recoveryAdvice: Record<string, string> = {
+  data_sync_table_plan_not_activated: '逐表配置尚未启用，请检查结构并确认启用后重试。',
+
   data_sync_preflight_stale: '配置或状态已变化。重新预检并确认，不沿用旧计划。',
   data_sync_action_unavailable: '当前状态不允许此操作，请重新预检查看原因。',
   data_sync_operation_forbidden: '权限已变化，请联系管理员确认操作权限。',

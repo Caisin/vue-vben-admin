@@ -249,7 +249,13 @@ function addSource() {
       <Button @click="addSource"><Plus class="size-4" />添加源绑定</Button>
       <h3>读取与增量策略</h3>
       <div class="form-grid">
-        <label>ID 区间跨度<InputNumber
+        <label v-if="['id_append', 'id_and_time'].includes(form.config.mode)">同表 ID 拉取并发数<InputNumber
+            v-model:value="form.config.limits.id_concurrency"
+            :precision="0"
+            :min="1"
+            :max="8"
+        /></label>
+        <label v-if="['id_append', 'id_and_time'].includes(form.config.mode)">ID 区间跨度<InputNumber
             v-model:value="form.config.limits.id_span"
             :min="1"
             :max="1000000"
@@ -257,14 +263,14 @@ function addSource() {
         <label>每批最多行数<InputNumber
             v-model:value="form.config.limits.max_rows"
             :min="1"
-            :max="10000"
+            :max="1000000"
         /></label>
         <label>每批字节上限<InputNumber
             v-model:value="form.config.limits.max_bytes"
             :min="1024"
             :max="67108864"
         /></label>
-        <label>并发源数<InputNumber
+        <label>源实例并发数<InputNumber
             v-model:value="form.config.limits.source_concurrency"
             :min="1"
             :max="8"

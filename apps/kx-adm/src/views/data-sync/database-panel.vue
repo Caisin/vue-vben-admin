@@ -8,7 +8,7 @@ import type {
 import type { TaskRun } from '#/api/task/run';
 
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { createIconifyIcon, Plus } from '@vben/icons';
 
@@ -32,9 +32,10 @@ import { DataSyncApi } from '#/api/data-sync';
 import { DatabaseSyncApi } from '#/api/data-sync-database';
 import { StorageConfigApi } from '#/api/storage/config';
 import { DataSourceApi } from '#/api/system/data-source';
+import { requestErrorMessage } from '#/request-errors';
 import { useTaskPolling } from '#/task-polling';
 
-import { setStrategy, states, strategyOptions } from './data';
+import { jobForm, setStrategy, states, strategyOptions } from './data';
 import {
   databaseErrors,
   databaseErrorText,
@@ -48,9 +49,11 @@ import { formatSyncDuration } from './duration';
 import ForceStopButton from './force-stop-button.vue';
 import MetadataSelect from './metadata-select.vue';
 import OperationsPanel from './operations-panel.vue';
+import ReconcileButton from './reconcile-button.vue';
 import SourceFields from './source-fields.vue';
 import StatusOverview from './status-overview.vue';
 import StrategyFields from './strategy-fields.vue';
+import { syncActions } from './sync-actions';
 import { startDatabase, stopDatabase } from './sync-control';
 import TableFrequency from './table-frequency.vue';
 import WarehouseSelect from './warehouse-select.vue';
@@ -64,6 +67,7 @@ const emit = defineEmits<{ job: [Job] }>();
 
 const selectedDatabases = ref<number[]>([]);
 const route = useRoute();
+const router = useRouter();
 const Refresh = createIconifyIcon('lucide:refresh-cw');
 const Trash = createIconifyIcon('lucide:trash-2');
 const CheckCheck = createIconifyIcon('lucide:check-check');
@@ -505,6 +509,10 @@ async function editTable(table: DatabaseTable) {
   editingError.value = '';
   editingIndex.value = form.value.tables.indexOf(table);
   editing.value = copy(table);
+  editing.value.config.limits = {
+    ...jobForm().config.limits,
+    ...editing.value.config.limits,
+  };
   separatedTables.value = [];
   activeSourceCodes.value = null;
   const current = editing.value;
@@ -603,6 +611,10 @@ async function linkJob(value: string) {
         ),
     );
     table.config = copy(config);
+    table.config.limits = {
+      ...jobForm().config.limits,
+      ...table.config.limits,
+    };
     table.config.sources.push(...extra);
     activeSourceCodes.value =
       detail.active?.config.sources.map((source) => source.instance_code) ?? [];
@@ -806,6 +818,9 @@ const polling = useTaskPolling({
     ]);
     return { query, id, pendingId, page, current, task };
   },
+  onError: (error) => {
+    taskError.value = requestErrorMessage(error, '状态刷新失败，请重试');
+  },
   accept: ({ query, id, pendingId, page, current, task }) => {
     if (
       query.page === pagination.current &&
@@ -893,7 +908,7 @@ const polling = useTaskPolling({
         { title: '本轮成功', dataIndex: 'completed_tables' },
         { title: '本轮失败', dataIndex: 'failed_tables' },
         { title: '最近错误', dataIndex: 'last_error' },
-        { title: '操作', key: 'actions', width: 110 },
+        { title: '操作', key: 'actions', width: 240 },
       ]"
       @change="
         (p) => {
@@ -909,8 +924,20 @@ const polling = useTaskPolling({
           {{ states[record.state] ?? record.state }}
           {{ record.schedule_paused ? ' / 调度已停止' : '' }}
         </Tag>
-        <div v-else-if="column.key === 'actions' && execute" class="flex gap-1">
+        <div
+          v-else-if="column.key === 'actions' && execute"
+          class="flex flex-wrap gap-1"
+        >
+          <ReconcileButton
+            v-if="record.state === 'blocked'"
+            :id="record.id"
+            database
+            compact
+            :disabled="busy"
+            @finished="load"
+          />
           <ForceStopButton
+            :hidden="!syncActions(record).forceStop"
             :id="record.id"
             :expected-id="
               record.active_task_id ??
@@ -924,7 +951,7 @@ const polling = useTaskPolling({
             :disabled="busy"
             @finished="load"
           />
-          <Tooltip title="启动全库同步">
+          <Tooltip v-if="syncActions(record).start" title="启动全库同步">
             <Button
               type="text"
               aria-label="启动全库同步"
@@ -938,7 +965,7 @@ const polling = useTaskPolling({
               <Play class="size-4" />
             </Button>
           </Tooltip>
-          <Tooltip title="停止全库同步">
+          <Tooltip v-if="syncActions(record).stop" title="停止全库同步">
             <Button
               type="text"
               danger
@@ -975,6 +1002,7 @@ const polling = useTaskPolling({
       <StatusOverview
         v-if="selected"
         :target="{ kind: 'database', id: selected.id }"
+        @finished="load"
       />
       <Alert
         v-if="taskError || selected?.last_error || failedTables.length"
@@ -1008,6 +1036,17 @@ const polling = useTaskPolling({
       </Alert>
       <div class="toolbar">
         <Button
+          v-if="selected"
+          @click="
+            router.push({
+              path: '/data-sync/runs',
+              query: { keyword: form.target_database, state: '' },
+            })
+          "
+        >
+          查看运行与失败原因
+        </Button>
+        <Button
           v-if="configure"
           type="primary"
           :disabled="!canEdit"
@@ -1040,7 +1079,7 @@ const polling = useTaskPolling({
           确认建表并启用
         </Button>
         <Button
-          v-if="execute"
+          v-if="execute && selected && syncActions(selected).start"
           :disabled="
             !selected ||
             !['ready', 'paused'].includes(selected.state) ||
@@ -1055,19 +1094,7 @@ const polling = useTaskPolling({
           }}
         </Button>
         <Button
-          v-if="
-            execute &&
-            (selected?.state === 'blocked' ||
-              selected?.active_task_id ||
-              (selected?.failed_tables ?? 0) > 0)
-          "
-          :disabled="busy"
-          @click="dispatch('reconcile')"
-        >
-          回执对账
-        </Button>
-        <Button
-          v-if="execute && selected"
+          v-if="execute && selected && syncActions(selected).stop"
           danger
           :disabled="busy"
           @click="controlRun(selected, true)"
@@ -1076,6 +1103,7 @@ const polling = useTaskPolling({
         </Button>
         <ForceStopButton
           v-if="selected"
+          :hidden="!syncActions(selected).forceStop"
           :id="selected.id"
           :expected-id="
             selected.active_task_id ??
@@ -1554,16 +1582,27 @@ const polling = useTaskPolling({
             <label class="field">每批最多行数<InputNumber
                 v-model:value="editing.config.limits.max_rows"
                 :min="1"
-                :max="10000"
+                :max="1000000"
 /></label><label class="field">每批字节上限<InputNumber
                 v-model:value="editing.config.limits.max_bytes"
                 :min="1024"
                 :max="67108864"
-/></label><label class="field">并发源数<InputNumber
+/></label><label class="field">源实例并发数<InputNumber
                 v-model:value="editing.config.limits.source_concurrency"
                 :min="1"
                 :max="8"
-/></label><label class="field">ID 区间跨度<InputNumber
+/></label><label
+              v-if="['id_append', 'id_and_time'].includes(editing.config.mode)"
+              class="field"
+              >同表 ID 拉取并发数<InputNumber
+                v-model:value="editing.config.limits.id_concurrency"
+                :precision="0"
+                :min="1"
+                :max="8"
+/></label><label
+              v-if="['id_append', 'id_and_time'].includes(editing.config.mode)"
+              class="field"
+              >ID 区间跨度<InputNumber
                 v-model:value="editing.config.limits.id_span"
                 :min="1"
                 :max="1000000"
@@ -1669,7 +1708,13 @@ h3 {
 
 .table-editor {
   max-height: 70vh;
+  padding: 2px;
   overflow-y: auto;
+  scroll-padding-block: 12px;
+}
+
+.table-editor :deep(input) {
+  scroll-margin-block: 12px;
 }
 
 .field :deep(.ant-input-number) {

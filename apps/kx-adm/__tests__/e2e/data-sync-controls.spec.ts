@@ -4,7 +4,14 @@ import { KxEd } from '@kx/admin-core';
 import { expect, test } from '@playwright/test';
 
 test.use({ headless: true });
-for (const scenario of ['只读', '操作', '强停']) {
+for (const scenario of [
+  '只读',
+  '操作',
+  '强停',
+  '立即完成',
+  '对账恢复',
+  '对账失败',
+]) {
   const readonly = scenario === '只读';
   test(`同步启停范围${scenario}隔离`, async ({ page }, info) => {
     const writes: { body: Record<string, unknown>; path: string }[] = [];
@@ -36,9 +43,22 @@ for (const scenario of ['只读', '操作', '强停']) {
     const [independentJob, managedJob] = jobs;
     if (!independentJob || !managedJob) throw new Error('缺少同步任务 fixture');
     if (readonly) {
-      Object.assign(independentJob, { state: 'running', active_run_id: 101 });
-      Object.assign(database, { state: 'running', active_task_id: 300 });
+      Object.assign(independentJob, { state: 'blocked', active_run_id: 101 });
+      Object.assign(database, { state: 'blocked', active_task_id: 300 });
     }
+    const recovery = scenario.startsWith('对账');
+    if (recovery) {
+      for (const job of jobs)
+        Object.assign(job, {
+          state: 'blocked',
+          active_run_id: 100 + job.id,
+          schedule_paused: true,
+        });
+      Object.assign(database, { state: 'blocked', schedule_paused: true });
+    }
+    let recoveryTarget = { kind: 'job', id: 1 };
+    let recoveryReads = 0;
+    const failReconcile = scenario === '对账失败';
     let failStop = false;
     const forceReads = new Map<number, number>();
     await page
@@ -104,7 +124,55 @@ for (const scenario of ['只读', '操作', '强停']) {
           ];
         else if (path === '/notify/inbox')
           result = { items: [], unread_count: 0 };
-        else if (path === '/data-sync/instances') result = [];
+        else if (
+          /^\/data-sync\/jobs\/[12]$/.test(path) &&
+          request.method() === 'GET'
+        )
+          result = { job: jobs[Number(path.split('/').at(-1)) - 1] };
+        else if (recovery && path === '/data-sync/operations/900/items')
+          result = {
+            items: [
+              {
+                id: 1,
+                kind: recoveryTarget.kind,
+                object_id: recoveryTarget.id,
+                name: '待对账对象',
+                target: 'analytics.orders',
+                state: failReconcile ? 'blocked' : 'succeeded',
+                error_code: failReconcile ? 'data_sync_commit_unknown' : null,
+              },
+            ],
+            total: 1,
+          };
+        else if (recovery && path === '/data-sync/operations/900') {
+          recoveryReads++;
+          const done = recoveryReads > 1;
+          if (done && !failReconcile) {
+            if (recoveryTarget.kind === 'database') {
+              Object.assign(database, {
+                state: 'paused',
+                active_task_id: null,
+              });
+              Object.assign(managedJob, {
+                state: 'paused',
+                active_run_id: null,
+              });
+            } else
+              Object.assign(independentJob, {
+                state: 'paused',
+                active_run_id: null,
+              });
+          }
+          const finalState = failReconcile ? 'blocked' : 'succeeded';
+          result = {
+            id: 900,
+            action: 'reconcile',
+            state: done ? finalState : 'running',
+            total: 1,
+            succeeded: done && !failReconcile ? 1 : 0,
+            failed: done && failReconcile ? 1 : 0,
+          };
+        } else if (path === '/data-sync/instances') result = [];
         else if (path === '/data-sync/jobs')
           result = { items: jobs, total: jobs.length };
         else if (path === '/data-sync/databases')
@@ -113,7 +181,7 @@ for (const scenario of ['只读', '操作', '强停']) {
           const id = Number(path.split('/').at(-1));
           const reads = (forceReads.get(id) ?? 0) + 1;
           forceReads.set(id, reads);
-          const done = reads >= 2;
+          const done = scenario === '立即完成' || reads >= 2;
           if (done && id === 701)
             Object.assign(independentJob, {
               state: 'paused',
@@ -159,14 +227,44 @@ for (const scenario of ['只读', '操作', '强停']) {
                 : raw.toString();
           const body = JSON.parse(payload);
           writes.push({ path, body });
-          if (path.endsWith('/force-stop')) {
+          if (recovery && path === '/data-sync/bulk/preflight') {
+            result = {
+              items: body.targets.map(
+                (target: { kind: string; id: number }) => ({
+                  ...target,
+                  name: '待对账对象',
+                  target: 'analytics.orders',
+                  state: 'blocked',
+                  schedule_paused: true,
+                  pending_batches: 1,
+                  stamp: 'current-stamp',
+                  actions: [{ action: 'reconcile', allowed: true }],
+                }),
+              ),
+              rejected: [],
+            };
+          } else if (recovery && path === '/data-sync/bulk/actions') {
+            recoveryTarget = body.targets[0];
+            recoveryReads = 0;
+            result = {
+              id: 900,
+              action: body.action,
+              state: 'pending',
+              total: 1,
+              succeeded: 0,
+              failed: 0,
+            };
+          } else if (path.endsWith('/force-stop')) {
             let id = 703;
             if (path.includes('/databases/')) id = 702;
             else if (path.includes('/jobs/1/')) id = 701;
             result = {
               id,
-              status: 'queued',
-              message: '强停请求已提交',
+              status: scenario === '立即完成' ? 'succeeded' : 'queued',
+              message:
+                scenario === '立即完成'
+                  ? '已強制停止并解除占用'
+                  : '强停请求已提交',
             };
           } else {
             if (path === '/data-sync/jobs/1/sync')
@@ -244,12 +342,105 @@ for (const scenario of ['只读', '操作', '强停']) {
       await expect(
         page.getByRole('button', { name: /启动全库|停止全库/ }),
       ).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /回执对账/ })).toHaveCount(
+        0,
+      );
       expect(writes).toHaveLength(0);
       return;
     }
     const independent = page.locator('tr[data-row-key="1"]');
     const managed = page.locator('tr[data-row-key="2"]');
-    if (scenario === '强停') {
+    if (recovery) {
+      await expect(
+        independent.getByRole('button', { name: '启动本表同步', exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        independent.getByRole('button', { name: '停止本表同步', exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        independent.getByRole('button', { name: '强制停止本表同步' }),
+      ).toHaveCount(0);
+      await independent
+        .getByRole('button', { name: '回执对账', exact: true })
+        .click();
+      let preflight = page.getByRole('dialog', { name: '同步操作预检' });
+      await expect(
+        preflight.getByRole('button', { name: '确认回执对账（1项）' }),
+      ).toBeEnabled();
+      expect(writes.at(-1)?.body).toEqual({
+        targets: [{ kind: 'job', id: 1 }],
+        action: 'reconcile',
+      });
+      await preflight
+        .getByRole('button', { name: '确认回执对账（1项）' })
+        .click();
+      if (failReconcile) {
+        const progress = page.getByRole('dialog', { name: '操作进度与结果' });
+        await expect(progress).toContainText('提交结果未知');
+        await expect(
+          independent.getByRole('button', {
+            name: '启动本表同步',
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        await expect(progress).toContainText(
+          '远端提交结果未知，请先回执对账，禁止直接重复同步。',
+        );
+        await expect(
+          progress.getByRole('button', { name: '重新预检未完成项' }),
+        ).toBeEnabled();
+        return;
+      }
+      await expect(
+        independent.getByRole('button', { name: '启动本表同步', exact: true }),
+      ).toBeEnabled();
+      await expect(
+        independent.getByRole('button', { name: '回执对账', exact: true }),
+      ).toHaveCount(0);
+      expect(independentJob.schedule_paused).toBe(true);
+      await independent
+        .getByRole('button', { name: '启动本表同步', exact: true })
+        .click();
+      await expect
+        .poll(() => writes.at(-1)?.path)
+        .toBe('/data-sync/jobs/1/sync');
+      await managed
+        .getByRole('button', { name: '所属全库回执对账', exact: true })
+        .click();
+      preflight = page.getByRole('dialog', { name: '同步操作预检' });
+      await expect(
+        preflight.getByRole('button', { name: '确认回执对账（1项）' }),
+      ).toBeEnabled();
+      expect(writes.at(-1)?.body.targets).toEqual([
+        { kind: 'database', id: 10 },
+      ]);
+      await preflight
+        .getByRole('button', { name: '确认回执对账（1项）' })
+        .click();
+      await expect(
+        managed.getByRole('button', { name: '启动本表同步', exact: true }),
+      ).toBeEnabled();
+      expect(database.schedule_paused).toBe(true);
+      await page.getByRole('tab', { name: '全库同步', exact: true }).click();
+      await expect(
+        page.getByRole('button', { name: '启动全库同步', exact: true }),
+      ).toBeEnabled();
+      // 再次出现未决结果，列表无需打开配置弹窗即可重新对账。
+      Object.assign(database, { state: 'blocked' });
+      await page
+        .getByRole('button', { name: '刷新全库配置', exact: true })
+        .click();
+      await page.getByRole('button', { name: '回执对账', exact: true }).click();
+      preflight = page.getByRole('dialog', { name: '同步操作预检' });
+      await expect(
+        preflight.getByRole('button', { name: '确认回执对账（1项）' }),
+      ).toBeEnabled();
+      expect(writes.at(-1)?.body.targets).toEqual([
+        { kind: 'database', id: 10 },
+      ]);
+      return;
+    }
+    if (['强停', '立即完成'].includes(scenario)) {
       await independent
         .getByRole('button', { name: '启动本表同步', exact: true })
         .click();
@@ -272,7 +463,8 @@ for (const scenario of ['只读', '操作', '强停']) {
         .getByRole('button', { name: '强制停止', exact: true })
         .click();
       const progress = page.getByRole('dialog', { name: '强制停止进度' });
-      await expect(progress).toContainText('等待原执行者退出');
+      if (scenario !== '立即完成')
+        await expect(progress).toContainText('等待原执行者退出');
       await expect(progress).toContainText('已强制停止并解除占用');
       expect(writes.at(-1)).toEqual({
         path: '/data-sync/jobs/1/force-stop',
@@ -283,6 +475,10 @@ for (const scenario of ['只读', '操作', '强停']) {
       await expect(
         independent.getByRole('button', { name: '启动本表同步', exact: true }),
       ).toBeEnabled();
+      if (scenario === '立即完成') {
+        expect(forceReads.get(701)).toBeGreaterThan(0);
+        return;
+      }
       await managed
         .getByRole('button', { name: '启动本表同步', exact: true })
         .click();
@@ -309,6 +505,9 @@ for (const scenario of ['只读', '操作', '强停']) {
         .getByRole('button', { name: '强制停止', exact: true })
         .click();
       await expect(progress).toContainText('1 张表存在待对账批次');
+      await expect(
+        progress.getByRole('button', { name: '回执对账', exact: true }),
+      ).toBeVisible();
       expect(writes.at(-1)).toEqual({
         path: '/data-sync/databases/10/force-stop',
         body: { task_id: 300 },
@@ -335,7 +534,7 @@ for (const scenario of ['只读', '操作', '强停']) {
     ).toBeVisible();
     await expect(
       independent.getByRole('button', { name: '停止本表同步', exact: true }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
     expect(writes.at(-1)).toEqual({
       path: '/data-sync/jobs/1/state',
       body: { paused: true, version: 0 },
@@ -426,7 +625,7 @@ for (const scenario of ['只读', '操作', '强停']) {
       await page.setViewportSize({ width, height: 844 });
       await page.waitForTimeout(500);
       await managed
-        .getByRole('button', { name: '停止本表同步', exact: true })
+        .getByRole('button', { name: '启动本表同步', exact: true })
         .scrollIntoViewIfNeeded();
       await page.screenshot({
         animations: 'disabled',

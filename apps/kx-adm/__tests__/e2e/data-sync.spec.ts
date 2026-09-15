@@ -11,7 +11,8 @@ test.use({ headless: true });
 for (const scenario of ['配置与进度', '只读权限', '首次同步起点']) {
   const readonly = scenario === '只读权限';
   test(`数据同步${scenario}闭环`, async ({ page }, testInfo) => {
-    test.setTimeout(90_000);
+    // 配置场景覆盖多个编辑器、元数据延迟和双尺寸截图，预留完整流程预算。
+    test.setTimeout(scenario === '配置与进度' ? 150_000 : 90_000);
     let edited = false;
     let inspected = false;
     let metadataSelections = false;
@@ -330,6 +331,7 @@ for (const scenario of ['配置与进度', '只读权限', '首次同步起点']
             expect(req.tables[1].config.mode).toBe('id_and_time');
             expect(req.tables).toHaveLength(expanded ? 27 : 26);
             expect(req.tables[1].config.limits.max_rows).toBe(2500);
+            expect(req.tables[1].config.limits.id_concurrency).toBe(3);
             expect(req.tables[1].sync_interval_seconds).toBe(7200);
             expect(req.tables[1].existing_job_id).toBe(1);
             expect(req.warehouse).toBe('query one');
@@ -740,12 +742,24 @@ for (const scenario of ['配置与进度', '只读权限', '首次同步起点']
     if (scenario === '首次同步起点') {
       await page.getByRole('button', { name: '新增任务' }).click();
       const create = page.getByRole('dialog', { name: '新增同步任务' });
+      const concurrency = create
+        .locator('label')
+        .filter({ hasText: '同表 ID 拉取并发数' })
+        .getByRole('spinbutton');
+      await expect(concurrency).toHaveValue('4');
+      await concurrency.fill('6');
+      await create
+        .locator('label')
+        .filter({ hasText: 'ID 区间跨度' })
+        .getByRole('spinbutton')
+        .fill('200000');
       await create
         .locator('label')
         .filter({ hasText: '同步策略' })
         .getByRole('combobox')
         .click();
       await page.getByTitle('时间窗口刷新', { exact: true }).click();
+      await expect(concurrency).toHaveCount(0);
       await create
         .locator('label')
         .filter({ hasText: '窗口时区' })
@@ -895,6 +909,12 @@ for (const scenario of ['配置与进度', '只读权限', '首次同步起点']
       await tableEditor
         .getByRole('spinbutton', { name: '同步间隔', exact: true })
         .fill('2');
+      const tableConcurrency = tableEditor
+        .locator('label')
+        .filter({ hasText: '同表 ID 拉取并发数' })
+        .getByRole('spinbutton');
+      await expect(tableConcurrency).toHaveValue('4');
+      await tableConcurrency.fill('3');
       await tableEditor
         .locator('label')
         .filter({ hasText: '每批最多行数' })

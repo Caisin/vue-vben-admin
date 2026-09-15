@@ -72,8 +72,8 @@ export function newBinding(): Binding {
   };
 }
 export function jobForm(detail?: JobDetail): JobWrite {
-  if (detail)
-    return JSON.parse(
+  if (detail) {
+    const form = JSON.parse(
       JSON.stringify({
         name: detail.job.name,
         target_ds_code: detail.job.target_ds_code,
@@ -84,7 +84,10 @@ export function jobForm(detail?: JobDetail): JobWrite {
         version: detail.job.version,
         config: detail.draft?.config ?? detail.active?.config,
       }),
-    );
+    ) as JobWrite;
+    form.config.limits = { ...jobForm().config.limits, ...form.config.limits };
+    return form;
+  }
   return {
     name: '',
     target_ds_code: '',
@@ -98,8 +101,9 @@ export function jobForm(detail?: JobDetail): JobWrite {
       storage_code: '',
       sources: [newBinding()],
       limits: {
-        id_span: 10_000,
-        max_rows: 5000,
+        id_span: 100_000,
+        id_concurrency: 4,
+        max_rows: 100_000,
         max_bytes: 16 * 1024 * 1024,
         source_concurrency: 4,
         overlap_seconds: 600,
