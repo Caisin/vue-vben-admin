@@ -22,11 +22,14 @@ import {
 import JSONBigInt from 'json-bigint';
 
 import { AuthApi } from '#/api/core';
+import { desktop, desktopApiBase, refreshDesktopSession } from '#/desktop';
 import { requestErrorMessage } from '#/request-errors';
 import { useAuthStore } from '#/store';
 export { isRequestNotFound } from '#/request-errors';
 
-export const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
+export const apiURL =
+  desktopApiBase() ??
+  useAppConfig(import.meta.env, import.meta.env.PROD).apiURL;
 
 export type JsonPrimitive = boolean | null | number | string;
 export type JsonValue =
@@ -187,8 +190,15 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
    */
   async function doRefreshToken() {
     const accessStore = useAccessStore();
-    const body = await AuthApi.refreshToken();
-    const newToken = body.access_token;
+    let newToken: string;
+    if (desktop) {
+      newToken = await refreshDesktopSession(
+        accessStore.accessToken ?? undefined,
+      );
+    } else {
+      const body = await AuthApi.refreshToken();
+      newToken = body.access_token;
+    }
     accessStore.setAccessToken(newToken);
     return newToken;
   }
@@ -198,7 +208,7 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
       client,
       doReAuthenticate,
       doRefreshToken,
-      enableRefreshToken: preferences.app.enableRefreshToken,
+      enableRefreshToken: desktop || preferences.app.enableRefreshToken,
       formatToken,
     }),
   );

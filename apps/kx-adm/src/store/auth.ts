@@ -22,6 +22,7 @@ import {
   toAuthSession,
 } from '#/api/core';
 import { adminPasswordLoginRequest } from '#/auth';
+import { clearDesktopSession, importDesktopSession } from '#/desktop';
 import { $t } from '#/locales';
 import { routes } from '#/router/routes';
 
@@ -35,7 +36,8 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingMfaLogin = ref<MfaLoginChallenge>();
 
   /** 清理未完成的登录会话，允许失败后重新进入登录页。 */
-  function clearSession() {
+  async function clearSession() {
+    await clearDesktopSession();
     resetAllStores();
     resetStaticRoutes(router, routes);
   }
@@ -55,6 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     accessStore.setAccessToken(accessToken);
     try {
+      await importDesktopSession(accessToken);
       const [fetchUserInfoResult, accessCodes] = await Promise.all([
         fetchUserInfo(),
         AuthApi.accessCodes(),
@@ -84,7 +87,7 @@ export const useAuthStore = defineStore('auth', () => {
 
       return { userInfo };
     } catch (error) {
-      clearSession();
+      await clearSession();
       throw error;
     }
   }
@@ -219,6 +222,7 @@ export const useAuthStore = defineStore('auth', () => {
         // 登出失败时仍清理本地登录态。
       }
 
+      await clearDesktopSession();
       resetAllStores();
       accessStore.setLoginExpired(false);
       pendingMfaLogin.value = undefined;

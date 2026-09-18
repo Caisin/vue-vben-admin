@@ -46,6 +46,20 @@ import {
   useColumns,
   useGridFormSchema,
 } from './data';
+import CreateResource from './modules/create-resource.vue';
+import ResourceVersions from './modules/resource-versions.vue';
+
+const creatingResource = ref(false);
+const versionsOpen = ref(false);
+const versionResource = ref<ResRecord>();
+function openVersions(resource: ResRecord) {
+  versionResource.value = resource;
+  versionsOpen.value = true;
+}
+async function resourceCreated(resource: ResRecord) {
+  await gridApi.query();
+  openVersions(resource);
+}
 
 const sourceApi = global.source_manage;
 const categoryApi = set.category;
@@ -162,8 +176,8 @@ const [Grid, gridApi] = useVbenVxeGrid<ResRecord>({
           const payload = await sourceApi.getList({
             'id.eq': formValues.id,
             keyword: formValues.keyword?.trim() || undefined,
-            'res_type.eq': formValues.res_type,
-            'state.eq': formValues.state,
+            res_type: formValues.res_type,
+            state: formValues.state,
             page: page.currentPage,
             size: page.pageSize,
           });
@@ -546,6 +560,8 @@ async function reindexSearch() {
     content-class="management-content"
     title="资源管理"
   >
+    <CreateResource v-model:open="creatingResource" @saved="resourceCreated" />
+    <ResourceVersions v-model:open="versionsOpen" :resource="versionResource" />
     <Grid
       v-show="mode === 'table'"
       class="management-grid"
@@ -565,8 +581,8 @@ async function reindexSearch() {
             <RadioButton value="table">表格</RadioButton>
             <RadioButton value="card">卡片</RadioButton>
           </RadioGroup>
-          <Button type="primary" @click="openDialog('novel')">
-            新增小说
+          <Button type="primary" @click="creatingResource = true">
+            新增资源
           </Button>
         </Space>
       </template>
@@ -581,27 +597,13 @@ async function reindexSearch() {
           '-'
         }}
       </template>
+      <template #resourceName="{ row }">
+        <Button type="link" @click="openVersions(row)">
+          {{ row.res_name }}
+        </Button>
+      </template>
       <template #languages="{ row }">
-        <Space wrap>
-          <Button
-            v-for="lang in langKeys(row)"
-            :key="lang"
-            size="small"
-            @click="
-              openDialog('chapters', row);
-              loadChapters(row, lang);
-            "
-          >
-            {{ lang }}
-          </Button>
-          <Button
-            v-if="!langKeys(row).length"
-            size="small"
-            @click="openDialog('chapters', row)"
-          >
-            章节
-          </Button>
-        </Space>
+        <Button @click="openVersions(row)">版本与内容</Button>
       </template>
       <template #state="{ row }">
         <Tag :color="row.state === 1 ? 'success' : 'default'">
@@ -685,7 +687,8 @@ async function reindexSearch() {
       </template>
     </Grid>
 
-    <div v-if="mode === 'card'" class="mb-3 flex justify-end">
+    <div v-if="mode === 'card'" class="mb-3 flex justify-end gap-2">
+      <Button type="primary" @click="creatingResource = true">新增资源</Button>
       <RadioGroup v-model:value="mode" button-style="solid">
         <RadioButton value="table">表格</RadioButton>
         <RadioButton value="card">卡片</RadioButton>
@@ -749,12 +752,8 @@ async function reindexSearch() {
                   >
                     价格
                   </Button>
-                  <Button
-                    size="small"
-                    type="link"
-                    @click="openDialog('chapters', item)"
-                  >
-                    章节
+                  <Button size="small" type="link" @click="openVersions(item)">
+                    版本与内容
                   </Button>
                 </Space>
               </Space>

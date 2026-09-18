@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "仅本地管理端主窗口可访问事件接口，目录选择由原生命令执行",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

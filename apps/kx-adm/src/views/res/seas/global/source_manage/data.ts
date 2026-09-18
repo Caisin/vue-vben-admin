@@ -6,8 +6,9 @@ import type {
 } from '#/api/res/seas/global/source_manage';
 
 export const resTypeOptions = [
-  { label: '短剧', value: 1 },
-  { label: '小说', value: 2 },
+  { label: '短剧', value: 'drama' },
+  { label: '小说', value: 'novel' },
+  { label: '剧本', value: 'script' },
 ];
 
 export const resStateOptions = [
@@ -51,7 +52,13 @@ export function useColumns(): VxeTableGridColumns<ResRecord> {
       title: '封面',
       width: 96,
     },
-    { field: 'res_name', fixed: 'left', minWidth: 220, title: '资源名称' },
+    {
+      field: 'res_name',
+      fixed: 'left',
+      minWidth: 220,
+      title: '资源名称',
+      slots: { default: 'resourceName' },
+    },
     {
       field: 'res_type',
       slots: { default: 'resType' },
@@ -63,7 +70,7 @@ export function useColumns(): VxeTableGridColumns<ResRecord> {
       minWidth: 180,
       showOverflow: false,
       slots: { default: 'languages' },
-      title: '章节语言',
+      title: '版本内容',
     },
     {
       field: 'state',

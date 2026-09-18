@@ -9,11 +9,14 @@ describe('user role select', () => {
       (item) => item.fieldName === 'roles',
     );
     expect(role?.component).toBe('TreeSelect');
-    expect(role?.componentProps).toMatchObject({
+    if (!role || !('componentProps' in role)) {
+      throw new Error('缺少角色选择字段配置');
+    }
+    expect(role.componentProps).toMatchObject({
       multiple: true,
       treeData: [],
     });
-    expect(role?.componentProps).not.toHaveProperty('options');
-    expect(role?.componentProps).not.toHaveProperty('mode');
+    expect(role.componentProps).not.toHaveProperty('options');
+    expect(role.componentProps).not.toHaveProperty('mode');
   });
 });

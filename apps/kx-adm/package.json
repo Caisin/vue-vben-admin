@@ -26,7 +26,11 @@
     "test:e2e-ui": "playwright test --ui",
     "test:e2e-codegen": "playwright codegen",
     "build:adm": "pnpm build",
-    "test:unit": "vitest run --dom __tests__/unit"
+    "test:unit": "vitest run --dom __tests__/unit",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "dev:desktop": "cross-env VITE_TAURI=true pnpm vite --port 1420 --strictPort",
+    "build:desktop": "cross-env VITE_TAURI=true pnpm vite build --mode production"
   },
   "imports": {
     "#/*": "./src/*"
@@ -46,6 +50,7 @@
     "@editorjs/table": "catalog:",
     "@kx/admin-core": "workspace:*",
     "@tanstack/vue-query": "catalog:",
+    "@tauri-apps/api": "catalog:",
     "@vben-core/design": "workspace:*",
     "@vben-core/menu-ui": "workspace:*",
     "@vben/access": "workspace:*",
@@ -77,6 +82,7 @@
   },
   "devDependencies": {
     "@playwright/test": "catalog:",
+    "@tauri-apps/cli": "catalog:",
     "@types/json-bigint": "catalog:",
     "@types/markdown-it": "catalog:"
   }

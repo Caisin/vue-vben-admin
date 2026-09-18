@@ -12,6 +12,7 @@ export default defineConfig(async () => {
   return {
     application: {},
     vite: {
+      ...(process.env.VITE_TAURI ? { base: './' } : {}),
       build: {
         emptyOutDir: true,
         manifest: true,

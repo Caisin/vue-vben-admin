@@ -176,11 +176,19 @@ describe('发票管理页面数据工具', () => {
     expect(seller?.component).toBe('Select');
     expect(buyer?.component).toBe('Select');
     expect(type?.component).toBe('Select');
-    expect(seller?.componentProps).toMatchObject({
+    if (
+      !seller ||
+      !('componentProps' in seller) ||
+      !type ||
+      !('componentProps' in type)
+    ) {
+      throw new Error('缺少发票筛选字段配置');
+    }
+    expect(seller.componentProps).toMatchObject({
       options: [{ label: '测试销售方', value: '测试销售方' }],
       showSearch: true,
     });
-    expect(type?.componentProps).toMatchObject({
+    expect(type.componentProps).toMatchObject({
       options: [{ label: '增值税普通发票', value: 'vat-general' }],
     });
   });

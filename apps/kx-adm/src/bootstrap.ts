@@ -4,7 +4,7 @@ import { registerAccessDirective } from '@vben/access';
 import { registerLoadingDirective } from '@vben/common-ui';
 import { providePluginsOptions } from '@vben/plugins';
 import { preferences } from '@vben/preferences';
-import { initStores } from '@vben/stores';
+import { initStores, useAccessStore } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/antdv-next';
 
@@ -16,6 +16,7 @@ import { router } from '#/router';
 import { initComponentAdapter } from './adapter/component';
 import { initSetupVbenForm, useVbenForm } from './adapter/form';
 import App from './app.vue';
+import { bindDesktopSession } from './desktop';
 import { loadPublicSystemSettings } from './system-settings-init';
 import { initTimezone } from './timezone-init';
 
@@ -58,6 +59,7 @@ async function bootstrap(namespace: string) {
 
   // 配置 pinia-tore
   await initStores(app, { namespace });
+  await bindDesktopSession((token) => useAccessStore().setAccessToken(token));
 
   // 在布局挂载前应用系统展示参数，避免先渲染缓存或编译期 Logo。
   await loadPublicSystemSettings();

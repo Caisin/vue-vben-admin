@@ -6,6 +6,8 @@ import {
 
 import { resetStaticRoutes } from '@vben/utils';
 
+import { desktop } from '#/desktop';
+
 import { createRouterGuard } from './guard';
 import { routes } from './routes';
 
@@ -14,7 +16,7 @@ import { routes } from './routes';
  */
 const router = createRouter({
   history:
-    import.meta.env.VITE_ROUTER_HISTORY === 'hash'
+    desktop || import.meta.env.VITE_ROUTER_HISTORY === 'hash'
       ? createWebHashHistory(import.meta.env.VITE_BASE)
       : createWebHistory(import.meta.env.VITE_BASE),
   // 应该添加到路由的初始路由列表。

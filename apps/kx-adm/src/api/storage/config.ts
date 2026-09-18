@@ -77,6 +77,7 @@ export interface StorageOptionView {
 }
 
 export interface BusinessStorageDefaults {
+  res_drama_upload?: null | StorageOptionView;
   article_private?: null | StorageOptionView;
   article_public?: null | StorageOptionView;
   developer_account_private: StorageOptionView;
@@ -90,6 +91,7 @@ export interface BusinessStorageDefaults {
 }
 
 export interface BusinessStorageDefaultsWrite {
+  res_drama_upload?: string;
   article_private?: string;
   article_public?: string;
   developer_account_private: string;

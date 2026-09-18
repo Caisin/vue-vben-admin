@@ -72,6 +72,8 @@ function onConfirm(files: SelectedStorageFile[]) {
     <FilePicker
       ref="pickerRef"
       :accept="accept"
+      :adapter="adapter"
+      :storage_locked="storage_locked"
       :group_id="group_id"
       :initial_file_ids="initialFileIds"
       :max_count="1"

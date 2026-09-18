@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "KX ADM",
+  "version": "0.1.0",
+  "identifier": "com.qinjiu.kx-adm",
+  "build": {
+    "beforeDevCommand": "pnpm dev:desktop",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build:desktop",
+    "frontendDist": "../dist/kx-adm"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "KX ADM",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 390,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "capabilities": ["main"],
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http: https: data: blob:; connect-src 'self' ipc: http: https: ws: wss:; media-src 'self' http: https: blob: data:; font-src 'self' data: https:; frame-src http: https: blob:; worker-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"],
+    "category": "DeveloperTool"
+  }
+}

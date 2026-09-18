@@ -63,7 +63,7 @@ function setupAccessGuard(router: Router) {
         to.path === LOGIN_PATH &&
         getDingTalkExchangeCode(to.query, window.location.href)
       ) {
-        authStore.clearSession();
+        await authStore.clearSession();
         return true;
       }
       if (to.path === LOGIN_PATH && accessStore.accessToken) {
@@ -142,7 +142,7 @@ function setupAccessGuard(router: Router) {
         replace: true,
       };
     } catch (error) {
-      authStore.clearSession();
+      await authStore.clearSession();
       // 登录中的导航错误交给登录页反馈；刷新页面失败则返回可操作的登录页。
       if (from.path === LOGIN_PATH) throw error;
       message.error('用户信息或菜单加载失败，请重新登录');

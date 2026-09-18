@@ -14,6 +14,7 @@ const loading = ref(false);
 const saving = ref(false);
 const stores = ref<StorageConfigView[]>([]);
 const form = reactive({
+  res_drama_upload: '',
   article_private: '',
   article_public: '',
   developer_account_private: '',
@@ -56,6 +57,7 @@ async function load() {
     ]);
     stores.value = configs.items;
     Object.assign(form, {
+      res_drama_upload: defaults.res_drama_upload?.code ?? '',
       article_private: defaults.article_private?.code ?? '',
       article_public: defaults.article_public?.code ?? '',
       developer_account_private: defaults.developer_account_private.code,
@@ -143,6 +145,20 @@ onMounted(load);
       <section class="mt-2">
         <h2 class="mb-3 text-base font-semibold">业务模块</h2>
         <div class="grid grid-cols-1 gap-x-4 md:grid-cols-2 xl:grid-cols-3">
+          <FormItem
+            label="剧视频存储"
+            html-for="res-drama-storage"
+            extra="短剧版本视频和整剧目录上传专用；更换后已有文件不迁移。"
+          >
+            <Select
+              v-model:value="form.res_drama_upload"
+              id="res-drama-storage"
+              :loading="loading"
+              :options="allOptions"
+              placeholder="请选择剧视频专用 Storage"
+              show-search
+            />
+          </FormItem>
           <FormItem label="文章公开文件">
             <Select
               v-model:value="form.article_public"
