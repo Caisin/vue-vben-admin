@@ -7,14 +7,18 @@ import { useRouter } from 'vue-router';
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
+import { useMediaQuery } from '@vueuse/core';
 import {
   Alert,
   Button,
+  Empty,
   Input,
   message,
   Modal,
+  Pagination,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
 } from 'antdv-next';
@@ -25,7 +29,9 @@ import { Times } from '#/times';
 
 import LoginModal from './modules/login-modal.vue';
 import QuickDataeyeModal from './modules/quick-dataeye-modal.vue';
+import SiteCard from './modules/site-card.vue';
 import SiteModal from './modules/site-modal.vue';
+const isMobile = useMediaQuery('(max-width: 767px)');
 const { hasAccessByCodes } = useAccess();
 const router = useRouter();
 const rows = ref<Site[]>([]);
@@ -44,6 +50,12 @@ const renaming = ref(false);
 const newName = ref('');
 const renameBusy = ref(false);
 const renameError = ref('');
+function rename(site: Site) {
+  active.value = site;
+  newName.value = site.name;
+  renameError.value = '';
+  renaming.value = true;
+}
 async function saveName() {
   if (!active.value || !newName.value.trim() || renameBusy.value) return;
   renameBusy.value = true;
@@ -125,7 +137,7 @@ onMounted(load);
       class="mb-4"
       message="同一域名可保存多个账号，分别分配使用用户。只显示Cookie属性，不回显敏感值。DataEye可通过绑定凭证和图片验证码登录刷新。"
     />
-    <Space class="mb-4" wrap>
+    <div class="cookie-toolbar mb-4">
       <Input
         v-model:value="keyword"
         placeholder="搜索网站名称"
@@ -134,18 +146,20 @@ onMounted(load);
           load();
         "
       />
-      <Select
-        v-model:value="status"
-        allow-clear
-        placeholder="有效期状态"
-        class="!w-44"
-        :options="
-          Object.entries(cookieStatus).map(([value, item]) => ({
-            value,
-            label: item.label,
-          }))
-        "
-      />
+      <div class="cookie-status-filter">
+        <Select
+          v-model:value="status"
+          allow-clear
+          placeholder="有效期状态"
+          class="w-full md:!w-44"
+          :options="
+            Object.entries(cookieStatus).map(([value, item]) => ({
+              value,
+              label: item.label,
+            }))
+          "
+        />
+      </div>
       <Button
         @click="
           current = 1;
@@ -169,9 +183,111 @@ onMounted(load);
       >
         快速新增 DataEye
       </Button>
-    </Space>
+    </div>
     <Alert v-if="errorText" type="error" :message="errorText" />
+    <Spin v-if="isMobile" :spinning="loading">
+      <div class="space-y-3">
+        <SiteCard v-for="site in rows" :key="site.id" :site="site">
+          <template #details>
+            <div class="flex flex-wrap justify-between gap-2">
+              <dt class="text-muted-foreground">最近刷新</dt>
+              <dd>{{ Times.formatOptionalUnix(site.refreshed_at) }}</dd>
+            </div>
+            <div class="flex flex-wrap justify-between gap-2">
+              <dt class="text-muted-foreground">分配用户</dt>
+              <dd>{{ site.allowed_uids.length }}人</dd>
+            </div>
+            <div class="space-y-1">
+              <dt class="text-muted-foreground">代理入口</dt>
+              <dd>
+                <a
+                  v-if="site.proxy_url"
+                  :href="site.proxy_url"
+                  class="text-primary"
+                >
+                  {{ site.proxy_url }}
+                </a>
+                <span v-else>{{
+                  site.proxy_enabled ? '等待服务端配置' : '未启用'
+                }}</span>
+              </dd>
+            </div>
+          </template>
+          <Button
+            v-if="hasAccessByCodes(['cookie-manager:manage'])"
+            type="primary"
+            @click="edit(site)"
+          >
+            维护
+          </Button>
+          <Button
+            v-if="
+              [
+                'https://adxray-app.dataeye.com',
+                'https://oversea-v2.dataeye.com',
+              ].includes(site.origin)
+            "
+            :disabled="!site.credential_code"
+            @click="
+              active = site;
+              logging = true;
+            "
+          >
+            后台登录
+          </Button>
+          <Button
+            v-if="
+              hasAccessByCodes([
+                'cookie-manager:assign',
+                'cookie-manager:manage',
+              ])
+            "
+            @click="
+              router.push({
+                path: '/cookie-manager/assignments',
+                query: { site_id: String(site.id) },
+              })
+            "
+          >
+            分配用户
+          </Button>
+          <Button
+            v-if="hasAccessByCodes(['cookie-manager:manage'])"
+            @click="rename(site)"
+          >
+            改名
+          </Button>
+          <Button
+            v-if="
+              hasAccessByCodes(['cookie-manager:manage']) && site.cookies.length
+            "
+            @click="copyCookies(site)"
+          >
+            复制 Cookie
+          </Button>
+          <Button
+            v-if="hasAccessByCodes(['cookie-manager:manage'])"
+            danger
+            @click="removeSite(site)"
+          >
+            删除
+          </Button>
+        </SiteCard>
+        <Empty v-if="!loading && !rows.length" description="暂无网站账号" />
+      </div>
+      <Pagination
+        v-if="total"
+        v-model:current="current"
+        :page-size="size"
+        :total="total"
+        simple
+        :show-size-changer="false"
+        class="mt-4 flex justify-center"
+        @change="load"
+      />
+    </Spin>
     <Table
+      v-else
       :columns="columns"
       :data-source="rows"
       :loading="loading"
@@ -193,12 +309,7 @@ onMounted(load);
             v-if="hasAccessByCodes(['cookie-manager:manage'])"
             type="link"
             size="small"
-            @click="
-              active = record as Site;
-              newName = record.name;
-              renameError = '';
-              renaming = true;
-            "
+            @click="rename(record as Site)"
           >
             改名
           </Button>
@@ -253,7 +364,7 @@ onMounted(load);
             record.proxy_enabled ? '等待服务端配置' : '未启用'
           }}</span>
         </template>
-        <Space v-else-if="column.dataIndex === 'action'">
+        <Space v-else-if="column.dataIndex === 'action'" wrap>
           <Button
             v-if="hasAccessByCodes(['cookie-manager:manage'])"
             type="link"
@@ -304,7 +415,8 @@ onMounted(load);
     <Modal
       :open="renaming"
       title="修改网站显示名称"
-      :width="480"
+      width="min(480px, calc(100vw - 24px))"
+      :style="{ top: '24px' }"
       :confirm-loading="renameBusy"
       :closable="!renameBusy"
       :mask-closable="!renameBusy"
@@ -312,7 +424,7 @@ onMounted(load);
       @ok="saveName"
       @cancel="renaming = false"
     >
-      <p class="mb-3 text-muted-foreground">
+      <p class="mb-3 break-all text-muted-foreground">
         {{ active?.account_label }} · {{ active?.origin }}
       </p>
       <Input
@@ -330,3 +442,36 @@ onMounted(load);
     </Modal>
   </Page>
 </template>
+
+<style scoped>
+.cookie-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cookie-toolbar > :first-child {
+  width: 240px;
+}
+
+@media (max-width: 767px) {
+  .cookie-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cookie-toolbar > :first-child {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .cookie-toolbar > .cookie-status-filter {
+    grid-column: 1 / -1;
+  }
+
+  .cookie-toolbar :deep(.ant-btn) {
+    min-height: 40px;
+    padding-inline: 8px;
+  }
+}
+</style>

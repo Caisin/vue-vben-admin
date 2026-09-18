@@ -52,7 +52,9 @@ async function save() {
   <Modal
     :open="open"
     title="快速新增 DataEye"
-    :width="560"
+    width="min(560px, calc(100vw - 24px))"
+    :style="{ top: '24px' }"
+    :styles="{ body: { maxHeight: 'calc(100dvh - 180px)', overflowY: 'auto' } }"
     ok-text="保存并获取验证码"
     :confirm-loading="busy"
     @ok="save"

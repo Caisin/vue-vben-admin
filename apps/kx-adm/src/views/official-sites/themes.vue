@@ -3,8 +3,7 @@ import { ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
-import { Button, Card, Col, Row, Tag } from 'antdv-next';
-import { Modal } from 'antdv-next';
+import { Button, Card, Col, Modal, Row, Tag } from 'antdv-next';
 
 import { layouts, themes } from './style-options';
 
@@ -68,17 +67,20 @@ function openPreview(theme: (typeof themes)[number]) {
           :src="`/_official/theme/${previewTheme.value}-${previewTheme.layout}/index.html`"
           :title="`${previewTheme.label}预览`"
           class="h-[620px] w-full rounded-xl border-0"
-        ></iframe>
+        >
+        </iframe>
         <p class="text-sm uppercase tracking-[0.3em]">
           {{ previewTheme.detail }}
         </p>
-        <h2 class="mt-10 text-7xl font-bold">{{ previewTheme.sample }}</h2>
+        <h2 class="mt-10 text-4xl md:text-7xl font-bold">
+          {{ previewTheme.sample }}
+        </h2>
         <p class="mt-5 text-xl">
           {{
             layouts.find((item) => item.value === previewTheme?.layout)?.detail
           }}
         </p>
-        <div class="mt-20 grid grid-cols-3 gap-5">
+        <div class="mt-20 grid grid-cols-1 md:grid-cols-3 gap-5">
           <div
             v-for="item in ['应用介绍', '功能亮点', '立即下载']"
             :key="item"

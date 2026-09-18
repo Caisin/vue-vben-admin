@@ -104,6 +104,7 @@ async function exchangeDingTalkCode() {
   } catch (error) {
     console.error(error);
     message.error('钉钉登录失败，请重新发起登录');
+    await loadDingTalkApps();
   }
 }
 

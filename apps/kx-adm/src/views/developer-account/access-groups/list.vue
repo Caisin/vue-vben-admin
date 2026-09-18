@@ -234,7 +234,10 @@ async function loadUserOptions() {
     <Grid class="management-grid" table-title="账户权限分组">
       <template #toolbar-tools>
         <Button v-if="canManageAccess" type="primary" @click="openCreate">
-          <template #icon><Plus /></template>新增分组
+          <template #icon>
+            <Plus />
+          </template>
+          新增分组
         </Button>
       </template>
       <template #groupName="{ row }">
@@ -298,7 +301,7 @@ async function loadUserOptions() {
       @ok="saveGroup"
     >
       <Form layout="vertical">
-        <div class="grid grid-cols-2 gap-x-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
           <FormItem label="分组名称" required>
             <Input v-model:value="form.grp_name" />
           </FormItem>
@@ -319,7 +322,7 @@ async function loadUserOptions() {
               un-checked-children="停用"
             />
           </FormItem>
-          <FormItem class="col-span-2" label="备注">
+          <FormItem class="md:col-span-2" label="备注">
             <Input.TextArea v-model:value="form.remark" :rows="3" />
           </FormItem>
         </div>

@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router';
 import { LOGIN_PATH } from '@vben/constants';
 import { preferences } from '@vben/preferences';
 import { resetAllStores, useAccessStore, useUserStore } from '@vben/stores';
+import { resetStaticRoutes } from '@vben/utils';
 
 import { notification } from 'antdv-next';
 import { defineStore } from 'pinia';
@@ -22,6 +23,7 @@ import {
 } from '#/api/core';
 import { adminPasswordLoginRequest } from '#/auth';
 import { $t } from '#/locales';
+import { routes } from '#/router/routes';
 
 export const useAuthStore = defineStore('auth', () => {
   const accessStore = useAccessStore();
@@ -31,6 +33,12 @@ export const useAuthStore = defineStore('auth', () => {
   const loginLoading = ref(false);
   const privacyRevealGrant = ref<StepUpGrantView>();
   const pendingMfaLogin = ref<MfaLoginChallenge>();
+
+  /** 清理未完成的登录会话，允许失败后重新进入登录页。 */
+  function clearSession() {
+    resetAllStores();
+    resetStaticRoutes(router, routes);
+  }
 
   /**
    * 写入 Token 后拉取用户资料和权限码，建立前端登录态。
@@ -46,35 +54,39 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     accessStore.setAccessToken(accessToken);
+    try {
+      const [fetchUserInfoResult, accessCodes] = await Promise.all([
+        fetchUserInfo(),
+        AuthApi.accessCodes(),
+      ]);
 
-    const [fetchUserInfoResult, accessCodes] = await Promise.all([
-      fetchUserInfo(),
-      AuthApi.accessCodes(),
-    ]);
+      userInfo = fetchUserInfoResult;
+      userStore.setUserInfo(userInfo);
+      accessStore.setAccessCodes(accessCodes);
 
-    userInfo = fetchUserInfoResult;
-    userStore.setUserInfo(userInfo);
-    accessStore.setAccessCodes(accessCodes);
+      if (accessStore.loginExpired) {
+        accessStore.setLoginExpired(false);
+      } else {
+        onSuccess
+          ? await onSuccess?.()
+          : await router.push(
+              userInfo.homePath || preferences.app.defaultHomePath,
+            );
+      }
 
-    if (accessStore.loginExpired) {
-      accessStore.setLoginExpired(false);
-    } else {
-      onSuccess
-        ? await onSuccess?.()
-        : await router.push(
-            userInfo.homePath || preferences.app.defaultHomePath,
-          );
+      if (userInfo?.realName) {
+        notification.success({
+          description: `${$t('authentication.loginSuccessDesc')}:${userInfo.realName}`,
+          duration: 3,
+          title: $t('authentication.loginSuccess'),
+        });
+      }
+
+      return { userInfo };
+    } catch (error) {
+      clearSession();
+      throw error;
     }
-
-    if (userInfo?.realName) {
-      notification.success({
-        description: `${$t('authentication.loginSuccessDesc')}:${userInfo.realName}`,
-        duration: 3,
-        title: $t('authentication.loginSuccess'),
-      });
-    }
-
-    return { userInfo };
   }
 
   async function handleLoginResponse(
@@ -245,6 +257,7 @@ export const useAuthStore = defineStore('auth', () => {
     authorizePrivacyReveal,
     authorizeStepUp,
     clearPrivacyRevealGrant,
+    clearSession,
     clearMfaLogin,
     completeMfaLogin,
     currentPrivacyRevealGrant,

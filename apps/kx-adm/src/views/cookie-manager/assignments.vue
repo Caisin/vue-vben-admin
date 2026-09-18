@@ -341,11 +341,11 @@ onMounted(async () => {
           option-filter-prop="label"
           :disabled="scopeLoading"
           placeholder="选择负责人"
-          class="min-w-[260px]"
+          class="w-full min-w-0 sm:min-w-[260px]"
         />
         <TreeSelect
           v-model:value="scopeUsers"
-          class="min-w-[420px]"
+          class="w-full min-w-0 sm:min-w-[420px]"
           tree-checkable
           tree-default-expand-all
           :tree-data="scopeTree"

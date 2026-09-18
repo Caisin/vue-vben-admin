@@ -1,3 +1,6 @@
+import './runtime-polyfills';
+
+// eslint-disable-next-line perfectionist/sort-imports -- 兼容补丁必须先于框架模块执行。
 import { initPreferences, updatePreferences } from '@vben/preferences';
 import { unmountGlobalLoading } from '@vben/utils';
 

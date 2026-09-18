@@ -4,7 +4,7 @@ import type { Recordable } from '@vben/types';
 
 import type { ComponentPropsMap, ComponentType } from './component';
 
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { VbenTableAction as VbenTableActionCore } from '@vben/common-ui';
@@ -16,11 +16,13 @@ import {
 } from '@vben/plugins/vxe-table';
 import { get, isFunction, isString } from '@vben/utils';
 
-import { objectOmit } from '@vueuse/core';
+import { objectOmit, useMediaQuery } from '@vueuse/core';
 import { Button, Image, Popconfirm, Switch, Tag } from 'antdv-next';
 
 import { DicLabel } from '#/components/dictionary';
 import { $t } from '#/locales';
+
+import { mobileGridColumns } from './mobile-grid';
 
 type TableActionAuth = string | string[];
 type TableActionPermission = (auth?: TableActionAuth) => boolean;
@@ -342,10 +344,47 @@ export const useVbenVxeGrid = <
       TSubmitValues
     >
   >
-) =>
-  useGrid<T, ComponentType, ComponentPropsMap, TFormValues, TSubmitValues>(
-    ...rest,
-  );
+) => {
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [options] = rest;
+  let desktopColumns = options.gridOptions?.columns;
+  const result = useGrid<
+    T,
+    ComponentType,
+    ComponentPropsMap,
+    TFormValues,
+    TSubmitValues
+  >({
+    ...options,
+    gridOptions: {
+      ...options.gridOptions,
+      columns: isMobile.value
+        ? mobileGridColumns(desktopColumns)
+        : desktopColumns,
+    },
+  });
+  const [, api] = result;
+  const setGridOptions = api.setGridOptions.bind(api);
+  // 动态生成列的业务页与初始列使用同一转换，不触碰用户的桌面列偏好。
+  api.setGridOptions = (value) => {
+    if (value?.columns) {
+      desktopColumns = value.columns;
+      return setGridOptions({
+        ...value,
+        columns: isMobile.value
+          ? mobileGridColumns(desktopColumns)
+          : desktopColumns,
+      });
+    }
+    return setGridOptions(value);
+  };
+  watch(isMobile, (mobile) => {
+    setGridOptions({
+      columns: mobile ? mobileGridColumns(desktopColumns) : desktopColumns,
+    });
+  });
+  return result;
+};
 
 /**
  * 表格操作按钮组件

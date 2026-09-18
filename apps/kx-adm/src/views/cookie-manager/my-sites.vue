@@ -1,15 +1,31 @@
 <script setup lang="ts">
 import type { Site } from '#/api/cookie-manager';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
-import { Alert, Button, Input, Space, Table, Tag } from 'antdv-next';
+import { useMediaQuery } from '@vueuse/core';
+import {
+  Alert,
+  Button,
+  Empty,
+  Input,
+  Pagination,
+  Spin,
+  Table,
+  Tag,
+} from 'antdv-next';
 
 import { CookieApi, cookieStatus } from '#/api/cookie-manager';
 import { requestErrorMessage } from '#/request-errors';
 import { Times } from '#/times';
+
+import SiteCard from './modules/site-card.vue';
+
+const isMobile = useMediaQuery('(max-width: 767px)');
+const current = ref(1);
+const size = ref(20);
 const opening = ref<string>();
 async function openProxy(site: Site) {
   if (opening.value || !site.proxy_url) return;
@@ -17,6 +33,10 @@ async function openProxy(site: Site) {
   errorText.value = '';
   try {
     const result = await CookieApi.proxyGrantDirect(site.id);
+    if (isMobile.value) {
+      window.location.assign(result.url);
+      return;
+    }
     const popup = window.open(result.url, '_blank', 'noopener,noreferrer');
     if (!popup) throw new Error('浏览器阻止了新窗口，请允许本站弹窗后重试');
   } catch (error) {
@@ -41,6 +61,24 @@ const visible = computed(() => {
     ),
   );
 });
+const mobileRows = computed(() =>
+  visible.value.slice(
+    (current.value - 1) * size.value,
+    current.value * size.value,
+  ),
+);
+watch(keyword, () => {
+  current.value = 1;
+});
+watch(
+  () => visible.value.length,
+  (count) => {
+    current.value = Math.min(
+      current.value,
+      Math.max(1, Math.ceil(count / size.value)),
+    );
+  },
+);
 async function load() {
   loading.value = true;
   try {
@@ -63,16 +101,51 @@ onMounted(load);
       show-icon
       class="mb-4"
       message="这里只展示管理员分配给你的账号。启用代理后可直接进入，网站登录由服务端完成；Cookie过期时联系管理员刷新。"
-    /><Space class="mb-4">
+    />
+    <div class="mb-4 grid grid-cols-1 gap-2 sm:flex">
       <Input v-model:value="keyword" placeholder="搜索网站、账号或域名" />
       <Button :loading="loading" @click="load">刷新授权</Button>
-    </Space>
-    <Alert
-      v-if="errorText"
-      type="error"
-      :message="errorText"
-      class="mb-3"
-    /><Table
+    </div>
+    <Alert v-if="errorText" type="error" :message="errorText" class="mb-3" />
+    <Spin v-if="isMobile" :spinning="loading">
+      <div class="space-y-3">
+        <SiteCard v-for="site in mobileRows" :key="site.id" :site="site">
+          <Button
+            v-if="site.proxy_url"
+            class="col-span-2"
+            type="primary"
+            :loading="opening === String(site.id)"
+            :disabled="
+              !!opening ||
+              ['expired', 'missing', 'disabled'].includes(site.status)
+            "
+            @click="openProxy(site)"
+          >
+            进入代理网站
+          </Button>
+          <p v-else class="col-span-2 text-sm text-muted-foreground">
+            {{ site.proxy_enabled ? '等待代理服务配置' : '未启用代理' }}
+          </p>
+        </SiteCard>
+        <Empty
+          v-if="!loading && !visible.length"
+          :description="
+            keyword ? '没有匹配的网站' : '暂无授权网站，请联系管理员分配'
+          "
+        />
+      </div>
+      <Pagination
+        v-if="visible.length"
+        v-model:current="current"
+        :page-size="size"
+        :total="visible.length"
+        simple
+        :show-size-changer="false"
+        class="mt-4 flex justify-center"
+      />
+    </Spin>
+    <Table
+      v-else
       :data-source="visible"
       row-key="id"
       :loading="loading"
@@ -85,7 +158,13 @@ onMounted(load);
         { title: '最早到期', dataIndex: 'expires_at' },
         { title: '代理访问', dataIndex: 'proxy' },
       ]"
-      :pagination="{ pageSize: 20, showSizeChanger: true }"
+      :pagination="{ current, pageSize: size, showSizeChanger: true }"
+      @change="
+        (p) => {
+          current = p.current || 1;
+          size = p.pageSize || 20;
+        }
+      "
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'proxy'">
@@ -99,7 +178,8 @@ onMounted(load);
             @click="openProxy(record as Site)"
           >
             {{ '进入代理网站' }}
-</Button><span v-else>{{
+          </Button>
+          <span v-else>{{
             record.proxy_enabled ? '等待代理服务配置' : '未启用代理'
           }}</span>
         </template>
@@ -108,7 +188,8 @@ onMounted(load);
           :color="cookieStatus[record.status]?.color"
         >
           {{ cookieStatus[record.status]?.label || record.status }}
-</Tag><template v-else-if="column.dataIndex === 'expires_at'">
+        </Tag>
+        <template v-else-if="column.dataIndex === 'expires_at'">
           {{
             record.expires_at
               ? Times.formatOptionalUnix(record.expires_at)

@@ -222,7 +222,8 @@ function showDetail(row: DataSourceView) {
     >
       <Form />
       <template #footer>
-        <Button @click="open = false">取消</Button><Button :loading="saving" type="primary" @click="save"> 保存 </Button>
+        <Button @click="open = false">取消</Button>
+        <Button :loading="saving" type="primary" @click="save"> 保存 </Button>
       </template>
     </Drawer>
     <Drawer
@@ -232,7 +233,7 @@ function showDetail(row: DataSourceView) {
       @close="detail = undefined"
     >
       <template v-if="detail">
-        <dl class="grid grid-cols-2 gap-4">
+        <dl class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <dt>编码</dt>
             <dd>{{ detail.ds_code }}</dd>
@@ -285,10 +286,10 @@ function showDetail(row: DataSourceView) {
         {{ probeTarget?.db_host }}:{{ probeTarget?.port || 8000 }} /
         {{ probeTarget?.db_name }}
       </p>
-      <label class="mb-4 flex flex-col gap-2">计算仓库<Input
-          v-model:value="probeOptions.warehouse"
-          placeholder="默认仓库"
-      /></label>
+      <label class="mb-4 flex flex-col gap-2">
+        计算仓库
+        <Input v-model:value="probeOptions.warehouse" placeholder="默认仓库" />
+      </label>
       <Checkbox v-model:checked="probeOptions.allow_insecure">
         允许 HTTP 测试连接
       </Checkbox>

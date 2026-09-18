@@ -12,7 +12,8 @@ export function collectDeptIdsIncludingDescendants(
     for (const node of nodes) {
       const id = normalizeId(node.id);
       if (id === rootId) {
-        collect(node);
+        // 公司以来源编码筛选，不能排除尚未分配部门的公司成员。
+        if (!node.sourceId) collect(node);
         return true;
       }
       if (node.children?.length && visit(node.children)) {

@@ -5,9 +5,12 @@ import { preferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 import { startProgress, stopProgress } from '@vben/utils';
 
+import { message } from 'antdv-next';
+
 import { AuthApi } from '#/api/core';
 import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
+import { getDingTalkExchangeCode } from '#/views/_core/authentication/dingtalk-exchange-code';
 
 import { generateAccess } from './access';
 import { USER_OVERVIEW_ROUTE_NAME } from './routes/core';
@@ -39,6 +42,7 @@ function setupCommonGuard(router: Router) {
       stopProgress();
     }
   });
+  router.onError(() => stopProgress());
 }
 
 /**
@@ -55,6 +59,13 @@ function setupAccessGuard(router: Router) {
       coreRouteNames.includes(to.name as string) &&
       to.name !== USER_OVERVIEW_ROUTE_NAME;
     if (isPublicCoreRoute) {
+      if (
+        to.path === LOGIN_PATH &&
+        getDingTalkExchangeCode(to.query, window.location.href)
+      ) {
+        authStore.clearSession();
+        return true;
+      }
       if (to.path === LOGIN_PATH && accessStore.accessToken) {
         return decodeURIComponent(
           (to.query?.redirect as string) ||
@@ -95,40 +106,48 @@ function setupAccessGuard(router: Router) {
 
     // 菜单与按钮权限一起刷新，避免新菜单沿用旧登录会话的持久化权限码。
     // 读取失败时保持未授权状态，不能继续使用可能已撤销的旧按钮权限。
-    accessStore.setAccessCodes([]);
-    const [userInfo, accessCodes] = await Promise.all([
-      authStore.fetchUserInfo(),
-      AuthApi.accessCodes(),
-    ]);
-    const userRoles = userInfo.roles ?? [];
+    try {
+      accessStore.setAccessCodes([]);
+      const [userInfo, accessCodes] = await Promise.all([
+        authStore.fetchUserInfo(),
+        AuthApi.accessCodes(),
+      ]);
+      const userRoles = userInfo.roles ?? [];
 
-    // 生成菜单和路由
-    const { accessibleMenus, accessibleRoutes } = await generateAccess({
-      roles: userRoles,
-      router,
-      // 则会在菜单中显示，但是访问会被重定向到403
-      routes: accessRoutes,
-    });
+      // 生成菜单和路由
+      const { accessibleMenus, accessibleRoutes } = await generateAccess({
+        roles: userRoles,
+        router,
+        // 则会在菜单中显示，但是访问会被重定向到403
+        routes: accessRoutes,
+      });
 
-    // 保存菜单信息和路由信息
-    accessStore.setAccessCodes(accessCodes);
-    accessStore.setAccessMenus(accessibleMenus);
-    accessStore.setAccessRoutes(accessibleRoutes);
-    accessStore.setIsAccessChecked(true);
-    let redirectPath: string;
-    if (from.query.redirect) {
-      redirectPath = from.query.redirect as string;
-    } else if (to.fullPath === preferences.app.defaultHomePath) {
-      redirectPath = preferences.app.defaultHomePath;
-    } else if (userInfo.homePath && to.fullPath === userInfo.homePath) {
-      redirectPath = userInfo.homePath;
-    } else {
-      redirectPath = to.fullPath;
+      // 保存菜单信息和路由信息
+      accessStore.setAccessCodes(accessCodes);
+      accessStore.setAccessMenus(accessibleMenus);
+      accessStore.setAccessRoutes(accessibleRoutes);
+      accessStore.setIsAccessChecked(true);
+      let redirectPath: string;
+      if (from.query.redirect) {
+        redirectPath = from.query.redirect as string;
+      } else if (to.fullPath === preferences.app.defaultHomePath) {
+        redirectPath = preferences.app.defaultHomePath;
+      } else if (userInfo.homePath && to.fullPath === userInfo.homePath) {
+        redirectPath = userInfo.homePath;
+      } else {
+        redirectPath = to.fullPath;
+      }
+      return {
+        ...router.resolve(decodeURIComponent(redirectPath)),
+        replace: true,
+      };
+    } catch (error) {
+      authStore.clearSession();
+      // 登录中的导航错误交给登录页反馈；刷新页面失败则返回可操作的登录页。
+      if (from.path === LOGIN_PATH) throw error;
+      message.error('用户信息或菜单加载失败，请重新登录');
+      return { path: LOGIN_PATH, replace: true };
     }
-    return {
-      ...router.resolve(decodeURIComponent(redirectPath)),
-      replace: true,
-    };
   });
 }
 

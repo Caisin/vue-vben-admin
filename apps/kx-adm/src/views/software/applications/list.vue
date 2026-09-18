@@ -319,18 +319,42 @@ async function showDetail(row: SoftwareApplication) {
       <Segmented v-model:value="viewMode" :options="[{label:'卡片',value:'cards'},{label:'表格',value:'table'}]" aria-label="应用展示方式" />
       <template v-if="viewMode === 'cards'">
         <Input.Search v-model:value="cardKeyword" class="max-w-80" placeholder="搜索应用" @search="cardPage = 1;loadCards()" />
-        <Button v-access:code="'software:application:edit'" type="primary" @click="edit()"><Plus class="size-4" />新增应用</Button>
+        <Button v-access:code="'software:application:edit'" type="primary" @click="edit()">
+          <Plus class="size-4" />新增应用
+        </Button>
       </template>
     </div>
     <div v-if="viewMode === 'cards'" class="software-card-grid" :aria-busy="cardLoading">
       <article v-for="row in cardRows" :key="row.id" class="software-resource-card">
-        <header><AppIcon class="size-8 text-cyan-600" /><div class="min-w-0 flex-1"><h3>{{ row.name }}</h3><div class="resource-code">{{ row.code }}</div></div><Tag :color="row.state === 'enabled' ? 'success' : 'default'">{{ row.state === 'enabled' ? '启用' : '停用' }}</Tag></header>
-        <dl><dt>安装实现</dt><dd>{{ providerOptions.find(item=>item.value === row.provider)?.label || row.provider }}</dd><dt>来源</dt><dd>{{ row.source_kind }}</dd><dt>默认目录</dt><dd>{{ row.install_root }}</dd><dt>说明</dt><dd>{{ row.description || '-' }}</dd></dl>
-        <footer><Button v-access:code="'software:version:refresh'" size="small" @click="refreshVersions(row)">刷新版本</Button><Button size="small" @click="showDetail(row)">版本与部署</Button><Button v-access:code="'software:application:edit'" size="small" @click="edit(row)">编辑</Button></footer>
+        <header>
+<AppIcon class="size-8 text-cyan-600" />
+<div class="min-w-0 flex-1">
+<h3>{{ row.name }}</h3>
+<div class="resource-code">{{ row.code }}</div>
+</div>
+<Tag :color="row.state === 'enabled' ? 'success' : 'default'">{{ row.state === 'enabled' ? '启用' : '停用' }}</Tag>
+</header>
+        <dl>
+<dt>安装实现</dt>
+<dd>{{ providerOptions.find(item=>item.value === row.provider)?.label || row.provider }}</dd>
+<dt>来源</dt>
+<dd>{{ row.source_kind }}</dd>
+<dt>默认目录</dt>
+<dd>{{ row.install_root }}</dd>
+<dt>说明</dt>
+<dd>{{ row.description || '-' }}</dd>
+</dl>
+        <footer>
+<Button v-access:code="'software:version:refresh'" size="small" @click="refreshVersions(row)">刷新版本</Button>
+<Button size="small" @click="showDetail(row)">版本与部署</Button>
+<Button v-access:code="'software:application:edit'" size="small" @click="edit(row)">编辑</Button>
+</footer>
       </article>
       <Empty v-if="!cardLoading && !cardRows.length" description="暂无应用" />
     </div>
-    <div v-if="viewMode === 'cards'" class="software-card-pagination"><Pagination :current="cardPage" :page-size="12" :total="cardTotal" :show-size-changer="false" @change="cardPage = $event;loadCards()" /></div>
+    <div v-if="viewMode === 'cards'" class="software-card-pagination">
+<Pagination :current="cardPage" :page-size="12" :total="cardTotal" :show-size-changer="false" @change="cardPage = $event;loadCards()" />
+</div>
     <Grid v-show="viewMode === 'table'" class="management-grid" table-title="应用管理">
       <template #toolbar-tools>
         <Button
@@ -389,7 +413,7 @@ async function showDetail(row: SoftwareApplication) {
       @ok="save"
     >
       <Form layout="vertical">
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormItem label="编码" required>
             <Input v-model:value="form.code" :disabled="Boolean(editing)" />
           </FormItem>
@@ -478,7 +502,7 @@ async function showDetail(row: SoftwareApplication) {
           show-icon
           type="info"
         />
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormItem label="目标平台" required>
             <Select
               v-model:value="artifactPlatform"

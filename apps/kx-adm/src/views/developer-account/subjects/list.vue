@@ -439,7 +439,7 @@ onMounted(refresh);
       @ok="save"
     >
       <Form layout="vertical">
-        <div class="grid grid-cols-2 gap-x-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
           <FormItem label="主体中文名称" required>
             <Input v-model:value="form.subject_name_cn" />
           </FormItem>
@@ -461,7 +461,7 @@ onMounted(refresh);
           <FormItem label="D-U-N-S">
             <Input v-model:value="form.duns" />
           </FormItem>
-          <FormItem class="col-span-2" label="注册地址">
+          <FormItem class="md:col-span-2" label="注册地址">
             <Input.TextArea v-model:value="form.company_address" :rows="2" />
           </FormItem>
           <FormItem label="认证官网">
@@ -471,20 +471,20 @@ onMounted(refresh);
 
         <Collapse v-model:active-key="advancedSections" ghost>
           <CollapsePanel key="more" header="更多字段">
-            <div class="grid grid-cols-2 gap-x-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
               <FormItem label="法人证件号码">
                 <Input v-model:value="form.certifier_id_no" />
               </FormItem>
               <FormItem label="法人手机号">
                 <Input v-model:value="form.certifier_phone" />
               </FormItem>
-              <FormItem class="col-span-2" label="法人地址">
+              <FormItem class="md:col-span-2" label="法人地址">
                 <Input v-model:value="form.certifier_address" />
               </FormItem>
               <FormItem label="企业邮箱">
                 <Input v-model:value="form.enterprise_email" />
               </FormItem>
-              <FormItem class="col-span-2" label="营业执照资料">
+              <FormItem class="md:col-span-2" label="营业执照资料">
                 <Space wrap>
                   <span class="text-sm text-muted-foreground">
                     {{
@@ -524,7 +524,7 @@ onMounted(refresh);
                   </Button>
                 </Space>
               </FormItem>
-              <FormItem class="col-span-2" label="邓白氏证明资料">
+              <FormItem class="md:col-span-2" label="邓白氏证明资料">
                 <Space wrap>
                   <span class="text-sm text-muted-foreground">
                     {{
@@ -561,7 +561,7 @@ onMounted(refresh);
                   </Button>
                 </Space>
               </FormItem>
-              <FormItem class="col-span-2" label="备注">
+              <FormItem class="md:col-span-2" label="备注">
                 <Input.TextArea v-model:value="form.remark" :rows="3" />
               </FormItem>
             </div>

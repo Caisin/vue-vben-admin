@@ -20,8 +20,11 @@ import { loadPublicSystemSettings } from './system-settings-init';
 import { initTimezone } from './timezone-init';
 
 import '#/styles/management-page.css';
+import '#/styles/mobile.css';
 
 async function bootstrap(namespace: string) {
+  // body 标识同时约束页面与 Teleport 弹层的应用级样式。
+  document.body.classList.add('kx-adm');
   // 初始化组件适配器
   await initComponentAdapter();
 

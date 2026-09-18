@@ -328,7 +328,11 @@ test('Cookie多账号配置、验证码登录与用户分配', async ({ page }) 
     .getByRole('dialog', { name: 'DataEye · 快速账号 后台登录', exact: true })
     .getByRole('button', { name: '关闭', exact: true })
     .click();
-  await page.goto('/cookie-manager/assignments?site_id=1');
+  await page
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: '账号1', exact: true }) })
+    .getByRole('button', { name: /人 · 分配/ })
+    .click();
   await expect(
     page.getByRole('cell', { name: '测试使用人', exact: true }),
   ).toBeVisible();

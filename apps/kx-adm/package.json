@@ -32,8 +32,6 @@
     "#/*": "./src/*"
   },
   "dependencies": {
-    "markdown-it": "catalog:",
-    "highlight.js": "catalog:",
     "@codemirror/lang-json": "catalog:",
     "@codemirror/lang-sql": "catalog:",
     "@codemirror/state": "catalog:",
@@ -67,16 +65,19 @@
     "@vueuse/core": "catalog:",
     "antdv-next": "catalog:",
     "codemirror": "catalog:",
+    "core-js": "catalog:",
     "dayjs": "catalog:",
+    "highlight.js": "catalog:",
     "json-bigint": "catalog:",
+    "markdown-it": "catalog:",
     "pinia": "catalog:",
     "sql-formatter": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },
   "devDependencies": {
-    "@types/markdown-it": "catalog:",
     "@playwright/test": "catalog:",
-    "@types/json-bigint": "catalog:"
+    "@types/json-bigint": "catalog:",
+    "@types/markdown-it": "catalog:"
   }
 }

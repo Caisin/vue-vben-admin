@@ -79,7 +79,7 @@ const schema: VbenFormSchema<MenuFormValues>[] = [
     },
     defaultValue: 'menu',
     fieldName: 'type',
-    formItemClass: 'col-span-2 md:col-span-2',
+    formItemClass: 'col-span-1 md:col-span-2',
     label: $t('system.menu.type'),
   },
   {
@@ -386,7 +386,7 @@ const schema: VbenFormSchema<MenuFormValues>[] = [
       triggerFields: ['type'],
     },
     fieldName: 'divider1',
-    formItemClass: 'col-span-2 md:col-span-2 pb-0',
+    formItemClass: 'col-span-1 md:col-span-2 pb-0',
     hideLabel: true,
     renderComponentContent() {
       return {
@@ -496,11 +496,11 @@ const [Form, formApi] = useVbenForm({
   },
   commonConfig: {
     colon: true,
-    formItemClass: 'col-span-2 md:col-span-1',
+    formItemClass: 'col-span-1',
   },
   schema,
   showDefaultActions: false,
-  wrapperClass: 'grid-cols-2 gap-x-4',
+  wrapperClass: 'grid-cols-1 md:grid-cols-2 gap-x-4',
 });
 const [Drawer, drawerApi] = useVbenDrawer<SystemMenu>({
   onConfirm: onSubmit,

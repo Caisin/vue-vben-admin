@@ -161,8 +161,8 @@ loadRows();
     content-class="management-content"
     title="默认模板配置"
   >
-    <div class="flex h-full gap-4">
-      <Card class="w-[420px] shrink-0" title="当前模板预览">
+    <div class="flex h-full flex-col gap-4 xl:flex-row">
+      <Card class="w-full shrink-0 xl:w-[420px]" title="当前模板预览">
         <Spin :spinning="detailLoading">
           <h3>{{ detail.name || '未选择模板' }}</h3>
           <Card class="mb-3" size="small" title="VIP 商品">
@@ -171,14 +171,16 @@ loadRows();
                 <Tag>VIP</Tag>{{ item.title }} / {{ item.amount }} 美分 /
                 {{ item.vip_days || 0 }} 天
               </div>
-</Space><Empty v-else />
+</Space>
+<Empty v-else />
           </Card>
           <Card size="small" title="普通/章节商品">
             <Space v-if="normalItems.length" direction="vertical">
               <div v-for="item in normalItems" :key="item.id || item.title">
                 <Tag>{{ item.item_type }}</Tag>{{ item.title }} / {{ item.amount }} 美分
               </div>
-</Space><Empty v-else />
+</Space>
+<Empty v-else />
           </Card>
         </Spin>
       </Card>
@@ -194,13 +196,15 @@ loadRows();
               ]"
               @change="changePlatform"
             />
-</FormItem><FormItem label="搜索">
+</FormItem>
+<FormItem label="搜索">
             <Input
               v-model:value="filterName"
               allow-clear
               class="w-[220px]"
             />
-</FormItem><FormItem>
+</FormItem>
+<FormItem>
             <Button :loading="loading" @click="loadRows"> 刷新 </Button>
           </FormItem>
         </Form>

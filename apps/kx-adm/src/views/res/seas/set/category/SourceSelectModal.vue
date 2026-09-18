@@ -344,4 +344,10 @@ watch(
   max-height: 520px;
   background: #000;
 }
+
+@media (max-width: 767px) {
+  .source-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 </style>

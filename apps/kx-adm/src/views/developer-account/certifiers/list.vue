@@ -185,7 +185,7 @@ onMounted(refresh);
       @ok="save"
     >
       <Form layout="vertical">
-        <div class="grid grid-cols-2 gap-x-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
           <FormItem label="姓名" required>
             <Input v-model:value="form.name" />
           </FormItem>
@@ -198,10 +198,10 @@ onMounted(refresh);
           <FormItem label="企业邮箱">
             <Input v-model:value="form.enterprise_email" />
           </FormItem>
-          <FormItem class="col-span-2" label="地址">
+          <FormItem class="md:col-span-2" label="地址">
             <Input v-model:value="form.address" />
           </FormItem>
-          <FormItem class="col-span-2" label="认证资料">
+          <FormItem class="md:col-span-2" label="认证资料">
             <div class="flex items-center gap-3">
               <FileRefPreview
                 v-if="form.document_file_id"
@@ -222,7 +222,7 @@ onMounted(refresh);
               </Button>
             </div>
           </FormItem>
-          <FormItem class="col-span-2" label="备注">
+          <FormItem class="md:col-span-2" label="备注">
             <Input.TextArea v-model:value="form.remark" :rows="3" />
           </FormItem>
         </div>

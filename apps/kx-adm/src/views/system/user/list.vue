@@ -365,10 +365,12 @@ function onCreate() {
 async function loadDeptList() {
   try {
     const res = await SystemDeptApi.companies();
-    allDeptList.value = res;
-    deptList.value = res;
+    // 编辑表单的公司节点不可作为部门保存，查询树则允许选择公司。
+    allDeptList.value = res.map((company) => ({ ...company, disabled: false }));
+    searchDept(inputSearchValue.value);
   } catch (error) {
     console.error('Failed to load department list:', error);
+    message.error('公司和部门加载失败，请刷新页面重试');
   }
 }
 
@@ -768,6 +770,7 @@ watch(selectedDeptId, (value) => {
     >
       <p class="mb-4 text-sm text-muted-foreground">
         密码明文仅本次展示，请立即交给用户并妥善保存。
+        同名用户的登录名可能带有后缀，请使用下方实际用户名登录。
       </p>
       <AForm layout="vertical">
         <FormItem label="用户名">
@@ -1039,10 +1042,14 @@ watch(selectedDeptId, (value) => {
     </PopupModal>
     <div class="user-layout">
       <Card class="dept-panel">
+        <div class="mb-2 font-medium">公司与部门</div>
+        <p class="mb-3 text-xs text-muted-foreground">
+          选择公司可查询该公司全部可见用户
+        </p>
         <InputSearch
           v-model:value="inputSearchValue"
           allow-clear
-          :placeholder="$t('system.user.placeholder')"
+          placeholder="搜索公司或部门"
         />
         <Tree
           v-model="selectedDeptId"

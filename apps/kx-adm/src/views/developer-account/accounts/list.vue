@@ -886,7 +886,7 @@ async function loadAccessUserOptions() {
           class="developer-account-edit-tabs"
         >
           <TabPane key="account" tab="账户信息">
-            <div class="grid grid-cols-2 gap-x-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
               <FormItem label="平台" required>
                 <Select
                   v-model:value="form.platform"
@@ -1034,7 +1034,7 @@ async function loadAccessUserOptions() {
               <FormItem label="屏幕共享账号">
                 <Input v-model:value="form.screen_share_account" />
               </FormItem>
-              <FormItem class="col-span-2" label="收款账户">
+              <FormItem class="md:col-span-2" label="收款账户">
                 <Input.TextArea
                   v-model:value="form.payment_account"
                   :rows="3"
@@ -1089,7 +1089,7 @@ async function loadAccessUserOptions() {
                 </Button>
               </Space>
             </div>
-            <div class="grid grid-cols-2 gap-x-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
               <FormItem label="认证人">
                 <Input :value="selectedFormCertifier?.name" disabled />
               </FormItem>
@@ -1116,7 +1116,7 @@ async function loadAccessUserOptions() {
               :key="device.id ?? device.device_no"
               class="mb-3 rounded border p-3"
             >
-              <div class="grid grid-cols-2 gap-x-4 text-sm">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 text-sm">
                 <div>设备号：{{ device.device_no || '-' }}</div>
                 <div>名称：{{ device.name || '-' }}</div>
                 <div>型号：{{ device.model || '-' }}</div>
@@ -1216,7 +1216,7 @@ async function loadAccessUserOptions() {
       @ok="saveCertifier"
     >
       <Form layout="vertical">
-        <div class="grid grid-cols-2 gap-x-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
           <FormItem label="认证人姓名" required>
             <Input v-model:value="certifierForm.name" />
           </FormItem>
@@ -1229,10 +1229,10 @@ async function loadAccessUserOptions() {
           <FormItem label="企业邮箱">
             <Input v-model:value="certifierForm.enterprise_email" />
           </FormItem>
-          <FormItem class="col-span-2" label="地址">
+          <FormItem class="md:col-span-2" label="地址">
             <Input v-model:value="certifierForm.address" />
           </FormItem>
-          <FormItem class="col-span-2" label="认证资料">
+          <FormItem class="md:col-span-2" label="认证资料">
             <div class="flex items-center gap-3">
               <FileRefPreview
                 v-if="certifierForm.document_file_id"
@@ -1256,7 +1256,7 @@ async function loadAccessUserOptions() {
               </Button>
             </div>
           </FormItem>
-          <FormItem class="col-span-2" label="备注">
+          <FormItem class="md:col-span-2" label="备注">
             <Input.TextArea v-model:value="certifierForm.remark" :rows="3" />
           </FormItem>
         </div>
@@ -1272,7 +1272,7 @@ async function loadAccessUserOptions() {
       @ok="saveDevice"
     >
       <Form layout="vertical">
-        <div class="grid grid-cols-2 gap-x-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
           <FormItem label="设备号" required>
             <Input v-model:value="deviceForm.device_no" />
           </FormItem>
@@ -1288,7 +1288,7 @@ async function loadAccessUserOptions() {
           <FormItem label="使用人">
             <Input v-model:value="deviceForm.user" />
           </FormItem>
-          <FormItem class="col-span-2" label="设备号截图">
+          <FormItem class="md:col-span-2" label="设备号截图">
             <div class="grid gap-3">
               <FileRefPreview
                 v-if="deviceForm.screenshot_file_id"
@@ -1302,7 +1302,9 @@ async function loadAccessUserOptions() {
                   :max-count="1"
                 >
                   <Button :loading="deviceScreenshotUploading">
-                    <template #icon><ArrowUpToLine /></template>
+                    <template #icon>
+                      <ArrowUpToLine />
+                    </template>
                     {{
                       deviceForm.screenshot_file_id ? '替换截图' : '上传截图'
                     }}
@@ -1313,7 +1315,9 @@ async function loadAccessUserOptions() {
                   danger
                   @click="deviceForm.screenshot_file_id = undefined"
                 >
-                  <template #icon><X /></template>
+                  <template #icon>
+                    <X />
+                  </template>
                   清空
                 </Button>
               </Space>

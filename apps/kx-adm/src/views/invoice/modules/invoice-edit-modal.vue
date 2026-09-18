@@ -438,4 +438,15 @@ function fromInvoice(invoice: InvoiceItemView): InvoiceUpdateWrite {
 .line-number {
   width: 100%;
 }
+
+@media (max-width: 767px) {
+  .invoice-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .section-title {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
 </style>

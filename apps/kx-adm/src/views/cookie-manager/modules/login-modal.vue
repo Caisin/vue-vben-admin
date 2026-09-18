@@ -3,7 +3,7 @@ import type { Login, Site } from '#/api/cookie-manager';
 
 import { ref, watch } from 'vue';
 
-import { Alert, Button, Input, message, Modal, Space } from 'antdv-next';
+import { Alert, Button, Input, message, Modal } from 'antdv-next';
 
 import { CookieApi } from '#/api/cookie-manager';
 import { requestErrorMessage } from '#/request-errors';
@@ -99,7 +99,15 @@ watch(open, (value) => {
   <Modal
     :open="open"
     :title="`${site?.name || ''} · ${site?.account_label || ''} 后台登录`"
-    :width="560"
+    width="min(560px, calc(100vw - 24px))"
+    :style="{ top: '24px' }"
+    :styles="{
+      body: {
+        maxHeight: 'calc(100dvh - 160px)',
+        overflowY: 'auto',
+        overflowWrap: 'anywhere',
+      },
+    }"
     :footer="null"
     @cancel="open = false"
   >
@@ -117,15 +125,18 @@ watch(open, (value) => {
       v-if="run?.captcha_data_url"
       :src="run.captcha_data_url"
       alt="网站登录验证码"
-      class="my-4 border"
-    /><Input
+      class="my-4 h-auto max-w-full border"
+    />
+    <Input
       v-if="run?.state === 'captcha_ready'"
       v-model:value="code"
       placeholder="输入图片验证码"
       autocomplete="off"
       @press-enter="submit"
-    /><Space class="mt-4">
-      <Button :loading="busy" @click="start">重新获取验证码</Button><Button
+    />
+    <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <Button :loading="busy" @click="start">重新获取验证码</Button>
+      <Button
         v-if="run?.state === 'captcha_ready'"
         type="primary"
         :loading="busy"
@@ -134,6 +145,6 @@ watch(open, (value) => {
       >
         登录并保存Cookie
       </Button>
-    </Space>
+    </div>
   </Modal>
 </template>

@@ -26,6 +26,35 @@ function permission(
 }
 
 describe('buildRoutes', () => {
+  it('菜单构建在未提供 toSorted 的 WebView 中仍然可用', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      Array.prototype,
+      'toSorted',
+    );
+    if (!descriptor) throw new Error('测试环境应提供原生 toSorted');
+    // oxlint-disable-next-line no-extend-native -- 模拟旧 WebView，finally 恢复原生实现。
+    Object.defineProperty(Array.prototype, 'toSorted', {
+      ...descriptor,
+      value: undefined,
+    });
+    try {
+      await import('../../runtime-polyfills');
+      const items = [
+        permission({ id: 3, name: 'Last', pid: 1, order_no: 2 }),
+        permission({ id: 1, name: 'Root' }),
+        permission({ id: 2, name: 'First', pid: 1, order_no: 1 }),
+      ];
+      const routes = buildRoutes(items);
+      expect(routes[0]?.children?.map((route) => route.name)).toEqual([
+        'First',
+        'Last',
+      ]);
+      expect(items.map((item) => item.id)).toEqual([3, 1, 2]);
+    } finally {
+      // oxlint-disable-next-line no-extend-native -- 恢复测试前的运行环境。
+      Object.defineProperty(Array.prototype, 'toSorted', descriptor);
+    }
+  });
   it('创作会话参数变化不创建第二个工作台页签', () => {
     const routes = buildRoutes([
       permission({

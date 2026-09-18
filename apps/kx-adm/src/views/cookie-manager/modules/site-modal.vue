@@ -117,7 +117,15 @@ async function save() {
   <Modal
     :open="open"
     :title="site ? '维护网站账号与Cookie' : '新增网站账号'"
-    :width="960"
+    width="min(960px, calc(100vw - 24px))"
+    :style="{ top: '24px' }"
+    :styles="{
+      body: {
+        maxHeight: 'calc(100dvh - 180px)',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+      },
+    }"
     :confirm-loading="busy"
     @ok="save"
     @cancel="open = false"
@@ -125,21 +133,21 @@ async function save() {
     <Form layout="vertical">
       <div class="grid grid-cols-1 gap-x-4 md:grid-cols-2">
         <FormItem label="网站名称" required>
-          <Input
-            v-model:value="form.name"
-            placeholder="例如 DataEye"
-          />
-</FormItem><FormItem label="账号标识" required>
+          <Input v-model:value="form.name" placeholder="例如 DataEye" />
+        </FormItem>
+        <FormItem label="账号标识" required>
           <Input
             v-model:value="form.account_label"
             placeholder="例如 运营账号A，用于同域名切换"
           />
-</FormItem><FormItem label="网站HTTPS地址" required>
+        </FormItem>
+        <FormItem label="网站HTTPS地址" required>
           <Input
             v-model:value="form.origin"
             placeholder="https://adxray-app.dataeye.com；海外版 https://oversea-v2.dataeye.com"
           />
-</FormItem><FormItem label="启用账号使用">
+        </FormItem>
+        <FormItem label="启用账号使用">
           <Switch v-model:checked="form.enabled" />
         </FormItem>
       </div>
@@ -150,7 +158,8 @@ async function save() {
           create-kind="username_password"
           placeholder="选择或新增账号密码凭证"
         />
-</FormItem><Alert
+      </FormItem>
+      <Alert
         type="info"
         show-icon
         message="账号密码保存在系统凭证中心。DataEye国内版和海外版可以保存后点击“后台登录”获取验证码；其它网站请手动录入Cookie。"
@@ -177,12 +186,12 @@ async function save() {
           <div
             v-for="(resource, index) in form.proxy_resources"
             :key="index"
-            class="mb-2 flex gap-2"
+            class="resource-row mb-3 grid grid-cols-1 gap-2 md:grid-cols-[128px_minmax(0,1fr)_auto]"
           >
             <Input
               v-model:value="resource.name"
               placeholder="别名，如cdn"
-              class="!w-32"
+              class="w-full"
             />
             <Input
               v-model:value="resource.origin"
@@ -211,14 +220,16 @@ async function save() {
         </template>
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 gap-x-4 md:grid-cols-2">
         <FormItem label="到期提前提醒（小时）">
           <InputNumber
             v-model:value="form.warning_hours"
             :min="1"
             :max="8760"
+            class="!w-full"
           />
-</FormItem><FormItem label="Cookie输入格式">
+        </FormItem>
+        <FormItem label="Cookie输入格式">
           <Select
             v-model:value="form.format"
             :options="[
@@ -235,7 +246,8 @@ async function save() {
           autocomplete="off"
           placeholder="每行一个Set-Cookie；编辑留空保留。不会回显已有Cookie值。"
         />
-</FormItem><Button :disabled="!text.trim()" :loading="busy" @click="preview">
+      </FormItem>
+      <Button :disabled="!text.trim()" :loading="busy" @click="preview">
         解析属性
       </Button>
       <Alert
@@ -267,11 +279,14 @@ async function save() {
                 ? Times.formatOptionalUnix(record.expires_at)
                 : '会话Cookie（未知）'
             }}
-</template><template v-else-if="column.dataIndex === 'domain'">
+          </template>
+          <template v-else-if="column.dataIndex === 'domain'">
             {{ record.domain || '仅当前主机' }}
-</template><template v-else-if="column.dataIndex === 'secure'">
+          </template>
+          <template v-else-if="column.dataIndex === 'secure'">
             {{ record.secure ? '是' : '否' }}
-</template><template v-else-if="column.dataIndex === 'http_only'">
+          </template>
+          <template v-else-if="column.dataIndex === 'http_only'">
             {{ record.http_only ? '是' : '否' }}
           </template>
         </template>

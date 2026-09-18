@@ -229,6 +229,7 @@ catalog:
   yaml-eslint-parser: ^2.1.0
   zod: ^4.4.3
   zod-defaults: ^0.2.3
+  core-js: 3.50.0
 
 allowBuilds:
   '@parcel/watcher': true
