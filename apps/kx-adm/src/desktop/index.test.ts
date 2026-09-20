@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { desktopSessionKey } from './session-storage';
 const native = vi.hoisted(() => ({
   invoke: vi.fn(),
   handlers: new Map<string, (event: { payload: unknown }) => void>(),
@@ -23,10 +25,19 @@ const session = (generation: number, token = `token-${generation}`) => ({
   apiBase: 'https://example.test/api',
 });
 beforeEach(() => {
+  const values = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+    clear: () => values.clear(),
+  });
+  localStorage.clear();
   vi.resetModules();
   native.handlers.clear();
   native.invoke.mockReset();
 });
+afterEach(() => vi.unstubAllGlobals());
 describe('桌面会话同步', () => {
   it('刷新推送更新页面；旧事件不能恢复已退出的会话', async () => {
     native.invoke.mockResolvedValue({
@@ -40,9 +51,16 @@ describe('桌面会话同步', () => {
     expect(store).toHaveBeenLastCalledWith('token-1');
     native.handlers.get('desktop-session-updated')?.({ payload: session(3) });
     expect(store).toHaveBeenLastCalledWith('token-3');
+    expect(
+      JSON.parse(localStorage.getItem(desktopSessionKey) ?? 'null'),
+    ).toEqual({
+      apiBase: session(3).apiBase,
+      token: 'token-3',
+    });
     native.handlers.get('desktop-session-cleared')?.({ payload: 4 });
     native.handlers.get('desktop-session-updated')?.({ payload: session(2) });
     expect(store).toHaveBeenLastCalledWith(null);
+    expect(localStorage.getItem(desktopSessionKey)).toBeNull();
   });
   it('启动快照返回前收到的刷新不能被旧快照覆盖', async () => {
     native.invoke.mockImplementation(async () => {
@@ -63,5 +81,73 @@ describe('桌面会话同步', () => {
     expect(native.invoke).toHaveBeenCalledWith('desktop_refresh_session', {
       expected: 'old',
     });
+  });
+  it('进程重启从 localStorage 恢复并保存服务器轮换后的令牌', async () => {
+    localStorage.setItem(
+      desktopSessionKey,
+      JSON.stringify({ apiBase: session(1).apiBase, token: 'cached' }),
+    );
+    native.invoke.mockImplementation(async (command) =>
+      command === 'desktop_bootstrap'
+        ? { apiBase: session(1).apiBase, generation: 1, session: null }
+        : session(2, 'renewed'),
+    );
+    const bridge = await import('./index');
+    await bridge.initDesktop();
+    expect(native.invoke).toHaveBeenCalledWith('desktop_restore_session', {
+      token: 'cached',
+      apiBase: session(1).apiBase,
+      expectedGeneration: 1,
+    });
+    const store = vi.fn();
+    await bridge.bindDesktopSession(store);
+    expect(store).toHaveBeenLastCalledWith('renewed');
+    expect(
+      JSON.parse(localStorage.getItem(desktopSessionKey) ?? 'null').token,
+    ).toBe('renewed');
+  });
+  it.each([
+    '{bad-json',
+    JSON.stringify({ apiBase: 'https://other.test', token: 'secret' }),
+  ])('损坏或跨服务缓存不能恢复：%s', async (raw) => {
+    localStorage.setItem(desktopSessionKey, raw);
+    native.invoke.mockResolvedValue({
+      apiBase: session(1).apiBase,
+      generation: 1,
+      session: null,
+    });
+    const bridge = await import('./index');
+    await bridge.initDesktop();
+    expect(native.invoke).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(desktopSessionKey)).toBeNull();
+  });
+  it('退出会清除本地缓存，即使原生 IPC 失败', async () => {
+    localStorage.setItem(desktopSessionKey, 'cached');
+    native.invoke.mockRejectedValue(new Error('IPC unavailable'));
+    const bridge = await import('./index');
+    await expect(bridge.clearDesktopSession()).rejects.toThrow(
+      'IPC unavailable',
+    );
+    expect(localStorage.getItem(desktopSessionKey)).toBeNull();
+  });
+  it('失效恢复清除缓存，网络错误保留缓存供下次启动', async () => {
+    for (const failure of ['unauthorized', '无法连接服务']) {
+      vi.resetModules();
+      const raw = JSON.stringify({
+        apiBase: session(1).apiBase,
+        token: 'cached',
+      });
+      localStorage.setItem(desktopSessionKey, raw);
+      native.invoke.mockImplementation(async (command) => {
+        if (command === 'desktop_bootstrap')
+          return { apiBase: session(1).apiBase, generation: 1, session: null };
+        throw new Error(failure);
+      });
+      const bridge = await import('./index');
+      await bridge.initDesktop();
+      expect(localStorage.getItem(desktopSessionKey)).toBe(
+        failure === 'unauthorized' ? null : raw,
+      );
+    }
   });
 });

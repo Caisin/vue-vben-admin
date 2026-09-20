@@ -75,6 +75,10 @@ pub struct Item {
 #[serde(rename_all = "camelCase")]
 pub struct Job {
     #[serde(default)]
+    pub revision: u64,
+    #[serde(default = "default_collapsed")]
+    pub collapsed: bool,
+    #[serde(default)]
     pub timing: Timing,
     #[serde(default = "default_concurrency")]
     pub concurrency: usize,
@@ -117,6 +121,25 @@ impl Job {
 }
 #[derive(Deserialize)]
 pub struct Edit {
+    pub seq: i32,
+    pub title: String,
+}
+
+pub fn default_collapsed() -> bool {
+    true
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobUpdate {
+    pub expected_revision: u64,
+    pub name: String,
+    pub concurrency: usize,
+    pub items: Vec<ItemEdit>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ItemEdit {
+    pub relative: String,
     pub seq: i32,
     pub title: String,
 }

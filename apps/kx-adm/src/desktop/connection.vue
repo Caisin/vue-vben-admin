@@ -23,7 +23,7 @@ async function save() {
   <details v-if="desktop" class="mb-4 rounded border p-3">
     <summary>桌面端服务连接</summary>
     <p class="my-2 text-sm text-muted-foreground">
-      登录后自动将令牌存入系统凭据库，用于后台上传。
+      登录信息保存在本机 localStorage，重启后自动恢复，用于后台上传。
     </p>
     <label for="desktop-server">API 地址（含服务前缀）</label>
     <Input

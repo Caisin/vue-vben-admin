@@ -14,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
@@ -23,7 +23,6 @@ tokio = { version = "1", features = ["fs", "io-util", "sync", "time", "rt-multi-
 tokio-util = { version = "0.7", features = ["io", "rt"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
 futures-util = "0.3"
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 base64 = "0.22"
 kx-tk-pool = { version = "0.1.24", registry = "hekx" }
 kx-ed = { version = "0.1.24", registry = "hekx" }
@@ -35,4 +34,8 @@ uuid = { version = "1", features = ["v4"] }
 url = "2"
 anyhow = "1"
 regex = "1"
+chrono = "0.4"
+crc32fast = "1"
+hmac = "0.12"
+sha2 = "0.10"
 opendal = { version = "0.55", default-features = false, features = ["services-s3", "executors-tokio"] }

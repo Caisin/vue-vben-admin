@@ -12,6 +12,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Progress,
   Table,
 } from 'antdv-next';
@@ -33,6 +34,11 @@ const busy = ref(false);
 const errorText = ref('');
 const storage = ref<Awaited<ReturnType<typeof dramaStorage>>>();
 const jobs = ref<UploadJob[]>([]);
+const drafts = ref(new Map<string, UploadJob>());
+const displayJob = (job: UploadJob) => drafts.value.get(job.id) ?? job;
+const expanded = (job: UploadJob) => job.collapsed === false;
+const canEdit = (job: UploadJob) =>
+  !running(job) && !job.importId && job.status !== '完成';
 const visibleJobs = computed(() =>
   jobs.value.filter((j) => j.res === props.res),
 );
@@ -97,6 +103,12 @@ async function start(job: UploadJob) {
   await act(async () => {
     await loadStorage();
     if (!storage.value) return;
+    const draft = drafts.value.get(job.id);
+    if (draft) {
+      job = await desktopUploads.update(draft);
+      drafts.value.delete(job.id);
+      update(job);
+    }
     await desktopUploads.start(job);
   });
 }
@@ -115,7 +127,53 @@ async function choose() {
       ['fs', 'local'].includes(selected.storage_type),
       props.versionName,
     );
-    if (job) update(job);
+    if (job) {
+      update(job);
+      await edit(job);
+    }
+  });
+}
+async function edit(job: UploadJob) {
+  if (!canEdit(job)) return;
+  const current = await desktopUploads.collapse(job, false);
+  update(current);
+  drafts.value.set(job.id, JSON.parse(JSON.stringify(current)) as UploadJob);
+}
+async function save(job: UploadJob) {
+  await act(async () => {
+    const draft = drafts.value.get(job.id);
+    if (!draft) return;
+    const saved = await desktopUploads.update(draft);
+    drafts.value.delete(job.id);
+    update(saved);
+  });
+}
+async function toggle(job: UploadJob) {
+  await act(async () => {
+    update(await desktopUploads.collapse(job, expanded(job)));
+  });
+}
+function removeItem(job: UploadJob, relative: string) {
+  const draft = drafts.value.get(job.id);
+  if (!draft) return;
+  draft.items = draft.items.filter((item) => item.relative !== relative);
+}
+async function removeJob(job: UploadJob) {
+  await act(async () => {
+    await desktopUploads.remove(job);
+    jobs.value = jobs.value.filter((item) => item.id !== job.id);
+    drafts.value.delete(job.id);
+  });
+}
+async function rebind(job: UploadJob) {
+  await act(async () => {
+    let current = job;
+    const draft = drafts.value.get(job.id);
+    if (draft) {
+      current = await desktopUploads.update(draft);
+      drafts.value.delete(job.id);
+    }
+    update(await desktopUploads.rebind(current));
   });
 }
 async function syncLogin() {
@@ -224,6 +282,14 @@ onUnmounted(() => {
       class="mb-5 rounded border p-3"
     >
       <div class="mb-2 flex flex-wrap items-center gap-3">
+        <Button
+          size="small"
+          :aria-expanded="expanded(job)"
+          :disabled="busy"
+          @click="toggle(job)"
+        >
+          {{ expanded(job) ? '收起明细' : '展开明细' }}
+        </Button>
         <strong>{{ job.versionName || `版本 ${job.version}` }} ·
           {{ job.name }}</strong><span>{{ job.status }} · {{ job.items.length }} 集</span>
         <Button
@@ -240,25 +306,38 @@ onUnmounted(() => {
         >
           在途分集结束后暂停
         </Button>
+        <Button
+          v-if="canEdit(job) && !drafts.get(job.id)"
+          :disabled="busy"
+          @click="act(() => edit(job))"
+        >
+          编辑清单
+        </Button>
+        <Button v-if="drafts.get(job.id)" :disabled="busy" @click="save(job)">
+          保存修改
+        </Button>
+        <Button
+          v-if="drafts.get(job.id)"
+          :disabled="busy"
+          @click="drafts.delete(job.id)"
+        >
+          取消修改
+        </Button>
+        <Popconfirm
+          title="移除此本地目录任务？本地视频和服务器文件会保留。"
+          @confirm="removeJob(job)"
+        >
+          <Button danger :disabled="busy || running(job)">移除目录</Button>
+        </Popconfirm>
       </div>
       <div class="mb-3 space-y-2" aria-label="目录上传进度">
-        <p class="break-all text-sm text-muted-foreground">
+        <p v-if="expanded(job)" class="break-all text-sm text-muted-foreground">
           目标目录：{{
             job.targetDirectory || `res/${job.res}/versions/${job.version}/`
           }}
         </p>
         <div class="flex flex-wrap items-center gap-3">
-          <label :for="`concurrency-${job.id}`">同时上传集数</label>
-          <InputNumber
-            :id="`concurrency-${job.id}`"
-            v-model:value="job.concurrency"
-            :min="1"
-            :max="8"
-            :precision="0"
-            :disabled="running(job)"
-            placeholder="3"
-            aria-label="同时上传集数"
-          />
+          <span v-if="!expanded(job)">并发 {{ job.concurrency ?? 3 }} 集</span>
           <span>已上传 {{ directoryProgress(job).completed }}/{{
               job.items.length
             }}
@@ -274,6 +353,46 @@ onUnmounted(() => {
           {{ size(directoryProgress(job).total) }} · 上传完成后登记分集
         </p>
       </div>
+      <div v-if="expanded(job)" class="mb-3 flex flex-wrap items-center gap-3">
+        <label :for="`directory-${job.id}`">目录名称</label>
+        <Input
+          :id="`directory-${job.id}`"
+          :value="displayJob(job).name"
+          :maxlength="200"
+          :disabled="!drafts.get(job.id) || busy"
+          class="max-w-72"
+          aria-label="目录名称"
+          @update:value="
+            (value) => {
+              const draft = drafts.get(job.id);
+              if (draft) draft.name = value;
+            }
+          "
+        />
+        <label :for="`concurrency-${job.id}`">同时上传集数</label>
+        <InputNumber
+          :id="`concurrency-${job.id}`"
+          :value="displayJob(job).concurrency ?? 3"
+          :min="1"
+          :max="8"
+          :precision="0"
+          :disabled="!drafts.get(job.id) || busy"
+          aria-label="同时上传集数"
+          @update:value="
+            (value) => {
+              const draft = drafts.get(job.id);
+              if (draft) draft.concurrency = Number(value);
+            }
+          "
+        />
+        <Button
+          v-if="!running(job) && !job.items.some((item) => item.fileId)"
+          :disabled="busy || !storage"
+          @click="rebind(job)"
+        >
+          使用当前存储
+        </Button>
+      </div>
       <Alert
         v-if="job.error"
         type="warning"
@@ -281,7 +400,8 @@ onUnmounted(() => {
         class="mb-2"
       />
       <Table
-        :data-source="job.items"
+        v-if="expanded(job)"
+        :data-source="displayJob(job).items"
         row-key="relative"
         size="small"
         :scroll="{ x: 780 }"
@@ -293,6 +413,7 @@ onUnmounted(() => {
           { title: '进度', key: 'progress', width: 130 },
           { title: '耗时', key: 'elapsed', width: 120 },
           { title: '状态', key: 'status', width: 180 },
+          { title: '操作', key: 'actions', width: 80 },
         ]"
       >
         <template #bodyCell="{ column, record }">
@@ -301,14 +422,18 @@ onUnmounted(() => {
             v-model:value="record.seq"
             :min="1"
             :precision="0"
-            :disabled="running(job) || !!record.fileId"
+            :disabled="
+              !drafts.get(job.id) || busy || record.status === '已登记'
+            "
             aria-label="分集集数"
           />
           <Input
             v-else-if="column.key === 'title'"
             v-model:value="record.title"
             :maxlength="200"
-            :disabled="running(job) || !!record.fileId"
+            :disabled="
+              !drafts.get(job.id) || busy || record.status === '已登记'
+            "
             aria-label="分集标题"
           />
           <Progress
@@ -321,6 +446,17 @@ onUnmounted(() => {
           <span v-else-if="column.key === 'elapsed'">{{
             elapsed(job, record)
           }}</span>
+          <Button
+            v-else-if="column.key === 'actions'"
+            type="link"
+            danger
+            :disabled="
+              !drafts.get(job.id) || busy || record.status === '已登记'
+            "
+            @click="removeItem(job, record.relative)"
+          >
+            移除
+          </Button>
           <template v-else-if="column.key === 'status'">
             <span>{{ record.status }}</span>
             <p v-if="record.error" class="text-destructive">

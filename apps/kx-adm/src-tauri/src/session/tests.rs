@@ -27,7 +27,7 @@ fn token(uid: i64, exp: i64, suffix: &str) -> String {
     )
 }
 #[tokio::test]
-async fn native_refresh_is_singleflight_persisted_and_logout_does_not_restore_it() -> Result<()> {
+async fn native_refresh_is_singleflight_and_restart_has_no_persisted_token() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let calls = Arc::new(AtomicUsize::new(0));
@@ -68,8 +68,7 @@ async fn native_refresh_is_singleflight_persisted_and_logout_does_not_restore_it
         }
     });
     let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
-    let mut d = Desktop::new(dir.clone())?;
-    Arc::get_mut(&mut d).unwrap().vault = Vault::Memory(Mutex::new(None));
+    let d = Desktop::new(dir.clone())?;
     let events = Events::default();
     d.configure(&events, base.clone()).await?;
     let old = token(7, now() - 120, "old");
@@ -81,9 +80,25 @@ async fn native_refresh_is_singleflight_persisted_and_logout_does_not_restore_it
     assert_eq!(a?.token, next);
     assert_eq!(b?.token, next);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
-    let persisted = d.vault.credential(None, true).await?.unwrap();
-    let saved: Session = serde_json::from_str(&persisted)?;
-    assert_eq!(saved.token, next);
+    assert_eq!(
+        events
+            .0
+            .lock()
+            .unwrap()
+            .last()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .token,
+        next
+    );
+    assert!(
+        Desktop::new(dir.clone())?
+            .bootstrap()
+            .await?
+            .session
+            .is_none()
+    );
     let identity = d.identity().await?;
     assert!(
         d.api(
@@ -121,10 +136,41 @@ async fn native_refresh_is_singleflight_persisted_and_logout_does_not_restore_it
     cleared?;
     assert!(d.identity().await.is_err());
     assert_eq!(d.queue.lock().await[0].status, "暂停中");
-    assert!(d.vault.credential(None, true).await?.is_none());
     assert!(events.0.lock().unwrap().last().unwrap().is_none());
-    assert!(d.refresh(&events, Some(old)).await.is_err());
+    assert!(d.refresh(&events, Some(old.clone())).await.is_err());
     assert!(!std::fs::read_to_string(dir.join("server.txt"))?.contains("header."));
+    let restarted = Desktop::new(dir.clone())?;
+    let snapshot = restarted.bootstrap().await?;
+    assert!(snapshot.session.is_none());
+    assert!(
+        restarted
+            .restore(
+                &events,
+                old.clone(),
+                "https://other.test".into(),
+                snapshot.generation
+            )
+            .await
+            .is_err()
+    );
+    let restored = restarted
+        .restore(
+            &events,
+            old.clone(),
+            snapshot.api_base.clone(),
+            snapshot.generation,
+        )
+        .await?;
+    assert_eq!(restored.uid, "7");
+    assert!(restored.expires_at > now());
+    assert_ne!(restored.token, old);
+    restarted.clear(&events).await?;
+    assert!(
+        restarted
+            .restore(&events, old, snapshot.api_base, snapshot.generation)
+            .await
+            .is_err()
+    );
     server.abort();
     std::fs::remove_dir_all(dir)?;
     Ok(())

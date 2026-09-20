@@ -1,0 +1,58 @@
+{
+  "post_common_info": {
+    "creation_id": "fixture-creation",
+    "enter_post_page_from": 2,
+    "post_type": 3
+  },
+  "feature_common_info_list": [
+    {
+      "schedule_time": 1800000000,
+      "geofencing_regions": [],
+      "playlist_name": "",
+      "playlist_id": "",
+      "tcm_params": "{\"commerce_toggle_info\":{}}",
+      "sound_exemption": 0,
+      "anchors": [],
+      "vedit_common_info": {
+        "draft": "",
+        "video_id": "fixture-video"
+      },
+      "privacy_setting_info": {
+        "visibility_type": 0,
+        "allow_duet": null,
+        "allow_stitch": null,
+        "allow_comment": 1,
+        "allow_content_reuse": 1,
+        "allow_ai_remix": 1
+      }
+    }
+  ],
+  "single_post_req_list": [
+    {
+      "batch_index": 0,
+      "video_id": "fixture-video",
+      "is_long_video": 0,
+      "single_post_feature_info": {
+        "text": "fixture caption",
+        "text_extra": [],
+        "markup_text": "fixture caption",
+        "music_info": {
+          "origin_volume": "100"
+        },
+        "poster_delay": 0,
+        "cloud_edit_video_height": 1280,
+        "cloud_edit_video_width": 720,
+        "cloud_edit_is_use_video_canvas": false,
+        "has_original_audio": 1,
+        "is_upload_audio_track": false,
+        "video_track_time_range_list": [
+          {
+            "start_time_in_ms": 0,
+            "end_time_in_ms": 5000
+          }
+        ],
+        "mature_theme_type": 0
+      }
+    }
+  ]
+}

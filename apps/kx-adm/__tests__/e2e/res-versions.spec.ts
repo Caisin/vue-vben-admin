@@ -11,12 +11,13 @@ for (const [kind, label, nativeMode = false] of [
   ['novel', '小说'],
   ['script', '剧本'],
   ['drama', '短剧桌面', true],
+  ['novel', '小说手机'],
 ] as const) {
   test(`${label}：多个版本备注与内容独立，重新打开可管理`, async ({
     page,
   }, info) => {
     test.setTimeout(60_000);
-    if (kind === 'script')
+    if (kind === 'script' || label === '小说手机')
       await page.setViewportSize({ width: 390, height: 844 });
     if (nativeMode) {
       await page.addInitScript(() => {
@@ -68,6 +69,8 @@ for (const [kind, label, nativeMode = false] of [
             if (command === 'desktop_scan') {
               job = {
                 id: 'folder-test',
+                revision: 0,
+                collapsed: true,
                 res: args.res,
                 version: args.version,
                 name: '整剧目录',
@@ -79,6 +82,16 @@ for (const [kind, label, nativeMode = false] of [
                 snapshotAt: Date.now(),
                 timing: { elapsedMs: 0, active: false },
                 items: [
+                  {
+                    relative: '预告.mp4',
+                    seq: 0,
+                    title: '预告',
+                    fileId: null,
+                    size: 50,
+                    bytes: 0,
+                    status: '待确认',
+                    error: '',
+                  },
                   {
                     relative: '第03集.mp4',
                     seq: 3,
@@ -92,6 +105,38 @@ for (const [kind, label, nativeMode = false] of [
                 ],
               };
               return structuredClone(job);
+            }
+            if (command === 'desktop_collapse_job' && job) {
+              job.collapsed = args.collapsed;
+              return structuredClone(job);
+            }
+            if (command === 'desktop_update_job' && job) {
+              const update = args.update as {
+                expectedRevision: number;
+                name: string;
+                concurrency: number;
+                items: { relative: string; seq: number; title: string }[];
+              };
+              if (update.expectedRevision !== job.revision)
+                throw new Error('stale revision');
+              const original = job.items as { relative: string }[];
+              job.items = update.items.map((item) => ({
+                ...original.find((v) => v.relative === item.relative),
+                ...item,
+              }));
+              job.name = update.name;
+              job.concurrency = update.concurrency;
+              job.revision = Number(job.revision) + 1;
+              return structuredClone(job);
+            }
+            if (command === 'desktop_rebind_job' && job) {
+              job.revision = Number(job.revision) + 1;
+              job.error = '';
+              return structuredClone(job);
+            }
+            if (command === 'desktop_remove_job') {
+              job = null;
+              return;
             }
             if (command === 'desktop_start' && job) {
               if (args.concurrency !== 2)
@@ -156,6 +201,16 @@ for (const [kind, label, nativeMode = false] of [
     let nativeExpired = nativeMode;
     let nativeRefreshed = false;
     let storageFailure = 0;
+    let novelRequest:
+      | undefined
+      | {
+          name: string;
+          remark: string;
+          chapters: { title: string; content: string }[];
+        };
+    let novelFail = true;
+    let novelDone = false;
+    let novelPolls = 0;
     const fileListPaths: string[] = [];
     await page.route('**/{auth,adm,param,notify,storage}/**', async (route) => {
       const req = route.request();
@@ -199,7 +254,99 @@ for (const [kind, label, nativeMode = false] of [
         ];
       else if (path === '/notify/inbox')
         result = { items: [], unread_count: 0 };
-      else if (path === '/param/system-settings/public') result = null;
+      else if (path === '/adm/res/41/novel-imports/latest')
+        result = novelRequest
+          ? {
+              id: 91,
+              version_id: novelDone ? 3 : null,
+              name: novelRequest.name,
+              chapter_count: 3,
+              dispatch_error: '',
+              task_run: {
+                status: novelDone ? 'succeeded' : 'running',
+                total_count: 3,
+                succeeded_count: novelDone ? 3 : 0,
+              },
+            }
+          : null;
+      else if (path === '/adm/res/41/novel-imports/parse') {
+        const body = read();
+        expect(body.file_name).toBe('整本小说.txt');
+        expect(body.content).toContain('第一章 初遇');
+        result = {
+          chapters: [
+            { title: '序言', content: '保留的序言内容' },
+            { title: '第一章 初遇', content: '第一章正文。' },
+            { title: '第二章 重逢', content: '第二章正文。' },
+          ],
+          warnings: ['章节标题前的正文已保留为序言'],
+        };
+      } else if (
+        path === '/adm/res/41/novel-imports' &&
+        req.method() === 'POST'
+      ) {
+        const body = read();
+        expect(body.chapters).toHaveLength(3);
+        expect(body.name).toBe('TXT 精修版');
+        expect(body.remark).toBe('调整重逢章节');
+        if (novelFail) {
+          novelFail = false;
+          await fulfill(route, null, 500, '导入提交失败，请重试');
+          return;
+        }
+        novelRequest = body;
+        result = {
+          id: 91,
+          version_id: null,
+          name: body.name,
+          chapter_count: 3,
+          dispatch_error: '',
+          task_run: { status: 'running', total_count: 3, succeeded_count: 0 },
+        };
+      } else if (path === '/adm/res/41/novel-imports/91') {
+        if (!novelRequest) throw new Error('missing novel import');
+        if (novelPolls++ === 0) {
+          await fulfill(route, {
+            id: 91,
+            version_id: null,
+            name: novelRequest.name,
+            chapter_count: 3,
+            dispatch_error: '',
+            task_run: { status: 'running', total_count: 3, succeeded_count: 0 },
+          });
+          return;
+        }
+
+        if (!novelDone) {
+          novelDone = true;
+          versions.push({
+            id: 3,
+            res_id: 41,
+            name: novelRequest.name,
+            remark: novelRequest.remark,
+            revision: 1,
+          });
+          novelRequest.chapters.forEach((chapter, index) =>
+            items.push({
+              id: 200 + index,
+              version_id: 3,
+              seq_no: index + 1,
+              ...chapter,
+              link: '',
+              duration: 0,
+              remark: '',
+            }),
+          );
+        }
+        result = {
+          id: 91,
+          version_id: 3,
+          name: novelRequest.name,
+          chapter_count: 3,
+          dispatch_error: '',
+          task_run: { status: 'succeeded', total_count: 3, succeeded_count: 3 },
+        };
+      } else if (path === '/param/system-settings/public') result = null;
       else if (path === '/adm/res/drama-storage') {
         if (storageFailure) {
           await route.fulfill({
@@ -296,7 +443,7 @@ for (const [kind, label, nativeMode = false] of [
           versions.push({ ...body, id: 2, res_id: 41, revision: 1 });
           result = versions[1];
         } else result = versions;
-      } else if (/^\/adm\/res\/41\/versions\/[12]$/.test(path)) {
+      } else if (/^\/adm\/res\/41\/versions\/[123]$/.test(path)) {
         const id = Number(path.split('/').at(-1));
         const version = versions.find((v) => v.id === id);
         if (!version) throw new Error('missing version');
@@ -374,7 +521,9 @@ for (const [kind, label, nativeMode = false] of [
     const create = page.getByRole('dialog', { name: '新增资源', exact: true });
     if (kind !== 'drama') {
       await create.getByRole('combobox').click();
-      await page.getByTitle(label, { exact: true }).click();
+      await page
+        .getByTitle(kind === 'novel' ? '小说' : '剧本', { exact: true })
+        .click();
     }
     await create
       .getByPlaceholder('资源名称', { exact: true })
@@ -502,7 +651,40 @@ for (const [kind, label, nativeMode = false] of [
       await expect(
         uploader.getByRole('cell', { name: '第03集.mp4', exact: true }),
       ).toBeVisible();
-      await expect(uploader.getByLabel('分集集数')).toHaveValue('3');
+      await uploader
+        .getByRole('row')
+        .filter({ hasText: '预告.mp4' })
+        .getByRole('button', { name: '移除', exact: true })
+        .click();
+      await expect(
+        uploader.getByRole('cell', { name: '预告.mp4', exact: true }),
+      ).toHaveCount(0);
+      await uploader
+        .getByRole('textbox', { name: '目录名称', exact: true })
+        .fill('自定义目录');
+      await uploader.getByLabel('分集集数').fill('5');
+      await uploader.getByLabel('分集标题').fill('自定义第五集');
+      await uploader.getByRole('button', { name: '刷新配置和任务' }).click();
+      await expect(uploader.getByLabel('分集标题')).toHaveValue('自定义第五集');
+      await uploader.getByRole('button', { name: '保存修改' }).click();
+      await uploader.getByRole('button', { name: '收起明细' }).click();
+      await expect(uploader.getByRole('table')).toHaveCount(0);
+      await expect(uploader.getByLabel('目录上传进度')).toBeVisible();
+      await expect(uploader.getByText('上传耗时：0时0分0秒')).toBeVisible();
+      await expect(uploader.getByText(/自定义目录/)).toBeVisible();
+      await uploader.screenshot({
+        path: info.outputPath('directory-collapsed.png'),
+        animations: 'disabled',
+      });
+      await uploader.getByRole('button', { name: '关闭', exact: true }).click();
+      await manager
+        .getByRole('button', { name: '整剧目录上传', exact: true })
+        .click();
+      await expect(uploader.getByRole('table')).toHaveCount(0);
+      await uploader.getByRole('button', { name: '展开明细' }).click();
+      await expect(uploader.getByLabel('分集集数')).toHaveValue('5');
+      await expect(uploader.getByLabel('分集标题')).toHaveValue('自定义第五集');
+
       for (const status of [500, 409]) {
         storageFailure = status;
         await uploader.getByRole('button', { name: '刷新配置和任务' }).click();
@@ -525,6 +707,8 @@ for (const [kind, label, nativeMode = false] of [
       await expect(
         uploader.getByRole('button', { name: '确认清单并上传' }),
       ).toBeEnabled();
+      await uploader.getByRole('button', { name: '使用当前存储' }).click();
+      await uploader.getByRole('button', { name: '编辑清单' }).click();
       await uploader
         .getByRole('spinbutton', { name: '同时上传集数' })
         .fill('2');
@@ -539,6 +723,19 @@ for (const [kind, label, nativeMode = false] of [
         path: info.outputPath('desktop-directory-upload.png'),
         animations: 'disabled',
       });
+      await uploader.getByRole('button', { name: '收起明细' }).click();
+      await expect(uploader.getByRole('table')).toHaveCount(0);
+      await expect(uploader.getByText('上传耗时：0时0分5秒')).toBeVisible();
+      await uploader.getByRole('button', { name: '移除目录' }).click();
+      await page
+        .getByRole('button', { name: /确.*定/ })
+        .last()
+        .click();
+      await expect(uploader.getByText(/自定义目录/)).toHaveCount(0);
+      await uploader.getByRole('button', { name: '刷新配置和任务' }).click();
+      await expect(
+        uploader.getByText('当前版本暂无目录上传任务'),
+      ).toBeVisible();
       await uploader.getByRole('button', { name: '关闭', exact: true }).click();
     }
     expect(items).toHaveLength(2);
@@ -563,6 +760,118 @@ for (const [kind, label, nativeMode = false] of [
       expect(fileListPaths).toContain('/adm/res/41/versions/2/files');
     }
     expect(items[0]?.version_id).not.toBe(items[1]?.version_id);
+    if (kind === 'novel') {
+      await manager
+        .getByRole('button', { name: '章节预览', exact: true })
+        .click();
+      const oldReader = page.getByRole('dialog', {
+        name: `测试${label} · 修订版 · 章节预览`,
+        exact: true,
+      });
+      await expect(
+        oldReader.getByRole('region', { name: '章节正文' }),
+      ).toContainText('修订版正文');
+      await oldReader
+        .getByRole('button', { name: '关闭', exact: true })
+        .click();
+      await manager
+        .getByRole('button', { name: '导入 TXT 生成版本', exact: true })
+        .click();
+      const importer = page.getByRole('dialog', {
+        name: '导入小说 TXT · 生成新版本',
+        exact: true,
+      });
+      await importer.getByLabel('选择整本小说 TXT').setInputFiles({
+        name: '整本小说.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from(
+          '保留的序言内容\n第一章 初遇\n第一章正文。\n第二章 重逢\n第二章正文。',
+        ),
+      });
+      await expect(importer.getByText('解析目录 · 3 章')).toBeVisible();
+      await importer
+        .getByRole('button', { name: '3. 第二章 重逢', exact: true })
+        .click();
+      await expect(importer.getByLabel('导入正文预览')).toContainText(
+        '第二章正文。',
+      );
+      await importer
+        .getByLabel('新版本名称', { exact: true })
+        .fill('TXT 精修版');
+      await importer.getByLabel('导入版本差异备注').fill('调整重逢章节');
+      await importer.screenshot({
+        path: info.outputPath('novel-import-review.png'),
+        animations: 'disabled',
+      });
+      await importer
+        .getByRole('button', { name: '确认章节并生成版本' })
+        .click();
+      await expect(
+        importer.getByText('导入提交失败，请重试', { exact: true }),
+      ).toBeVisible();
+      await expect(importer.getByText('解析目录 · 3 章')).toBeVisible();
+      await importer
+        .getByRole('button', { name: '确认章节并生成版本' })
+        .click();
+      await expect(importer.getByText(/正在生成「TXT 精修版」/)).toBeVisible();
+      await importer
+        .getByRole('button', { name: '关闭', exact: true })
+        .first()
+        .click();
+      await manager
+        .getByRole('button', { name: '导入 TXT 生成版本', exact: true })
+        .click();
+      await expect(
+        importer.getByText('版本「TXT 精修版」已生成，共 3 章'),
+      ).toBeVisible();
+      await importer
+        .getByRole('button', { name: '关闭', exact: true })
+        .first()
+        .click();
+      await expect(
+        manager.getByRole('heading', { name: 'TXT 精修版', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('导入提交失败，请重试', { exact: true }),
+      ).toHaveCount(0, { timeout: 10_000 });
+      await manager
+        .getByRole('button', { name: '章节预览', exact: true })
+        .click();
+      const reader = page.getByRole('dialog', {
+        name: `测试${label} · TXT 精修版 · 章节预览`,
+        exact: true,
+      });
+      await expect(
+        reader.getByRole('region', { name: '章节正文' }),
+      ).toContainText('保留的序言内容');
+      await reader.getByRole('button', { name: '下一章', exact: true }).click();
+      await expect(
+        reader.getByRole('region', { name: '章节正文' }),
+      ).toContainText('第一章正文。');
+      await reader
+        .getByRole('navigation', { name: '选择章节' })
+        .getByRole('button', { name: /第二章 重逢/ })
+        .click();
+      await expect(
+        reader.getByRole('region', { name: '章节正文' }),
+      ).toContainText('第二章正文。');
+      await reader.screenshot({
+        path: info.outputPath('novel-reader.png'),
+        animations: 'disabled',
+      });
+      await reader.getByRole('button', { name: '关闭', exact: true }).click();
+      await manager
+        .getByRole('navigation', { name: '资源版本' })
+        .getByRole('button', { name: /初版/ })
+        .click();
+      await expect(
+        manager.getByRole('cell', { name: '第一章', exact: true }),
+      ).toBeVisible();
+      await expect(
+        manager.getByRole('cell', { name: '第二章 重逢', exact: true }),
+      ).toHaveCount(0);
+    }
+
     if (kind === 'drama') {
       const extra = Array.from({ length: 51 }, (_, index) => ({
         id: 100 + index,

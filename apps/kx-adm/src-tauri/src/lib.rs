@@ -2,6 +2,7 @@ mod protocol;
 mod queue;
 mod scan;
 mod session;
+mod tiktok;
 use session::{Bootstrap, Desktop, Session};
 use std::sync::Arc;
 use tauri::{Manager, State};
@@ -19,8 +20,10 @@ async fn desktop_bootstrap(state: Native<'_>) -> Reply<Bootstrap> {
 async fn desktop_configure(
     app: tauri::AppHandle,
     state: Native<'_>,
+    tiktok: State<'_, Arc<tiktok::TikTok>>,
     api_base: String,
 ) -> Reply<()> {
+    tiktok.pause();
     state.configure(&app, api_base).await.map_err(error)
 }
 #[tauri::command]
@@ -32,6 +35,19 @@ async fn desktop_import_session(
     state.import(&app, token).await.map_err(error)
 }
 #[tauri::command]
+async fn desktop_restore_session(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    token: String,
+    api_base: String,
+    expected_generation: u64,
+) -> Reply<Session> {
+    state
+        .restore(&app, token, api_base, expected_generation)
+        .await
+        .map_err(error)
+}
+#[tauri::command]
 async fn desktop_refresh_session(
     app: tauri::AppHandle,
     state: Native<'_>,
@@ -40,7 +56,12 @@ async fn desktop_refresh_session(
     state.refresh(&app, expected).await.map_err(error)
 }
 #[tauri::command]
-async fn desktop_clear_session(app: tauri::AppHandle, state: Native<'_>) -> Reply<()> {
+async fn desktop_clear_session(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    tiktok: State<'_, Arc<tiktok::TikTok>>,
+) -> Reply<()> {
+    tiktok.pause();
     state.clear(&app).await.map_err(error)
 }
 #[tauri::command]
@@ -58,12 +79,249 @@ async fn desktop_start(
     id: String,
     edits: Vec<queue::Edit>,
     concurrency: Option<usize>,
+    expected_revision: Option<u64>,
 ) -> Reply<()> {
     state
         .inner()
-        .start(app, id, edits, concurrency.unwrap_or(3))
+        .start(app, id, edits, concurrency.unwrap_or(3), expected_revision)
         .await
         .map_err(error)
+}
+#[tauri::command]
+async fn desktop_update_job(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    id: String,
+    update: queue::JobUpdate,
+) -> Reply<serde_json::Value> {
+    state.update_job(&app, &id, update).await.map_err(error)
+}
+#[tauri::command]
+async fn desktop_remove_job(state: Native<'_>, id: String, expected_revision: u64) -> Reply<()> {
+    state
+        .remove_job(&id, expected_revision)
+        .await
+        .map_err(error)
+}
+#[tauri::command]
+async fn desktop_collapse_job(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    id: String,
+    collapsed: bool,
+) -> Reply<serde_json::Value> {
+    state
+        .collapse_job(&app, &id, collapsed)
+        .await
+        .map_err(error)
+}
+#[tauri::command]
+async fn desktop_rebind_job(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    id: String,
+    expected_revision: u64,
+) -> Reply<serde_json::Value> {
+    state
+        .rebind_job(&app, &id, expected_revision)
+        .await
+        .map_err(error)
+}
+#[tauri::command]
+async fn tiktok_pick_directory(
+    app: tauri::AppHandle,
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+) -> Reply<Option<tiktok::DirectorySelection>> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    state.ensure_owner(&key).await.map_err(error)?;
+
+    state.pick_directory(&app).await.map_err(error)
+}
+#[tauri::command]
+async fn tiktok_list(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+) -> Reply<Option<tiktok::DirectorySelection>> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    if state.ensure_owner(&key).await.is_err() {
+        return Ok(None);
+    }
+
+    Ok(state.list().await)
+}
+#[tauri::command]
+async fn tiktok_account(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+) -> Reply<tiktok::Account> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    state.ensure_owner(&key).await.map_err(error)?;
+
+    state.account().await.map_err(error)
+}
+#[tauri::command]
+async fn tiktok_import_cookie(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+    input: tiktok::CookieInput,
+) -> Reply<tiktok::Login> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    state
+        .import_cookie(
+            input.cookie,
+            input.user_agent,
+            input.timezone,
+            input.expected_account_id,
+            format!("{}:{}", owner.api_base, owner.uid),
+            input.activate.unwrap_or(true),
+        )
+        .await
+        .map_err(error)
+}
+#[tauri::command]
+async fn tiktok_preview(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    state: State<'_, Arc<tiktok::TikTok>>,
+    id: String,
+    revision: u64,
+) -> Reply<String> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    state.ensure_owner(&key).await.map_err(error)?;
+
+    let path = state.preview_path(&id, revision).await.map_err(error)?;
+    app.asset_protocol_scope()
+        .allow_file(&path)
+        .map_err(|e| error(e.into()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+#[tauri::command]
+async fn tiktok_session(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+) -> Reply<Option<tiktok::Login>> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    if state
+        .ensure_owner(&format!("{}:{}", owner.api_base, owner.uid))
+        .await
+        .is_err()
+    {
+        return Ok(None);
+    }
+    Ok(state.login_session().await)
+}
+#[tauri::command]
+async fn tiktok_logout(
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+) -> Reply<()> {
+    tiktok::local_caller(&window).map_err(error)?;
+    state.clear_login().await.map_err(error)
+}
+#[tauri::command]
+async fn tiktok_plan(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+    edit: tiktok::PlanEdit,
+) -> Reply<tiktok::DirectorySelection> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    state.ensure_owner(&key).await.map_err(error)?;
+
+    state.plan(edit).await.map_err(error)
+}
+#[tauri::command]
+async fn tiktok_upload(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+    file_ids: Vec<String>,
+    revision: u64,
+    account_id: String,
+    concurrency: Option<usize>,
+) -> Reply<()> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    state.ensure_owner(&key).await.map_err(error)?;
+
+    state
+        .upload(file_ids, revision, account_id, concurrency.unwrap_or(3))
+        .await
+        .map_err(error)
+}
+#[tauri::command]
+async fn tiktok_pause(
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+) -> Reply<()> {
+    tiktok::local_caller(&window).map_err(error)?;
+    state.pause();
+    Ok(())
+}
+#[tauri::command]
+async fn tiktok_remove(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+    revision: u64,
+) -> Reply<()> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    state.ensure_owner(&key).await.map_err(error)?;
+
+    state.remove(revision).await.map_err(error)
+}
+#[tauri::command]
+async fn tiktok_reset_media(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+    id: String,
+    revision: u64,
+) -> Reply<()> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    state.ensure_owner(&key).await.map_err(error)?;
+
+    state.reset_media(&id, revision).await.map_err(error)
+}
+#[tauri::command]
+async fn tiktok_reconcile(
+    desktop: Native<'_>,
+    window: tauri::WebviewWindow,
+    state: State<'_, Arc<tiktok::TikTok>>,
+    id: String,
+    revision: u64,
+    item_id: Option<String>,
+) -> Reply<()> {
+    tiktok::local_caller(&window).map_err(error)?;
+    let owner = desktop.identity().await.map_err(error)?;
+    let key = format!("{}:{}", owner.api_base, owner.uid);
+    state.ensure_owner(&key).await.map_err(error)?;
+
+    state.reconcile(&id, revision, item_id).await.map_err(error)
 }
 #[tauri::command]
 async fn desktop_scan(
@@ -108,6 +366,8 @@ async fn desktop_scan(
         return Err("扫描期间登录身份发生变化".into());
     }
     let job = queue::Job {
+        revision: 0,
+        collapsed: true,
         timing: Default::default(),
         concurrency: 3,
         version_name,
@@ -143,6 +403,7 @@ pub fn run() {
         .setup(|app| {
             let desktop = Desktop::new(app.path().app_data_dir()?)?;
             app.manage(desktop.clone());
+            app.manage(tiktok::TikTok::new(app.path().app_data_dir()?)?);
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -189,12 +450,30 @@ pub fn run() {
             desktop_bootstrap,
             desktop_configure,
             desktop_import_session,
+            desktop_restore_session,
             desktop_refresh_session,
             desktop_clear_session,
             desktop_jobs,
             desktop_scan,
             desktop_start,
-            desktop_pause
+            desktop_pause,
+            desktop_update_job,
+            desktop_remove_job,
+            desktop_collapse_job,
+            desktop_rebind_job,
+            tiktok_pick_directory,
+            tiktok_upload,
+            tiktok_list,
+            tiktok_account,
+            tiktok_import_cookie,
+            tiktok_session,
+            tiktok_preview,
+            tiktok_logout,
+            tiktok_plan,
+            tiktok_pause,
+            tiktok_remove,
+            tiktok_reconcile,
+            tiktok_reset_media
         ])
         .run(tauri::generate_context!())
         .expect("桌面应用启动失败");

@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,29 +23,6 @@ impl SessionEvents for AppHandle {
         Ok(())
     }
 }
-pub enum Vault {
-    System,
-    #[cfg(test)]
-    Memory(Mutex<Option<String>>),
-}
-impl Vault {
-    async fn credential(&self, value: Option<String>, read: bool) -> Result<Option<String>> {
-        match self {
-            Self::System => credential(value, read).await,
-            #[cfg(test)]
-            Self::Memory(v) => {
-                let mut v = v.lock().await;
-                if read {
-                    Ok(v.clone())
-                } else {
-                    *v = value;
-                    Ok(None)
-                }
-            }
-        }
-    }
-}
-
 use crate::protocol;
 use tokio::sync::Mutex;
 
@@ -67,6 +44,7 @@ pub struct Session {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bootstrap {
+    pub generation: u64,
     pub api_base: String,
     pub session: Option<Session>,
 }
@@ -76,7 +54,6 @@ pub struct Auth {
     pub generation: u64,
 }
 pub struct Desktop {
-    pub vault: Vault,
     pub auth: Mutex<Auth>,
     pub http: reqwest::Client,
     pub data: PathBuf,
@@ -85,28 +62,6 @@ pub struct Desktop {
     pub upload_pool: kx_tk_pool::TkPool,
 }
 
-async fn credential(value: Option<String>, read: bool) -> Result<Option<String>> {
-    tokio::task::spawn_blocking(move || {
-        let entry = keyring::Entry::new("com.qinjiu.kx-adm", "upload-session")?;
-        if read {
-            return match entry.get_password() {
-                Ok(v) => Ok(Some(v)),
-                Err(keyring::Error::NoEntry) => Ok(None),
-                Err(e) => Err(e.into()),
-            };
-        }
-        if let Some(v) = value {
-            entry.set_password(&v)?;
-        } else {
-            match entry.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => {}
-                Err(e) => return Err(e.into()),
-            }
-        }
-        Ok(None)
-    })
-    .await?
-}
 fn token_session(token: String, base: String, generation: u64) -> Result<Session> {
     ensure!(token.len() < 32768, "令牌过长");
     let part = token
@@ -137,7 +92,6 @@ impl Desktop {
             .unwrap_or_else(|| "http://localhost:8883".into());
         let jobs = crate::queue::load(&data)?;
         Ok(Arc::new(Self {
-            vault: Vault::System,
             auth: Mutex::new(Auth {
                 session: None,
                 base,
@@ -156,18 +110,9 @@ impl Desktop {
     }
     pub async fn bootstrap(&self) -> Result<Bootstrap> {
         let mut a = self.auth.lock().await;
-        if a.generation == 0 && !self.data.join("session-disabled").exists() {
-            if let Some(v) = self.vault.credential(None, true).await? {
-                let mut s: Session = serde_json::from_str(&v)?;
-                if s.api_base == a.base {
-                    s.generation = 1;
-                    a.session = Some(s);
-                }
-            }
-            a.generation = 1;
-        }
         a.generation = a.generation.max(1);
         Ok(Bootstrap {
+            generation: a.generation,
             api_base: a.base.clone(),
             session: a.session.clone(),
         })
@@ -198,12 +143,6 @@ impl Desktop {
         .await
     }
     async fn save(&self, app: &impl SessionEvents, a: &mut Auth, s: Session) -> Result<Session> {
-        self.vault
-            .credential(Some(serde_json::to_string(&s)?), false)
-            .await?;
-        if self.data.join("session-disabled").exists() {
-            std::fs::remove_file(self.data.join("session-disabled"))?;
-        }
         a.generation = s.generation;
         a.session = Some(s.clone());
         app.updated(&s)?;
@@ -246,6 +185,34 @@ impl Desktop {
         }
         self.refresh_locked(app, &mut a).await
     }
+    /// 从主窗口 localStorage 恢复令牌；只在后端验证通过后建立原生内存会话。
+    pub async fn restore(
+        &self,
+        app: &impl SessionEvents,
+        token: String,
+        base: String,
+        expected_generation: u64,
+    ) -> Result<Session> {
+        let mut a = self.auth.lock().await;
+        ensure!(
+            a.base == base && a.generation == expected_generation && a.session.is_none(),
+            "桌面会话已变化，请重新登录"
+        );
+        let mut s = token_session(token, a.base.clone(), a.generation + 1)?;
+        if s.expires_at <= now() + 60 {
+            let body = self
+                .send(&s, reqwest::Method::POST, "/auth/user/refresh_token", None)
+                .await?;
+            let token = body["access_token"].as_str().context("刷新响应无效")?;
+            let next = token_session(token.into(), a.base.clone(), a.generation + 1)?;
+            ensure!(next.uid == s.uid, "刷新身份不一致");
+            s = next;
+        } else {
+            self.send(&s, reqwest::Method::GET, "/auth/user/user_info", None)
+                .await?;
+        }
+        self.save(app, &mut a, s).await
+    }
     pub async fn import(&self, app: &impl SessionEvents, token: String) -> Result<Session> {
         let mut a = self.auth.lock().await;
         let s = token_session(token, a.base.clone(), a.generation + 1)?;
@@ -257,13 +224,11 @@ impl Desktop {
         self.save(app, &mut a, s).await
     }
     async fn clear_locked(&self, app: &impl SessionEvents, a: &mut Auth) -> Result<()> {
-        // 先使内存身份失效，即便系统凭据库暂时不可用也不继续上传。
+        // 先使内存身份失效并通知页面清除 localStorage，再暂停本地上传。
         a.session = None;
         a.generation += 1;
         app.cleared(a.generation)?;
-        std::fs::write(self.data.join("session-disabled"), b"logged-out")?;
         self.pause_all().await?;
-        self.vault.credential(None, false).await?;
         Ok(())
     }
     pub async fn clear(&self, app: &impl SessionEvents) -> Result<()> {

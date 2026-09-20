@@ -1,5 +1,5 @@
 use super::*;
-use crate::session::{SessionEvents, Vault};
+use crate::session::SessionEvents;
 use base64::Engine;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::{
@@ -79,8 +79,7 @@ async fn tk_pool_limits_parallel_episodes_keeps_successes_and_records_directory_
     for n in 1..=5 {
         std::fs::write(root.join(format!("{n}.mp4")), vec![n as u8; 32768])?;
     }
-    let mut d = Desktop::new(dir.clone())?;
-    Arc::get_mut(&mut d).unwrap().vault = Vault::Memory(tokio::sync::Mutex::new(None));
+    let d = Desktop::new(dir.clone())?;
     let events = Events::default();
     d.configure(&events, base.clone()).await?;
     let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(
@@ -88,6 +87,8 @@ async fn tk_pool_limits_parallel_episodes_keeps_successes_and_records_directory_
     )?);
     d.import(&events, format!("h.{token}.s")).await?;
     let job = Job {
+        revision: 0,
+        collapsed: true,
         id: "parallel".into(),
         api_base: base,
         uid: "7".into(),

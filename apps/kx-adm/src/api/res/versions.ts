@@ -68,3 +68,48 @@ export const ResourceVersionApi = {
       data: { expected_revision },
     }),
 };
+
+export interface NovelChapter {
+  title: string;
+  content: string;
+}
+export interface NovelImportView {
+  id: Id;
+  version_id?: Id | null;
+  name: string;
+  chapter_count: number;
+  dispatch_error: string;
+  task_run?: null | {
+    status: string;
+    message?: string;
+    total_count: number;
+    succeeded_count: number;
+    error_message?: string;
+  };
+}
+export const NovelImportApi = {
+  parse: (
+    res: Id,
+    data: { file_name: string; content?: string; file_base64?: string },
+  ) =>
+    requestClient.post<{ chapters: NovelChapter[]; warnings: string[] }>(
+      `/adm/res/${res}/novel-imports/parse`,
+      data,
+    ),
+  submit: (
+    res: Id,
+    data: {
+      request_key: string;
+      name: string;
+      remark: string;
+      chapters: NovelChapter[];
+    },
+  ) =>
+    requestClient.post<NovelImportView>(`/adm/res/${res}/novel-imports`, data),
+  get: (res: Id, id: Id) =>
+    requestClient.get<NovelImportView>(`/adm/res/${res}/novel-imports/${id}`),
+  latest: (res: Id) =>
+    requestClient.get<NovelImportView | null>(
+      `/adm/res/${res}/novel-imports/latest`,
+    ),
+};

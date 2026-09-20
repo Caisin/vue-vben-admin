@@ -61,6 +61,12 @@ const coreRoutes: RouteRecordRaw[] = [
     ],
   },
   {
+    redirect: '/tiktok/studio',
+    meta: { hideInMenu: true, hideInTab: true, title: 'TikTok 批量预约发布' },
+    name: 'LegacyTikTokStudio',
+    path: '/tiktok-studio',
+  },
+  {
     component: AuthPageLayout,
     meta: {
       hideInTab: true,

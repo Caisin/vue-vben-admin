@@ -1,5 +1,5 @@
 use super::*;
-use crate::session::{SessionEvents, Vault};
+use crate::session::SessionEvents;
 use base64::Engine;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -167,8 +167,7 @@ async fn exercise_upload(size: usize) -> Result<()> {
     let root = dir.join("drama");
     std::fs::create_dir_all(&root)?;
     std::fs::write(root.join("第1集.mp4"), data)?;
-    let mut d = Desktop::new(dir.clone())?;
-    Arc::get_mut(&mut d).unwrap().vault = Vault::Memory(tokio::sync::Mutex::new(None));
+    let d = Desktop::new(dir.clone())?;
     d.configure(&Events, base.clone()).await?;
     let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(
         &serde_json::json!({"uid":7,"exp":crate::session::now()+3600}),
@@ -176,6 +175,8 @@ async fn exercise_upload(size: usize) -> Result<()> {
     d.import(&Events, format!("h.{payload}.s")).await?;
     let items = crate::scan::scan(&root)?;
     let job = Job {
+        revision: 0,
+        collapsed: true,
         timing: Default::default(),
         concurrency: 3,
         version_name: String::new(),

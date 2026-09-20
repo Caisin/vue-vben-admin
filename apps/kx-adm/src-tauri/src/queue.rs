@@ -23,7 +23,7 @@ use std::{
 use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncReadExt;
 mod model;
-pub use model::{Edit, Item, Job};
+pub use model::{Edit, Item, Job, JobUpdate};
 pub fn modified(m: &std::fs::Metadata) -> u64 {
     m.modified()
         .ok()
@@ -132,10 +132,15 @@ impl Desktop {
         id: String,
         edits: Vec<Edit>,
         concurrency: usize,
+        expected_revision: Option<u64>,
     ) -> Result<()> {
         ensure!((1..=8).contains(&concurrency), "同时上传集数须为 1 至 8");
-        let (job, _) = self.owned_job(&id).await?;
         let mut active = self.active.lock().await;
+        let (job, _) = self.owned_job(&id).await?;
+        ensure!(
+            expected_revision.is_none_or(|v| v == job.revision),
+            "目录清单已变化，请刷新后重试"
+        );
         ensure!(!active.contains(&id), "任务正在执行，请等待当前文件结束");
         ensure!(
             !self.queue.lock().await.iter().any(|other| other.id != id
@@ -164,6 +169,7 @@ impl Desktop {
             }
         }
         self.change(&app, &id, |j| {
+            j.revision += 1;
             j.concurrency = concurrency;
             j.status = "等待上传".into();
             j.error.clear();
@@ -369,6 +375,8 @@ mod tests {
         let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
         std::fs::create_dir(&dir)?;
         let j = Job {
+            revision: 0,
+            collapsed: true,
             timing: Default::default(),
             concurrency: 3,
             version_name: String::new(),
@@ -419,3 +427,5 @@ mod upload;
 
 #[cfg(test)]
 mod concurrent_tests;
+
+mod manage;

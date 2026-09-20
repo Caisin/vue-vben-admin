@@ -263,7 +263,7 @@ struct S3UploadConfig {
 }
 impl S3UploadConfig {
     fn operator(&self) -> Result<opendal::Operator> {
-        protocol::server(&self.endpoint)?;
+        let endpoint = normalize_endpoint(&self.endpoint, &self.region)?;
         ensure!(
             !self.bucket.is_empty()
                 && !self.region.is_empty()
@@ -277,7 +277,7 @@ impl S3UploadConfig {
             .timeout(Duration::from_secs(120))
             .build()?;
         let mut s3 = opendal::services::S3::default()
-            .endpoint(&self.endpoint)
+            .endpoint(&endpoint)
             .bucket(&self.bucket)
             .region(&self.region)
             .access_key_id(&self.access_key_id)
@@ -296,9 +296,67 @@ impl S3UploadConfig {
             .finish())
     }
 }
+fn normalize_endpoint(endpoint: &str, region: &str) -> Result<String> {
+    let endpoint = endpoint.trim();
+    let normalized = if endpoint.is_empty() {
+        ensure!(
+            !region.is_empty()
+                && region
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'-'),
+            "S3 region 无效，无法生成默认服务地址"
+        );
+        format!("https://s3.{region}.amazonaws.com")
+    } else if endpoint.contains("://") {
+        endpoint.to_owned()
+    } else {
+        ensure!(
+            !endpoint.starts_with(['/', '.']) && !endpoint.chars().any(char::is_whitespace),
+            "S3 Endpoint 应填写服务域名或完整 HTTPS 地址，不能是相对路径"
+        );
+        format!("https://{endpoint}")
+    };
+    protocol::server(&normalized).map_err(|_| anyhow::anyhow!("S3 Endpoint 无效：请填写服务域名或 HTTPS 地址，不可含账号、密码或查询参数（本机开发可用 HTTP）"))
+}
 fn storage_error(error: opendal::Error) -> anyhow::Error {
     anyhow::anyhow!(
         "S3 上传失败：{}",
         crate::protocol::safe_message(&error.to_string())
     )
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+    fn config(endpoint: &str) -> S3UploadConfig {
+        S3UploadConfig {
+            endpoint: endpoint.into(),
+            bucket: "videos".into(),
+            region: "us-east-1".into(),
+            enable_virtual_host: false,
+            access_key_id: "test-access".into(),
+            secret_access_key: "test-secret".into(),
+            session_token: String::new(),
+        }
+    }
+    #[test]
+    fn accepts_domain_only_and_aws_default_endpoint() {
+        assert!(config("s3.us-east-1.amazonaws.com").operator().is_ok());
+        assert!(config("").operator().is_ok());
+        assert!(config("tos-s3-cn-beijing.volces.com").operator().is_ok());
+        assert!(
+            config("https://s3.us-east-1.amazonaws.com")
+                .operator()
+                .is_ok()
+        );
+        for invalid in [
+            "/api",
+            "../storage",
+            "https://user:pass@example.test",
+            "file:///tmp",
+            "https://example.test?token=abc",
+        ] {
+            assert!(config(invalid).operator().is_err());
+        }
+    }
 }
