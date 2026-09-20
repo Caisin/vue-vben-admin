@@ -1,3 +1,4 @@
+mod image;
 mod protocol;
 mod queue;
 mod scan;
@@ -11,6 +12,12 @@ type Native<'a> = State<'a, Arc<Desktop>>;
 type Reply<T> = Result<T, String>;
 fn error(e: anyhow::Error) -> String {
     e.to_string()
+}
+
+#[tauri::command]
+fn desktop_image_env_status(window: tauri::WebviewWindow) -> Reply<image::ImageEnvStatus> {
+    tiktok::local_caller(&window).map_err(error)?;
+    Ok(image::env_status())
 }
 #[tauri::command]
 async fn desktop_bootstrap(state: Native<'_>) -> Reply<Bootstrap> {
@@ -447,6 +454,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            desktop_image_env_status,
             desktop_bootstrap,
             desktop_configure,
             desktop_import_session,

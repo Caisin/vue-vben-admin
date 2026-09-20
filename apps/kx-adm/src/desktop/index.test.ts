@@ -39,6 +39,23 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 describe('桌面会话同步', () => {
+  it('读取生图环境变量状态但不接收 key', async () => {
+    native.invoke.mockResolvedValue({
+      available: false,
+      variableName: 'IMG_OPEN_AI_KEY',
+      baseUrl: 'https://sub2api.qinjiu8.com/',
+      message: '请设置环境变量后重启电脑再试。',
+    });
+    const bridge = await import('./index');
+    await expect(bridge.imageEnvStatus()).resolves.toEqual({
+      available: false,
+      variableName: 'IMG_OPEN_AI_KEY',
+      baseUrl: 'https://sub2api.qinjiu8.com/',
+      message: '请设置环境变量后重启电脑再试。',
+    });
+    expect(native.invoke).toHaveBeenCalledWith('desktop_image_env_status');
+  });
+
   it('刷新推送更新页面；旧事件不能恢复已退出的会话', async () => {
     native.invoke.mockResolvedValue({
       apiBase: 'https://example.test/api',

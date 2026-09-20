@@ -55,6 +55,12 @@ export interface UploadJob {
   status: string;
   version: string;
 }
+export interface ImageEnvStatus {
+  available: boolean;
+  variableName: string;
+  baseUrl: string;
+  message: string;
+}
 let state: Bootstrap | undefined;
 let generation = 0;
 let current: DesktopSession | null = null;
@@ -69,6 +75,9 @@ function receive(session: DesktopSession) {
 }
 export function desktopApiBase() {
   return state?.apiBase;
+}
+export function imageEnvStatus() {
+  return invoke<ImageEnvStatus>('desktop_image_env_status');
 }
 export async function initDesktop() {
   if (!desktop) return;
