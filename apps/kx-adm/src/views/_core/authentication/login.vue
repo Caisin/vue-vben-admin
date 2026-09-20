@@ -12,6 +12,7 @@ import { $t } from '@vben/locales';
 import { Button, message, Select } from 'antdv-next';
 
 import { DingTalkApi } from '#/api';
+import DesktopConnection from '#/desktop/connection.vue';
 import { useAuthStore } from '#/store';
 
 import {
@@ -126,6 +127,7 @@ onMounted(async () => {
 
 <template>
   <div v-bind="$attrs">
+    <DesktopConnection />
     <TotpLogin />
     <AuthenticationLogin
       :form-schema="formSchema"

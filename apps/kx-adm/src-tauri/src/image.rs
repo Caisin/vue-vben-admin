@@ -40,16 +40,34 @@ fn key_available(value: Option<&str>) -> bool {
     value.is_some_and(|value| !value.trim().is_empty())
 }
 
-fn config_available(path: &PathBuf) -> bool {
-    std::fs::read_to_string(path)
-        .map(|value| value.contains(IMAGE_ENV_NAME) && !value.trim().is_empty())
-        .unwrap_or(false)
+fn configured_key(path: &PathBuf) -> Option<String> {
+    let contents = std::fs::read_to_string(path).ok()?;
+    let unix_prefix = format!("export {IMAGE_ENV_NAME}=");
+    let windows_prefix = format!("$env:{IMAGE_ENV_NAME} = ");
+    contents.lines().find_map(|line| {
+        let value = line
+            .trim()
+            .strip_prefix(&unix_prefix)
+            .or_else(|| line.trim().strip_prefix(&windows_prefix))?
+            .trim();
+        let value = value
+            .strip_prefix('\'')
+            .and_then(|value| value.strip_suffix('\''))
+            .unwrap_or(value)
+            .replace("'\\''", "'")
+            .replace("''", "'");
+        key_available(Some(&value)).then_some(value)
+    })
 }
 
-fn status_for(value: Option<&str>, path: &PathBuf) -> ImageEnvStatus {
-    let available = key_available(value) || config_available(path);
+fn config_available(path: &PathBuf) -> bool {
+    configured_key(path).is_some()
+}
+
+fn status_for(path: &PathBuf) -> ImageEnvStatus {
+    let available = config_available(path);
     let message = if available {
-        format!("已检测到 {IMAGE_ENV_NAME} 或 Skill 配置文件，可以使用 GPT 原生 image_gen。")
+        "已检测到 Skill 配置文件，可以使用 GPT 原生 image_gen。".to_owned()
     } else {
         format!(
             "未获取到 {IMAGE_ENV_NAME}，请从 {IMAGE_BASE_URL} 复制 key，保存 Skill 配置后重试。"
@@ -66,12 +84,7 @@ fn status_for(value: Option<&str>, path: &PathBuf) -> ImageEnvStatus {
 
 pub fn env_status() -> ImageEnvStatus {
     let path = config_path().unwrap_or_else(|_| PathBuf::from("~/.config/kx-adm/image-gen.env"));
-    status_for(
-        std::env::var_os(IMAGE_ENV_NAME)
-            .as_deref()
-            .and_then(|value| value.to_str()),
-        &path,
-    )
+    status_for(&path)
 }
 
 fn validate_key(value: &str) -> Result<&str> {
@@ -137,7 +150,7 @@ pub fn set_env(value: &str) -> Result<ImageEnvStatus> {
     let path = config_path()?;
     write_config(&path, key)?;
     unsafe { std::env::set_var(IMAGE_ENV_NAME, key) };
-    Ok(status_for(Some(key), &path))
+    Ok(status_for(&path))
 }
 
 #[cfg(test)]
@@ -147,7 +160,7 @@ mod tests {
     #[test]
     fn missing_status_points_to_config_without_secret() {
         let path = PathBuf::from("/tmp/kx-image-gen.env");
-        let status = status_for(None, &path);
+        let status = status_for(&path);
         assert!(!status.available);
         assert_eq!(status.variable_name, IMAGE_ENV_NAME);
         assert_eq!(status.base_url, IMAGE_BASE_URL);
@@ -158,10 +171,8 @@ mod tests {
     #[test]
     fn ignores_empty_values_and_never_returns_the_key() {
         let path = PathBuf::from("/tmp/kx-image-gen.env");
-        let status = status_for(Some("  "), &path);
+        let status = status_for(&path);
         assert!(!status.available);
-        let status = status_for(Some("secret-value"), &path);
-        assert!(status.available);
         assert!(
             !serde_json::to_string(&status)
                 .expect("status serializes")
@@ -176,5 +187,17 @@ mod tests {
         assert_eq!(validate_key("  secret-value  ").unwrap(), "secret-value");
         assert!(config_contents("secret-value").contains(IMAGE_ENV_NAME));
         assert!(config_contents("secret-value").contains("secret-value"));
+    }
+
+    #[test]
+    fn config_check_rejects_missing_or_empty_assignments() {
+        let path = PathBuf::from("/tmp/kx-image-gen-check.env");
+        std::fs::write(&path, "export IMG_OPEN_AI_KEY=\n").unwrap();
+        assert!(!config_available(&path));
+        std::fs::write(&path, "export OTHER_KEY='value'\n").unwrap();
+        assert!(!config_available(&path));
+        std::fs::write(&path, "export IMG_OPEN_AI_KEY='configured'\n").unwrap();
+        assert_eq!(configured_key(&path).as_deref(), Some("configured"));
+        let _ = std::fs::remove_file(path);
     }
 }
