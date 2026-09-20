@@ -83,6 +83,16 @@ export function imageEnvStatus() {
 export function setImageEnv(key: string) {
   return invoke<ImageEnvStatus>('desktop_image_set_env', { key });
 }
+function webApiBase() {
+  const configured = import.meta.env.VITE_GLOB_API_URL || '/api';
+  try {
+    return new URL(configured, window.location.origin)
+      .toString()
+      .replace(/\/$/, '');
+  } catch {
+    return configured;
+  }
+}
 export async function initDesktop() {
   if (!desktop) return;
   await listen<DesktopSession>('desktop-session-updated', ({ payload }) =>
@@ -96,7 +106,9 @@ export async function initDesktop() {
     if (state) state.session = null;
     publish?.(null);
   });
-  state = await invoke<Bootstrap>('desktop_bootstrap');
+  state = await invoke<Bootstrap>('desktop_bootstrap', {
+    apiBase: webApiBase(),
+  });
   if (state.session) receive(state.session);
   generation = Math.max(generation, state.generation ?? 0);
   if (!current) {

@@ -28,8 +28,8 @@ fn desktop_image_set_env(
     image::set_env(&key).map_err(error)
 }
 #[tauri::command]
-async fn desktop_bootstrap(state: Native<'_>) -> Reply<Bootstrap> {
-    state.bootstrap().await.map_err(error)
+async fn desktop_bootstrap(state: Native<'_>, api_base: Option<String>) -> Reply<Bootstrap> {
+    state.bootstrap_with_default(api_base).await.map_err(error)
 }
 #[tauri::command]
 async fn desktop_configure(

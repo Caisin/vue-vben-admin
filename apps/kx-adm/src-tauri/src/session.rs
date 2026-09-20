@@ -60,6 +60,7 @@ pub struct Desktop {
     pub queue: Mutex<Vec<crate::queue::Job>>,
     pub active: Mutex<std::collections::HashSet<String>>,
     pub upload_pool: kx_tk_pool::TkPool,
+    base_configured: bool,
 }
 
 fn token_session(token: String, base: String, generation: u64) -> Result<Session> {
@@ -86,7 +87,9 @@ fn token_session(token: String, base: String, generation: u64) -> Result<Session
 impl Desktop {
     pub fn new(data: PathBuf) -> Result<Arc<Self>> {
         std::fs::create_dir_all(&data)?;
-        let base = std::fs::read_to_string(data.join("server.txt"))
+        let server_path = data.join("server.txt");
+        let base_configured = server_path.exists();
+        let base = std::fs::read_to_string(server_path)
             .ok()
             .and_then(|v| protocol::server(&v).ok())
             .unwrap_or_else(|| "http://localhost:8883".into());
@@ -106,6 +109,7 @@ impl Desktop {
             queue: Mutex::new(jobs),
             active: Mutex::new(Default::default()),
             upload_pool: kx_tk_pool::TkPool::new(8),
+            base_configured,
         }))
     }
     pub async fn bootstrap(&self) -> Result<Bootstrap> {
@@ -116,6 +120,16 @@ impl Desktop {
             api_base: a.base.clone(),
             session: a.session.clone(),
         })
+    }
+    pub async fn bootstrap_with_default(&self, default_base: Option<String>) -> Result<Bootstrap> {
+        if !self.base_configured
+            && let Some(base) = default_base
+        {
+            let base = protocol::server(&base)?;
+            let mut auth = self.auth.lock().await;
+            auth.base = base;
+        }
+        self.bootstrap().await
     }
     async fn send(
         &self,
