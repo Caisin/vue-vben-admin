@@ -10,6 +10,7 @@ import {
   desktop,
   desktopApiBase,
   imageEnvStatus,
+  setImageEnv,
 } from './index';
 const base = ref(desktopApiBase() ?? '');
 const errorText = ref('');
@@ -18,7 +19,7 @@ const imageStatus = ref<ImageEnvStatus>();
 const imageStatusError = ref('');
 const imageStatusBusy = ref(false);
 const imageKey = ref('');
-const imageCopyBusy = ref(false);
+const imageConfigBusy = ref(false);
 const imageSkillUrl = `${import.meta.env.BASE_URL}skills/kx-image-gen.zip`;
 async function save() {
   busy.value = true;
@@ -42,25 +43,21 @@ async function checkImageEnv() {
     imageStatusBusy.value = false;
   }
 }
-async function copyImageEnvCommand() {
+async function saveImageConfig() {
   const key = imageKey.value.trim();
   if (!key) {
     imageStatusError.value = '请先填写从 sub2api.qinjiu8.com 复制的 key。';
     return;
   }
-  imageCopyBusy.value = true;
+  imageConfigBusy.value = true;
   imageStatusError.value = '';
   try {
-    const escaped = key.replaceAll("'", String.raw`'\''`);
-    const command = /win/i.test(navigator.userAgent)
-      ? `[Environment]::SetEnvironmentVariable('IMG_OPEN_AI_KEY','${escaped}','User')`
-      : `export IMG_OPEN_AI_KEY='${escaped}'`;
-    await navigator.clipboard.writeText(command);
+    imageStatus.value = await setImageEnv(key);
     imageKey.value = '';
   } catch {
-    imageStatusError.value = '无法写入剪贴板，请手动复制环境变量设置命令。';
+    imageStatusError.value = '系统环境变量设置失败，请检查桌面应用权限后重试。';
   } finally {
-    imageCopyBusy.value = false;
+    imageConfigBusy.value = false;
   }
 }
 onMounted(() => {
@@ -100,6 +97,10 @@ onMounted(() => {
           <dt class="font-medium">Base URL</dt>
           <dd class="font-mono">https://sub2api.qinjiu8.com/</dd>
         </div>
+        <div v-if="imageStatus?.configPath" class="flex flex-wrap gap-2">
+          <dt class="font-medium">配置文件</dt>
+          <dd class="break-all font-mono">{{ imageStatus.configPath }}</dd>
+        </div>
       </dl>
       <label for="image-open-ai-key" class="mt-2 block text-sm font-medium">
         环境变量值
@@ -125,8 +126,8 @@ onMounted(() => {
         class="my-2"
       />
       <div class="flex flex-wrap gap-2">
-        <Button :loading="imageCopyBusy" @click="copyImageEnvCommand">
-          复制设置命令
+        <Button :loading="imageConfigBusy" @click="saveImageConfig">
+          保存 Skill 配置
         </Button>
         <Button :loading="imageStatusBusy" @click="checkImageEnv">
           检查环境变量
@@ -141,9 +142,8 @@ onMounted(() => {
       </div>
       <p class="mt-2 text-xs text-muted-foreground">
         请从 sub2api.qinjiu8.com 复制 key，在操作系统环境变量中设置
-        IMG_OPEN_AI_KEY；设置后完全退出并重启电脑，点击“检查环境变量”。不要把
-        key 发送到聊天或提交到代码仓库。复制的 macOS/Linux
-        命令只对当前终端生效；需要重启后仍有效时，请在系统环境变量设置中持久化。
+        IMG_OPEN_AI_KEY；保存后重新打开 Skill 或终端，点击“检查环境变量”。不要把
+        key 发送到聊天或提交到代码仓库。Skill 会从上面的配置文件 source key。
       </p>
     </details>
   </div>

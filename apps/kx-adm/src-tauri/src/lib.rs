@@ -20,6 +20,14 @@ fn desktop_image_env_status(window: tauri::WebviewWindow) -> Reply<image::ImageE
     Ok(image::env_status())
 }
 #[tauri::command]
+fn desktop_image_set_env(
+    window: tauri::WebviewWindow,
+    key: String,
+) -> Reply<image::ImageEnvStatus> {
+    tiktok::local_caller(&window).map_err(error)?;
+    image::set_env(&key).map_err(error)
+}
+#[tauri::command]
 async fn desktop_bootstrap(state: Native<'_>) -> Reply<Bootstrap> {
     state.bootstrap().await.map_err(error)
 }
@@ -455,6 +463,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             desktop_image_env_status,
+            desktop_image_set_env,
             desktop_bootstrap,
             desktop_configure,
             desktop_import_session,

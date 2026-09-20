@@ -59,6 +59,7 @@ export interface ImageEnvStatus {
   available: boolean;
   variableName: string;
   baseUrl: string;
+  configPath: string;
   message: string;
 }
 let state: Bootstrap | undefined;
@@ -78,6 +79,9 @@ export function desktopApiBase() {
 }
 export function imageEnvStatus() {
   return invoke<ImageEnvStatus>('desktop_image_env_status');
+}
+export function setImageEnv(key: string) {
+  return invoke<ImageEnvStatus>('desktop_image_set_env', { key });
 }
 export async function initDesktop() {
   if (!desktop) return;

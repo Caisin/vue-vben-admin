@@ -44,6 +44,7 @@ describe('桌面会话同步', () => {
       available: false,
       variableName: 'IMG_OPEN_AI_KEY',
       baseUrl: 'https://sub2api.qinjiu8.com/',
+      configPath: '~/.config/kx-adm/image-gen.env',
       message: '请设置环境变量后重启电脑再试。',
     });
     const bridge = await import('./index');
@@ -51,9 +52,27 @@ describe('桌面会话同步', () => {
       available: false,
       variableName: 'IMG_OPEN_AI_KEY',
       baseUrl: 'https://sub2api.qinjiu8.com/',
+      configPath: '~/.config/kx-adm/image-gen.env',
       message: '请设置环境变量后重启电脑再试。',
     });
     expect(native.invoke).toHaveBeenCalledWith('desktop_image_env_status');
+  });
+
+  it('保存生图 Skill 配置只通过原生 IPC，不保存 key 到页面存储', async () => {
+    native.invoke.mockResolvedValue({
+      available: true,
+      variableName: 'IMG_OPEN_AI_KEY',
+      baseUrl: 'https://sub2api.qinjiu8.com/',
+      configPath: '~/.config/kx-adm/image-gen.env',
+      message: '已检测到 IMG_OPEN_AI_KEY。',
+    });
+    const bridge = await import('./index');
+    await expect(bridge.setImageEnv('secret-value')).resolves.toMatchObject({
+      available: true,
+    });
+    expect(native.invoke).toHaveBeenCalledWith('desktop_image_set_env', {
+      key: 'secret-value',
+    });
   });
 
   it('刷新推送更新页面；旧事件不能恢复已退出的会话', async () => {
