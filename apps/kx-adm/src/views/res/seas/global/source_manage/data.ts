@@ -29,6 +29,12 @@ export function useGridFormSchema(): VbenFormSchema[] {
       label: '全文关键字',
     },
     {
+      component: 'Input',
+      componentProps: { allowClear: true, placeholder: '作品编号（精确）' },
+      fieldName: 'resource_code',
+      label: '作品编号',
+    },
+    {
       component: 'Select',
       componentProps: { allowClear: true, options: resStateOptions },
       fieldName: 'state',
@@ -46,6 +52,8 @@ export function useGridFormSchema(): VbenFormSchema[] {
 export function useColumns(): VxeTableGridColumns<ResRecord> {
   return [
     { field: 'id', fixed: 'left', title: 'ID', width: 80 },
+    { field: 'resource_code', title: '作品编号', width: 150 },
+    { field: 'team_id', title: '制作团队', width: 100 },
     {
       field: 'cover',
       slots: { default: 'cover' },

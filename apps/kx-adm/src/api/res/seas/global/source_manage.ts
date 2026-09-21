@@ -22,6 +22,8 @@ export interface ResRecord {
   lang_info?: Record<string, any>;
   remark?: string;
   res_name?: string;
+  resource_code?: string;
+  team_id?: number;
   res_type?: number | string;
   seq_num?: number;
   state?: number;

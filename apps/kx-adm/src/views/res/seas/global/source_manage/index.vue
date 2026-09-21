@@ -176,6 +176,7 @@ const [Grid, gridApi] = useVbenVxeGrid<ResRecord>({
           const payload = await sourceApi.getList({
             'id.eq': formValues.id,
             keyword: formValues.keyword?.trim() || undefined,
+            resource_code: formValues.resource_code?.trim() || undefined,
             res_type: formValues.res_type,
             state: formValues.state,
             page: page.currentPage,

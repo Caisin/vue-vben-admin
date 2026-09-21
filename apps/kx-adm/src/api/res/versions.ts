@@ -27,6 +27,11 @@ export interface VersionDetail {
 }
 export interface ResourceCreate {
   name: string;
+  resource_code?: string;
+  code_name: string;
+  code_author: string;
+  code_remark: string;
+  team_id?: number;
   res_type: ResourceType;
   intro: string;
   version_name: string;
@@ -43,10 +48,11 @@ export type ItemWrite = Omit<VersionItem, 'id' | 'version_id'> & {
 const base = (res: Id) => `/adm/res/${res}/versions`;
 export const ResourceVersionApi = {
   createResource: (data: ResourceCreate) =>
-    requestClient.post<{ res_id: Id; version: ResourceVersion }>(
-      '/adm/res/create_with_version',
-      data,
-    ),
+    requestClient.post<{
+      res_id: Id;
+      resource_code: string;
+      version: ResourceVersion;
+    }>('/adm/res/create_with_version', data),
   list: (res: Id) => requestClient.get<ResourceVersion[]>(base(res)),
   detail: (res: Id, id: Id) =>
     requestClient.get<VersionDetail>(`${base(res)}/${id}`),

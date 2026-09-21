@@ -3,7 +3,15 @@ import type { Id, ResourceCreate } from '#/api/res/versions';
 
 import { reactive, ref, watch } from 'vue';
 
-import { Alert, Form, FormItem, Input, Modal, Select } from 'antdv-next';
+import {
+  Alert,
+  Form,
+  FormItem,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+} from 'antdv-next';
 
 import { ResourceVersionApi } from '#/api/res/versions';
 import { requestErrorMessage } from '#/request-errors';
@@ -13,6 +21,11 @@ const emit = defineEmits<{
 const open = defineModel<boolean>('open', { required: true });
 const form = reactive<ResourceCreate>({
   name: '',
+  resource_code: '',
+  code_name: '',
+  code_author: '',
+  code_remark: '',
+  team_id: undefined,
   res_type: 'drama',
   intro: '',
   version_name: '初版',
@@ -24,6 +37,11 @@ watch(open, (value) => {
   if (value) {
     Object.assign(form, {
       name: '',
+      resource_code: '',
+      code_name: '',
+      code_author: '',
+      code_remark: '',
+      team_id: undefined,
       res_type: 'drama',
       intro: '',
       version_name: '初版',
@@ -76,6 +94,41 @@ async function save() {
             { label: '小说', value: 'novel' },
             { label: '剧本', value: 'script' },
           ]"
+        />
+      </FormItem>
+      <FormItem label="作品编号">
+        <Input
+          v-model:value="form.resource_code"
+          placeholder="留空自动生成；填写已有编号可关联作品"
+          :maxlength="255"
+        />
+      </FormItem>
+      <FormItem label="作品名称">
+        <Input
+          v-model:value="form.code_name"
+          placeholder="留空使用资源名称"
+          :maxlength="255"
+        />
+      </FormItem>
+      <FormItem label="作品作者">
+        <Input
+          v-model:value="form.code_author"
+          placeholder="作品作者"
+          :maxlength="255"
+        />
+      </FormItem>
+      <FormItem label="作品备注">
+        <Input.TextArea
+          v-model:value="form.code_remark"
+          :rows="2"
+          :maxlength="4000"
+        />
+      </FormItem>
+      <FormItem label="制作团队ID">
+        <InputNumber
+          v-model:value="form.team_id"
+          :min="1"
+          placeholder="可选，填写已存在的团队ID"
         />
       </FormItem>
       <FormItem label="资源名称" required>
