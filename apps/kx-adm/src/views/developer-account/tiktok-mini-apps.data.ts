@@ -2,10 +2,13 @@ import type { VbenFormSchema } from '#/adapter/form';
 import type { VxeTableGridColumns } from '#/adapter/vxe-table';
 import type {
   TikTokMiniApp,
+  TikTokMiniAppOwnerOption,
   TikTokMiniAppWhitelist,
 } from '#/api/developer-account';
 
-export function miniAppSearchSchema(): VbenFormSchema[] {
+export function miniAppSearchSchema(
+  owners: TikTokMiniAppOwnerOption[] = [],
+): VbenFormSchema[] {
   return [
     {
       component: 'Input',
@@ -13,12 +16,26 @@ export function miniAppSearchSchema(): VbenFormSchema[] {
       fieldName: 'keyword',
       label: '小程序',
     },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: owners.map((item) => ({
+          label: item.owner_name || `主体 ${item.owner_id}`,
+          value: item.owner_id,
+        })),
+        placeholder: '选择 TikTok 主体',
+      },
+      fieldName: 'owner_id',
+      label: '主体',
+    },
   ];
 }
 
 export function miniAppColumns(): VxeTableGridColumns<TikTokMiniApp> {
   return [
     { field: 'name', minWidth: 180, title: '小程序名称' },
+    { field: 'owner_name', minWidth: 240, title: '主体' },
     { field: 'client_key', minWidth: 220, title: 'Client Key（主键）' },
     {
       align: 'center',

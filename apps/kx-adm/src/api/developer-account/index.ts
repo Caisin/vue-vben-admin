@@ -222,11 +222,17 @@ export interface DeveloperAccountAccessUsers {
 }
 
 export interface TikTokMiniApp {
+  app_type: number;
   app_id?: null | string;
+  category: string;
   client_key: string;
   credential_code?: null | string;
   created_at: number | string;
   name: string;
+  icon_url: string;
+  owner_id: string;
+  owner_name: string;
+  owner_type: number;
   remark: string;
   updated_at: number | string;
   whitelist_count: number;
@@ -236,6 +242,12 @@ export interface TikTokMiniAppWrite {
   client_key: string;
   name: string;
   remark: string;
+}
+
+export interface TikTokMiniAppOwnerOption {
+  owner_id: string;
+  owner_name: string;
+  owner_type: number;
 }
 
 export interface TikTokMiniAppWhitelist {
@@ -478,7 +490,9 @@ export const DeveloperAccountApi = {
     ),
   deleteTiktokAccount: (id: string) =>
     requestClient.delete<boolean>(`/developer-account/tiktok/accounts/${id}`),
-  tiktokMiniApps: (params?: PageQuery & { keyword?: string }) =>
+  tiktokMiniApps: (
+    params?: PageQuery & { keyword?: string; owner_id?: string },
+  ) =>
     requestClient.get<Page<TikTokMiniApp>>(
       '/developer-account/tiktok/mini-apps',
       { params },
@@ -504,6 +518,10 @@ export const DeveloperAccountApi = {
   tiktokMiniAppSyncTask: (runId: number | string) =>
     requestClient.get<TaskRun>(
       `/developer-account/tiktok/mini-apps/sync/${runId}`,
+    ),
+  tiktokMiniAppOwnerOptions: () =>
+    requestClient.get<TikTokMiniAppOwnerOption[]>(
+      '/developer-account/tiktok/mini-apps/owners',
     ),
   tiktokMiniAppWhitelists: (
     params?: PageQuery & {

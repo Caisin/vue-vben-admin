@@ -2,11 +2,12 @@
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type {
   TikTokMiniApp,
+  TikTokMiniAppOwnerOption,
   TikTokMiniAppWhitelist,
   TikTokMiniAppWrite,
 } from '#/api/developer-account';
 
-import { nextTick, onBeforeUnmount, reactive, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 import { List, Plus, RotateCw } from '@vben/icons';
@@ -49,6 +50,7 @@ const form = reactive<TikTokMiniAppWrite>({
   name: '',
   remark: '',
 });
+const ownerOptions = ref<TikTokMiniAppOwnerOption[]>([]);
 const whitelistExportDefaults = {
   customer_group: '长沙古言网络科技有限公司',
   include_completed: false,
@@ -224,6 +226,11 @@ function pollSyncTask(taskId: number | string) {
 }
 
 onBeforeUnmount(clearSyncTaskPoll);
+
+onMounted(async () => {
+  ownerOptions.value = await DeveloperAccountApi.tiktokMiniAppOwnerOptions();
+  await gridApi.formApi.updateSchema(miniAppSearchSchema(ownerOptions.value));
+});
 </script>
 
 <template>
