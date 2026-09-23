@@ -3,6 +3,7 @@ export * as link from './link';
 export * as order from './order';
 export * as page_manage from './page_manage';
 export * as page_module_manage from './page_module_manage';
+export * as resource_codes from './resource_codes';
 export * as return_config from './return_config';
 export * as source_manage from './source_manage';
 export * as tmplate_lib from './tmplate_lib';

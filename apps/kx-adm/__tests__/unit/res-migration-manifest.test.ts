@@ -26,11 +26,11 @@ function relativeFiles(files: Record<string, string>, marker: string) {
 describe('res migration manifest', () => {
   it('tracks the seas source file closure', () => {
     expect(resMigrationStats).toEqual({
-      apiFiles: 37,
+      apiFiles: 38,
       domains: 6,
       legacySchemaFiles: 47,
-      routeComponents: 116,
-      viewFiles: 163,
+      routeComponents: 117,
+      viewFiles: 165,
     });
     expect(resSourceDomains).toEqual([
       'ditch',
@@ -42,6 +42,7 @@ describe('res migration manifest', () => {
     ]);
     expect(resSourceViewFiles).toContain('global/source_manage/index.vue');
     expect(resSourceApiFiles).toContain('global/source_manage.ts');
+    expect(resSourceApiFiles).toContain('global/resource_codes.ts');
     expect(resRouteComponents).toContain(
       '/res/seas/global/source_manage/index',
     );

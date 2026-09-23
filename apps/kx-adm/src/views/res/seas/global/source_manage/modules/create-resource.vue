@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { ResourceCode } from '#/api/res/seas/global/resource_codes';
 import type { Id, ResourceCreate } from '#/api/res/versions';
 
 import { reactive, ref, watch } from 'vue';
 
 import {
   Alert,
+  Button,
   Form,
   FormItem,
   Input,
@@ -13,8 +15,11 @@ import {
   Select,
 } from 'antdv-next';
 
+import { ResourceCodeApi } from '#/api/res/seas/global/resource_codes';
 import { ResourceVersionApi } from '#/api/res/versions';
 import { requestErrorMessage } from '#/request-errors';
+
+import ResourceCodeManage from './resource-code-manage.vue';
 const emit = defineEmits<{
   saved: [resource: { id: Id; res_name: string; res_type: string }];
 }>();
@@ -33,6 +38,23 @@ const form = reactive<ResourceCreate>({
 });
 const busy = ref(false);
 const errorText = ref('');
+const codeOptions = ref<ResourceCode[]>([]);
+const codeManageOpen = ref(false);
+
+async function searchCodes(keyword = '') {
+  const result = await ResourceCodeApi.list({
+    keyword: keyword.trim(),
+    size: 20,
+  });
+  codeOptions.value = result.items;
+}
+
+function selectCode(code: ResourceCode) {
+  form.resource_code = code.code;
+  form.code_name = code.name;
+  form.code_author = code.author;
+  form.code_remark = code.remark;
+}
 watch(open, (value) => {
   if (value) {
     Object.assign(form, {
@@ -97,11 +119,31 @@ async function save() {
         />
       </FormItem>
       <FormItem label="作品编号">
-        <Input
-          v-model:value="form.resource_code"
-          placeholder="留空自动生成；填写已有编号可关联作品"
-          :maxlength="255"
-        />
+        <div class="flex w-full gap-2">
+          <Select
+            v-model:value="form.resource_code"
+            class="min-w-0 flex-1"
+            allow-clear
+            show-search
+            :filter-option="false"
+            :options="
+              codeOptions.map((item) => ({
+                label: `${item.code} · ${item.name}`,
+                value: item.code,
+              }))
+            "
+            placeholder="搜索已有编号；留空自动生成"
+            @focus="searchCodes()"
+            @search="searchCodes"
+            @change="
+              (value) => {
+                const item = codeOptions.find((code) => code.code === value);
+                if (item) selectCode(item);
+              }
+            "
+          />
+          <Button @click="codeManageOpen = true">维护编号</Button>
+        </div>
       </FormItem>
       <FormItem label="作品名称">
         <Input
@@ -162,4 +204,5 @@ async function save() {
       </FormItem>
     </Form>
   </Modal>
+  <ResourceCodeManage v-model:open="codeManageOpen" @saved="selectCode" />
 </template>
