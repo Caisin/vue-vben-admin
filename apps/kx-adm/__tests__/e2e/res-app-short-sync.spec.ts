@@ -18,13 +18,13 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     languages: ['zh-CN'],
     version_count: 1,
     total: 2,
-    pending: 1,
-    running: 0,
+    pending: id === 1 ? 0 : 1,
+    running: id === 1 ? 1 : 0,
     succeeded: 0,
     failed: 1,
     conflict: 0,
     paused: 0,
-    state: 'failed',
+    state: id === 1 ? 'running' : 'failed',
     updated_at: 1,
     failure_reasons: ['HTTP 404: file missing'],
   }));
@@ -78,6 +78,8 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
       const row = dramas[body.res_id - 1];
       if (!row) throw new Error('资源不存在');
       row.state = 'pending';
+      row.pending = 2;
+      row.paused = 0;
       return fulfillApi(route, { id: 91 });
     }
     if (path.endsWith('/stop')) {
@@ -86,6 +88,9 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
       const row = dramas[id - 1];
       if (!row) throw new Error('资源不存在');
       row.state = 'paused';
+      row.running = 0;
+      row.failed = 0;
+      row.paused = 2;
       return fulfillApi(route, null);
     }
     if (path.endsWith('/videos')) {
@@ -124,6 +129,15 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   const drama2 = page.getByRole('row').filter({ hasText: '测试短剧2' });
   await expect(drama1).toBeVisible();
   await expect(drama1).toContainText('DR-1');
+  await expect(
+    drama1.getByRole('button', { name: '停止', exact: true }),
+  ).toBeVisible();
+  await expect(
+    drama2.getByRole('button', { name: '停止', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '章节详情', exact: true }),
+  ).toHaveCount(0);
   expect(detailRequests).toHaveLength(0);
   const limit = page.getByRole('spinbutton', {
     name: '同时同步集数',
@@ -146,7 +160,7 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   failSettingsSave = false;
   await page.getByRole('button', { name: '重新加载配置' }).click();
   await expect(limit).toHaveValue('3');
-  await drama1.getByRole('button', { name: '章节详情', exact: true }).click();
+  await drama1.getByRole('button', { name: '测试短剧1', exact: true }).click();
   const drawer = page.getByRole('dialog');
   await expect(drawer).toContainText('测试短剧1');
   await expect(drawer).toContainText('HTTP 404: file missing');
@@ -168,6 +182,9 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   await drama1.getByRole('button', { name: '停止', exact: true }).click();
   await expect.poll(() => stopped).toEqual([1]);
   await expect(drama1).toContainText('已停止');
+  await expect(
+    drama1.getByRole('button', { name: '停止', exact: true }),
+  ).toHaveCount(0);
   await expect(drama2).not.toContainText('已停止');
   await drama1.getByRole('button', { name: '重新同步', exact: true }).click();
   await page
@@ -176,6 +193,9 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     .click();
   await expect.poll(() => resumed).toEqual([1]);
   await expect(drama1).toContainText('待同步');
+  await expect(
+    drama1.getByRole('button', { name: '停止', exact: true }),
+  ).toHaveCount(0);
   await page.route('**/auth/per/codes', (route) => fulfillApi(route, []));
   await page.reload();
   await expect(limit).toHaveValue('3');

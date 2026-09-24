@@ -109,7 +109,7 @@ const resourceColumns = [
   { title: '同步中', dataIndex: 'running', width: 80 },
   { title: '失败 / 冲突', key: 'failed', width: 100 },
   { title: '失败原因', key: 'error', width: 240 },
-  { title: '操作', key: 'actions', width: 240, fixed: 'right' as const },
+  { title: '操作', key: 'actions', width: 160, fixed: 'right' as const },
 ];
 const chapterColumns = [
   { title: '集数', dataIndex: 'seq_no', width: 70 },
@@ -491,7 +491,7 @@ onBeforeUnmount(stopPolling);
         :columns="resourceColumns"
         :loading="loading"
         row-key="res_id"
-        :scroll="{ x: 1450 }"
+        :scroll="{ x: 1370 }"
         :pagination="{
           current: resourcePage,
           pageSize: 20,
@@ -534,9 +534,6 @@ onBeforeUnmount(stopPolling);
           </template>
           <template v-else-if="column.key === 'actions'">
             <Space wrap>
-              <Button type="link" @click="showChapters(record)">
-                章节详情
-              </Button>
               <Button
                 v-if="canMigrate"
                 type="link"
@@ -550,14 +547,10 @@ onBeforeUnmount(stopPolling);
                 重新同步
               </Button>
               <Button
-                v-if="canMigrate"
+                v-if="canMigrate && record.state === 'running'"
                 type="link"
                 danger
-                :disabled="
-                  record.state === 'paused' ||
-                  record.total === record.succeeded ||
-                  busyIds.includes(record.res_id)
-                "
+                :disabled="busyIds.includes(record.res_id)"
                 @click="operate(record, 'stop')"
               >
                 停止
