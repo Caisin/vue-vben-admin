@@ -44,7 +44,7 @@ const editorOpen = ref(false);
 const versionOpen = ref(false);
 const editingVersion = ref<ResourceVersion>();
 const itemId = ref<Id>();
-const versionForm = reactive({ name: '', remark: '' });
+const versionForm = reactive({ name: '', lang: '', remark: '' });
 const itemForm = reactive<ItemWrite>({
   expected_revision: 1,
   seq_no: 1,
@@ -155,6 +155,7 @@ function editVersion(version?: ResourceVersion) {
   editingVersion.value = version;
   Object.assign(versionForm, {
     name: version?.name ?? '',
+    lang: version?.lang ?? '',
     remark: version?.remark ?? '',
   });
   errorText.value = '';
@@ -359,6 +360,9 @@ async function removeVersion() {
             >
               <div class="version-option-title">
                 <span class="version-mark">{{ index + 1 }}</span><strong>{{ v.name }}</strong>
+                <span v-if="v.lang" class="text-xs text-muted-foreground">{{
+                  v.lang
+                }}</span>
               </div>
               <p>{{ v.remark || '暂无差异备注' }}</p>
               <time>{{ date(v.updated_at) }} 更新</time>
@@ -375,7 +379,13 @@ async function removeVersion() {
           <header class="version-heading">
             <div>
               <span class="resource-kicker">当前版本</span>
-              <h3>{{ detail.version.name }}</h3>
+              <h3>
+                {{ detail.version.name
+                }}<small
+                  v-if="detail.version.lang"
+                  class="ml-2 text-sm text-muted-foreground"
+                  >{{ detail.version.lang }}</small>
+              </h3>
               <p>
                 {{ detail.items.length }} {{ drama ? '集' : '章' }} ·
                 {{ date(detail.version.updated_at) }} 更新
@@ -522,6 +532,13 @@ async function removeVersion() {
           v-model:value="versionForm.name"
           :maxlength="100"
           placeholder="例如：原版、海外版、第二次修订"
+        />
+      </FormItem>
+      <FormItem label="语言标识">
+        <Input
+          v-model:value="versionForm.lang"
+          :maxlength="32"
+          placeholder="例如 zh-CN、en-US"
         />
       </FormItem>
       <FormItem label="差异备注">

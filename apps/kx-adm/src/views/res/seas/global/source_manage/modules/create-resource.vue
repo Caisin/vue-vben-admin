@@ -34,6 +34,7 @@ const form = reactive<ResourceCreate>({
   res_type: 'drama',
   intro: '',
   version_name: '初版',
+  version_lang: '',
   remark: '',
 });
 const busy = ref(false);
@@ -67,6 +68,7 @@ watch(open, (value) => {
       res_type: 'drama',
       intro: '',
       version_name: '初版',
+      version_lang: '',
       remark: '',
     });
     errorText.value = '';
@@ -192,6 +194,13 @@ async function save() {
           v-model:value="form.version_name"
           placeholder="首个版本名称"
           :maxlength="100"
+        />
+      </FormItem>
+      <FormItem label="版本语言标识">
+        <Input
+          v-model:value="form.version_lang"
+          :maxlength="32"
+          placeholder="例如 zh-CN、en-US"
         />
       </FormItem>
       <FormItem label="版本差异备注">

@@ -125,7 +125,13 @@ async function testConnection(row: DataSourceView) {
     if (result.reachable) {
       message.success(result.message);
       probeTarget.value = undefined;
-    } else message.error(result.message);
+    } else {
+      message.error(
+        result.diagnostic
+          ? `${result.message}：${result.diagnostic}`
+          : result.message,
+      );
+    }
   } finally {
     probing.value = false;
   }

@@ -1,3 +1,4 @@
+export * as app_short_sync from './app_short_sync';
 export * as dashboard from './dashboard';
 export * as ditch from './ditch';
 export * as global from './global';

@@ -56,5 +56,6 @@ export const DataSourceApi = {
       ds_code: string;
       message: string;
       reachable: boolean;
+      diagnostic?: string;
     }>(`/adm/data-sources/${encodeURIComponent(code)}/probe`, data),
 };

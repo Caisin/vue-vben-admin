@@ -1,5 +1,6 @@
 /* Machine-auditable migration manifest generated from dog-adm-seas seas closure. */
 export const resSourceViewFiles = [
+  'app_short_sync/index.vue',
   'ditch/Modal.vue',
   'ditch/data.tsx',
   'ditch/index.vue',
@@ -168,6 +169,7 @@ export const resSourceViewFiles = [
 ] as const;
 
 export const resSourceApiFiles = [
+  'app_short_sync.ts',
   'dashboard/index.ts',
   'ditch/index.ts',
   'global/i18n.ts',
@@ -209,6 +211,7 @@ export const resSourceApiFiles = [
 ] as const;
 
 export const resSourceDomains = [
+  'app_short_sync',
   'ditch',
   'global',
   'log',

@@ -26,13 +26,14 @@ function relativeFiles(files: Record<string, string>, marker: string) {
 describe('res migration manifest', () => {
   it('tracks the seas source file closure', () => {
     expect(resMigrationStats).toEqual({
-      apiFiles: 38,
-      domains: 6,
+      apiFiles: 39,
+      domains: 7,
       legacySchemaFiles: 47,
-      routeComponents: 117,
-      viewFiles: 165,
+      routeComponents: 118,
+      viewFiles: 166,
     });
     expect(resSourceDomains).toEqual([
+      'app_short_sync',
       'ditch',
       'global',
       'log',

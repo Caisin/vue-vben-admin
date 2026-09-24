@@ -6,6 +6,7 @@ export interface ResourceVersion {
   id: Id;
   res_id: Id;
   name: string;
+  lang: string;
   remark: string;
   revision: number;
   created_at: number;
@@ -35,10 +36,12 @@ export interface ResourceCreate {
   res_type: ResourceType;
   intro: string;
   version_name: string;
+  version_lang?: string;
   remark: string;
 }
 export interface VersionWrite {
   name: string;
+  lang?: string;
   remark: string;
   expected_revision?: number;
 }
