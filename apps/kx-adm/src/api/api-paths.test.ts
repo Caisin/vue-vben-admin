@@ -18,6 +18,7 @@ const preSessionEncryptedPaths = new Set([
 ]);
 
 const plaintextPathPatterns = [
+  /^\/developer-account\/apple-devices\/screenshot$/,
   /^\/import-export\/exports\/.+\/runs\/.+\/file$/,
   /^\/import-export\/imports\/.+\/(?:runs|template)$/,
   /^\/import-export\/runs\/.+\/files\/(?:errors|input|result|\$\{kind\})$/,
@@ -25,7 +26,14 @@ const plaintextPathPatterns = [
   /^\/invoice\/files(?:\/.+\/content)?$/,
   /^\/invoice\/imports\/.+\/events$/,
   /^\/invoice\/imports\/.+\/items\/.+\/content$/,
+  /^\/msg\/sim-cards\/real-name-imports(?:\/template|\/.+\/result)?$/,
+  /^\$\{root\}\/builds\/\$\{id\}\/download$/,
+  /^\$\{root\}\/upload\/\$\{storagePath\(code\)\}$/,
+  /^\/software\/operations\/.+\/events\?after=/,
   /^\/storage\/file\/(?:content\/.+|upload\/.+)$/,
+  /^\/storage\/share\/picker\/files\/upload$/,
+  /^\/auth\/user-admin\/actions\/weekly-report-template$/,
+  /^\/script-pipeline\/published-products\/.+\/media\/.+$/,
 ];
 
 function collectApiFiles(dir: string): string[] {
