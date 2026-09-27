@@ -1,6 +1,13 @@
-import { defineConfig } from '@vben/oxfmt-config';
+import { defineConfig, oxfmtConfig } from '@vben/oxfmt-config';
 
 export default defineConfig({
+  overrides: [
+    ...(oxfmtConfig.overrides ?? []),
+    {
+      files: ['apps/kx-adm/src/views/vestige/**/*.vue'],
+      options: { htmlWhitespaceSensitivity: 'ignore' },
+    },
+  ],
   ignorePatterns: [
     'dist',
     'dev-dist',
