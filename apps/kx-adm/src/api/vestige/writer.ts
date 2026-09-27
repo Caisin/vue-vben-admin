@@ -31,7 +31,7 @@ export interface WriterMessage {
   id: string;
   speaker: 'assistant' | 'user';
   content: string;
-  task_id: string;
+  task_id: null | string;
   created_at: string;
 }
 export interface WriterProfile {

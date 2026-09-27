@@ -643,7 +643,7 @@ onBeforeUnmount(() => {
       </div>
       <Alert
         type="info"
-        message="复制知识、学习状态及已发布规则与证据。新旧角色独立演进，项目稿件、对话、授权和账号凭据不会复制。"
+        message="复制知识、学习状态、已发布规则及其作品和用户反馈证据。新旧角色独立演进；其他对话、项目稿件、授权和账号凭据不复制。"
       />
     </Modal>
     <CandidatePicker
