@@ -86,7 +86,9 @@ async function save() {
   }
   saving.value = true;
   try {
-    await StorageConfigApi.setBusinessDefaults({ ...form });
+    await StorageConfigApi.setBusinessDefaults({
+      ...form,
+    });
     message.success('默认存储设置已保存');
     await load();
   } finally {

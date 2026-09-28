@@ -55,6 +55,8 @@ export interface AppShortSyncResourceSummary {
   res_id: number;
   res_name: string;
   resource_code: string;
+  cover_synced: boolean;
+  cover_error: string;
   source_id: string;
   languages: string[];
   version_count: number;
@@ -72,6 +74,17 @@ export interface AppShortSyncResourceSummary {
 
 export interface AppShortSyncSettings {
   concurrency: number;
+}
+
+export interface SyncTask {
+  id: number;
+  status: string;
+  cancel_requested_at: null | number;
+  total_count: null | number;
+  succeeded_count: number;
+  failed_count: number;
+  message: string;
+  error_message?: null | string;
 }
 
 export const AppShortSyncApi = {
@@ -124,13 +137,20 @@ export const AppShortSyncApi = {
       '/adm/res/app-short-sync/videos/retry',
       { ids },
     ),
-  migrateVideos: (res_id?: number) =>
-    requestClient.post<{ id: number }>(
+  migrationStatus: (cover_only = false, res_id?: number) =>
+    requestClient.get<null | SyncTask>(
       '/adm/res/app-short-sync/videos/migrate',
-      { res_id },
+      { params: { cover_only, res_id } },
     ),
+  migrateVideos: (res_id?: number, cover_only = false) =>
+    requestClient.post<SyncTask>('/adm/res/app-short-sync/videos/migrate', {
+      res_id,
+      cover_only,
+    }),
   stopResource: (resId: number) =>
     requestClient.post(`/adm/res/app-short-sync/resources/${resId}/stop`),
   stopMigration: (taskId: number) =>
-    requestClient.post(`/adm/res/app-short-sync/videos/migrate/${taskId}/stop`),
+    requestClient.post<SyncTask>(
+      `/adm/res/app-short-sync/videos/migrate/${taskId}/stop`,
+    ),
 };

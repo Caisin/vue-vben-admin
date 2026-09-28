@@ -24,13 +24,14 @@ test('剧视频存储独立配置并在保存后回显', async ({ page }) => {
     if (!['fetch', 'xhr'].includes(req.resourceType())) return route.continue();
     const path = new URL(req.url()).pathname.replace(/^\/api(?=\/)/, '');
     let result: unknown = [];
-    if (path === '/auth/dt/exchange')
+    if (path === '/auth/user/access_token')
       result = {
         access_token: 'fixture',
         uid: 7,
         exp_at: 4_102_444_800,
         exp_in: 3600,
       };
+    else if (path === '/auth/per/codes') result = [];
     else if (path === '/auth/user/user_info')
       result = {
         id: 7,
@@ -82,7 +83,10 @@ test('剧视频存储独立配置并在保存后回显', async ({ page }) => {
       ),
     });
   });
-  await page.goto('/#/auth/login?exchange_code=fixture');
+  await page.goto('/');
+  await page.locator("input[name='username']").fill('admin');
+  await page.locator("input[name='password']").fill('123456');
+  await page.getByRole('button', { name: /登录|login/i }).click();
   await page.getByRole('combobox', { name: '剧视频存储' }).click();
   await page.getByTitle('剧视频专用 (drama)', { exact: true }).click();
   await page.getByRole('button', { name: '保存', exact: true }).click();

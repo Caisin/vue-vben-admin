@@ -10,7 +10,9 @@ use crate::{
     protocol,
     session::{Desktop, Session},
 };
+mod direct;
 mod local_files;
+use direct::{DownloadLink, DownloadReceipt};
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -21,6 +23,7 @@ pub struct DownloadFile {
     pub bytes: u64,
     pub status: String,
     pub error: String,
+    pub pending_receipt: Option<DownloadReceipt>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -246,12 +249,11 @@ impl Desktop {
         let session = self.identity().await?;
         let job = {
             let queue = self.download_queue.lock().await;
-            let job = queue
+            queue
                 .iter()
                 .find(|j| j.id == id)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("下载任务不存在"))?;
-            job
+                .ok_or_else(|| anyhow::anyhow!("下载任务不存在"))?
         };
         let pool = kx_tk_pool::TkPool::new(job.concurrency.clamp(1, 8));
         let futures = (0..job.files.len())
@@ -351,40 +353,45 @@ impl Desktop {
             .cloned()
             .context("下载任务不存在")?;
         let file = job.files.get(index).context("下载文件不存在")?;
+        if let Some(receipt) = &file.pending_receipt {
+            self.report_download_receipt(app, &session, &job, file, receipt)
+                .await?;
+            self.save_download_receipt(id, index, None).await?;
+        }
         let target = local_files::target_path(&job.directory, &file.file_name)?;
-        if let Some(bytes) = local_files::existing_file(&target).await? {
-            if !job.overwrite {
-                self.update_download_file(app, id, index, "已跳过", Some(bytes), "")
-                    .await?;
-                return Ok(());
-            }
+        if let Some(bytes) = local_files::existing_file(&target).await?
+            && !job.overwrite
+        {
+            self.update_download_file(app, id, index, "已跳过", Some(bytes), "")
+                .await?;
+            return Ok(());
         }
         self.update_download_file(app, id, index, "下载中", Some(0), "")
             .await?;
-        let response = self
-            .http
-            .get(format!(
-                "{}/api/res/downloads/{}/{}?task_id={}",
-                session.api_base, job.res_id, file.file_id, job.task_id
-            ))
-            .bearer_auth(&session.token)
-            .header("security", "true")
-            .header("x-kx-client", "tauri")
-            .send()
-            .await
-            .context("请求下载文件失败")?;
-        if !response.status().is_success()
-            || response
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .is_some_and(|value| value.contains("application/json"))
-        {
-            match protocol::response(response, false).await {
-                Err(error) => return Err(error).context("下载接口返回错误"),
-                Ok(_) => anyhow::bail!("下载接口返回 JSON，未收到文件内容"),
+        let link: DownloadLink = serde_json::from_value(
+            self.api(
+                app,
+                &session,
+                reqwest::Method::POST,
+                &format!("/api/res/downloads/{}/{}/url", job.res_id, file.file_id),
+                Some(&json!({"task_id": job.task_id})),
+            )
+            .await?,
+        )
+        .context("下载地址响应无效")?;
+        let transfer = async {
+        let fetch = self.fetch_download(&session, &job, file, &link);
+        tokio::pin!(fetch);
+        let mut wait = tokio::time::interval(std::time::Duration::from_millis(250));
+        let response = loop {
+            tokio::select! {
+                response = &mut fetch => break response?,
+                _ = wait.tick() => if !self.download_running(id, &session).await? {
+                    self.update_download_file(app, id, index, "已暂停", Some(0), "").await?;
+                    return Ok(());
+                }
             }
-        }
+        };
         let temp = job
             .directory
             .join(format!(".{}.{}.part", file.file_name, uuid::Uuid::new_v4()));
@@ -405,9 +412,10 @@ impl Desktop {
                     }
                 };
                 let Some(chunk) = chunk else { break; };
-                let chunk = chunk.context("接收文件内容失败")?;
+                let chunk = chunk.map_err(|e| anyhow::anyhow!("接收文件内容失败：{}", e.without_url()))?;
                 output.write_all(&chunk).await.context("写入下载文件失败")?;
                 bytes += chunk.len() as u64;
+                ensure!(bytes <= file.size, "下载文件超过预期大小");
                 let mut queue = self.download_queue.lock().await;
                 let job = queue.iter_mut().find(|job| job.id == id).context("下载任务不存在")?;
                 job.files[index].bytes = bytes;
@@ -426,6 +434,37 @@ impl Desktop {
         }.await;
         let _ = tokio::fs::remove_file(&temp).await;
         result
+        }.await;
+        if let Some(log_id) = link.log_id {
+            let current = self
+                .download_queue
+                .lock()
+                .await
+                .iter()
+                .find(|j| j.id == id)
+                .and_then(|j| j.files.get(index))
+                .cloned()
+                .context("下载文件不存在")?;
+            let status = if transfer.is_err() {
+                "failed"
+            } else if current.status == "已暂停" {
+                "cancelled"
+            } else {
+                "completed"
+            };
+            let receipt = DownloadReceipt {
+                log_id,
+                status: status.into(),
+                bytes: current.bytes.min(i64::MAX as u64) as i64,
+            };
+            self.save_download_receipt(id, index, Some(receipt.clone()))
+                .await?;
+            self.report_download_receipt(app, &session, &job, file, &receipt)
+                .await
+                .context("文件处理结束，但下载记录回报失败；重试可补报")?;
+            self.save_download_receipt(id, index, None).await?;
+        }
+        transfer
     }
 }
 
@@ -468,6 +507,7 @@ fn download_layout(
             bytes: 0,
             status: "待下载".into(),
             error: String::new(),
+            pending_receipt: None,
         });
     }
     Ok((root.join(folder), files))

@@ -4,6 +4,7 @@ import type {
   AppShortSyncRunRecord,
   AppShortSyncRunWrite,
   AppShortSyncVideoRecord,
+  SyncTask,
 } from '#/api/res/seas/app_short_sync';
 
 import {
@@ -51,6 +52,14 @@ const keyword = ref('');
 const resourceState = ref<string>();
 const resourcePage = ref(1);
 const busyIds = ref<number[]>([]);
+const singleTasks = ref<Record<number, null | SyncTask>>({});
+const batchTasks = ref<Array<null | SyncTask>>([null, null]);
+const batchBusy = ref([false, false]);
+const batchReady = ref(false);
+const batchError = ref('');
+const taskActive = (task?: null | SyncTask) =>
+  Boolean(task && ['queued', 'retrying', 'running'].includes(task.status));
+const batchLabels = ['全部同步', '全量同步封面'];
 const selected = ref<AppShortSyncResourceSummary>();
 const detailOpen = ref(false);
 const chapters = ref<AppShortSyncVideoRecord[]>([]);
@@ -103,13 +112,12 @@ const resourceColumns = [
   },
   { title: '源剧 ID', dataIndex: 'source_id', width: 100 },
   { title: '版本 / 语言', key: 'versions', width: 160 },
-  { title: '状态', key: 'state', width: 100 },
+  { title: '状态', key: 'state', width: 150 },
   { title: '同步进度', key: 'progress', width: 180 },
   { title: '待同步', dataIndex: 'pending', width: 80 },
   { title: '同步中', dataIndex: 'running', width: 80 },
   { title: '失败 / 冲突', key: 'failed', width: 100 },
   { title: '失败原因', key: 'error', width: 240 },
-  { title: '操作', key: 'actions', width: 160, fixed: 'right' as const },
 ];
 const chapterColumns = [
   { title: '集数', dataIndex: 'seq_no', width: 70 },
@@ -125,6 +133,7 @@ const stageLabels: Record<string, string> = {
   pending: '等待同步',
   preparing: '准备同步',
   source_url: '解析源地址',
+  storage_missing: '存储文件缺失，等待重新同步',
   storage_check: '检查目标存储',
   download_mp4: '下载 MP4',
   download_manifest: '读取 HLS 清单',
@@ -259,17 +268,65 @@ function filterChapters() {
   void loadChapters();
 }
 async function refresh() {
-  await Promise.all([loadResources(), loadChapters()]);
+  await Promise.all([
+    loadResources(),
+    loadChapters(),
+    loadBatchTasks(),
+    loadSingleTasks(),
+  ]);
 }
-function restart(row: AppShortSyncResourceSummary) {
-  Modal.confirm({
-    title: `重新同步「${row.res_name}」？`,
-    content:
-      '继续迁移该剧未完成的章节，保留已同步的视频。冲突章节需先处理冲突。',
-    okText: '重新同步',
-    cancelText: '取消',
-    onOk: () => operate(row, 'restart'),
-  });
+async function loadSingleTasks() {
+  if (!canMigrate.value) return;
+  await Promise.all(
+    Object.entries(singleTasks.value)
+      .filter(([, task]) => taskActive(task))
+      .map(async ([id]) => {
+        try {
+          singleTasks.value[Number(id)] = await AppShortSyncApi.migrationStatus(
+            false,
+            Number(id),
+          );
+        } catch (error) {
+          listError.value = requestErrorMessage(error, '读取单剧校验任务失败');
+        }
+      }),
+  );
+}
+async function loadBatchTasks() {
+  if (!canMigrate.value) return;
+  try {
+    const result = await Promise.all([
+      AppShortSyncApi.migrationStatus(),
+      AppShortSyncApi.migrationStatus(true),
+    ]);
+    if (!alive) return;
+    batchTasks.value = result;
+    batchReady.value = true;
+    batchError.value = '';
+  } catch (error) {
+    if (!alive) return;
+    batchReady.value = false;
+    batchError.value = requestErrorMessage(error, '读取后台同步状态失败');
+  }
+}
+async function operateBatch(index: number, stop = false) {
+  if (batchBusy.value[index]) return;
+  batchBusy.value[index] = true;
+  try {
+    const task = batchTasks.value[index];
+    batchTasks.value[index] =
+      stop && task
+        ? await AppShortSyncApi.stopMigration(task.id)
+        : await AppShortSyncApi.migrateVideos(undefined, index === 1);
+    message.success(
+      stop ? '已请求停止，正在释放当前任务' : '已提交后台同步任务',
+    );
+    await refresh();
+  } catch (error) {
+    message.error(requestErrorMessage(error, stop ? '停止失败' : '提交失败'));
+  } finally {
+    batchBusy.value[index] = false;
+  }
 }
 async function operate(
   row: AppShortSyncResourceSummary,
@@ -278,21 +335,27 @@ async function operate(
   if (busyIds.value.includes(row.res_id)) return;
   busyIds.value.push(row.res_id);
   try {
-    await (action === 'stop'
-      ? AppShortSyncApi.stopResource(row.res_id)
-      : AppShortSyncApi.migrateVideos(row.res_id));
+    if (action === 'stop') {
+      const task = singleTasks.value[row.res_id];
+      if (taskActive(task) && task)
+        singleTasks.value[row.res_id] = await AppShortSyncApi.stopMigration(
+          task.id,
+        );
+      await AppShortSyncApi.stopResource(row.res_id);
+    } else {
+      singleTasks.value[row.res_id] = await AppShortSyncApi.migrateVideos(
+        row.res_id,
+      );
+    }
     message.success(
       action === 'stop'
         ? `已停止「${row.res_name}」`
-        : `已提交「${row.res_name}」的同步任务`,
+        : `已提交「${row.res_name}」的校验与补齐任务`,
     );
     await refresh();
   } catch (error) {
     message.error(
-      requestErrorMessage(
-        error,
-        action === 'stop' ? '停止失败' : '重新同步失败',
-      ),
+      requestErrorMessage(error, action === 'stop' ? '停止失败' : '同步失败'),
     );
   } finally {
     busyIds.value = busyIds.value.filter((id) => id !== row.res_id);
@@ -452,9 +515,57 @@ onBeforeUnmount(stopPolling);
     </Card>
     <Card title="按剧同步进度">
       <template #extra>
-        <Button v-if="canScan" type="primary" @click="runModalOpen = true">
-          扫描源数据
-        </Button>
+        <Space wrap>
+          <template v-if="canMigrate">
+            <template v-for="(label, index) in batchLabels" :key="label">
+              <Button
+                v-if="taskActive(batchTasks[index])"
+                danger
+                :loading="batchBusy[index]"
+                :disabled="!!batchTasks[index]?.cancel_requested_at"
+                @click="operateBatch(index, true)"
+              >
+                {{ batchTasks[index]?.cancel_requested_at ? '正在停止' : '停止'
+                }}{{ label }}
+              </Button>
+              <Button
+                v-else
+                :loading="batchBusy[index]"
+                :disabled="!batchReady"
+                @click="operateBatch(index)"
+              >
+                {{ label }}
+              </Button>
+            </template>
+          </template>
+          <Button
+            v-if="canScan"
+            type="primary"
+            aria-label="扫描源数据"
+            @click="runModalOpen = true"
+          >
+            扫描源数据
+          </Button>
+        </Space>
+      </template>
+      <p class="text-muted-foreground mb-3">
+        全部同步按剧顺序处理未完成视频；封面单独补同步，已同步的自动跳过。停止全部同步后可启动紧急单剧。
+      </p>
+      <Alert
+        v-if="batchError"
+        :message="batchError"
+        type="error"
+        class="mb-3"
+      />
+      <template v-for="(task, index) in batchTasks" :key="index">
+        <Alert
+          v-if="task"
+          class="mb-3"
+          show-icon
+          :type="task.error_message || task.failed_count ? 'warning' : 'info'"
+          :message="`${batchLabels[index]}：${task.message || task.status}，成功 ${task.succeeded_count} / ${task.total_count ?? '-'}，失败 ${task.failed_count}`"
+          :description="task.error_message || undefined"
+        />
       </template>
       <Space wrap class="mb-4">
         <Input
@@ -473,7 +584,7 @@ onBeforeUnmount(stopPolling);
           placeholder="剧同步状态"
         />
         <Button type="primary" @click="filterResources">查询</Button>
-        <Button @click="refresh">刷新</Button>
+        <Button aria-label="刷新" @click="refresh">刷新</Button>
         <div>
           当前筛选：{{ summaries.length }} 部剧 · 已同步 {{ succeeded }} /
           {{ total }} 集 · 失败/冲突 {{ failed }} 集
@@ -519,6 +630,55 @@ onBeforeUnmount(stopPolling);
             <Tag :color="colors[record.state]">
               {{ labels[record.state] || record.state }}
             </Tag>
+            <Button
+              v-if="
+                canMigrate &&
+                record.state !== 'running' &&
+                !taskActive(singleTasks[record.res_id])
+              "
+              type="link"
+              size="small"
+              :loading="busyIds.includes(record.res_id)"
+              @click="operate(record, 'restart')"
+            >
+              {{
+                record.state === 'succeeded' || record.succeeded > 0
+                  ? '重新同步'
+                  : '同步'
+              }}
+            </Button>
+            <Button
+              v-if="
+                canMigrate &&
+                (record.state === 'running' ||
+                  taskActive(singleTasks[record.res_id]))
+              "
+              type="link"
+              size="small"
+              danger
+              :loading="busyIds.includes(record.res_id)"
+              @click="operate(record, 'stop')"
+            >
+              停止
+            </Button>
+            <div
+              v-if="
+                singleTasks[record.res_id]?.message ||
+                singleTasks[record.res_id]?.error_message
+              "
+              class="text-xs"
+            >
+              {{
+                singleTasks[record.res_id]?.error_message ||
+                singleTasks[record.res_id]?.message
+              }}
+            </div>
+            <div class="text-muted-foreground text-xs">
+              {{ record.cover_synced ? '封面已同步' : '封面待同步' }}
+            </div>
+            <div v-if="record.cover_error" class="text-destructive text-xs">
+              {{ record.cover_error }}
+            </div>
           </template>
           <template v-else-if="column.key === 'progress'">
             <Progress :percent="percent(record)" size="small" />
@@ -531,31 +691,6 @@ onBeforeUnmount(stopPolling);
             <span class="break-words">{{
               record.failure_reasons.join('；') || '-'
             }}</span>
-          </template>
-          <template v-else-if="column.key === 'actions'">
-            <Space wrap>
-              <Button
-                v-if="canMigrate"
-                type="link"
-                :loading="busyIds.includes(record.res_id)"
-                :disabled="
-                  record.total === record.succeeded ||
-                  record.state === 'running'
-                "
-                @click="restart(record)"
-              >
-                重新同步
-              </Button>
-              <Button
-                v-if="canMigrate && record.state === 'running'"
-                type="link"
-                danger
-                :disabled="busyIds.includes(record.res_id)"
-                @click="operate(record, 'stop')"
-              >
-                停止
-              </Button>
-            </Space>
           </template>
         </template>
       </Table>

@@ -47,6 +47,18 @@ async fn server(
     Arc<AtomicUsize>,
     tokio_util::task::AbortOnDropHandle<()>,
 )> {
+    server_with_receipt_failure(status, body, content_type, false).await
+}
+async fn server_with_receipt_failure(
+    status: &str,
+    body: &str,
+    content_type: &str,
+    fail_receipt: bool,
+) -> Result<(
+    String,
+    Arc<AtomicUsize>,
+    tokio_util::task::AbortOnDropHandle<()>,
+)> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let calls = Arc::new(AtomicUsize::new(0));
@@ -55,15 +67,107 @@ async fn server(
         "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
+    let base_url = base.clone();
+    let status = status.to_owned();
     let task = tokio::spawn(async move {
+        let mut signed = 0;
+        let mut receipt_calls = 0;
         while let Ok((mut stream, _)) = listener.accept().await {
             let mut buffer = [0u8; 8192];
-            let _ = stream.read(&mut buffer).await;
-            count.fetch_add(1, Ordering::SeqCst);
-            let _ = stream.write_all(response.as_bytes()).await;
+            let n = stream.read(&mut buffer).await.unwrap_or(0);
+            let header = String::from_utf8_lossy(&buffer[..n]).to_string();
+            let path = header
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or_default();
+            if path.ends_with("/url") && status.starts_with("200") {
+                signed += 1;
+                assert!(
+                    signed <= count.load(Ordering::SeqCst) + 1,
+                    "later episode links must not be prefetched"
+                );
+                assert!(
+                    header
+                        .to_ascii_lowercase()
+                        .contains("authorization: bearer fixture")
+                );
+                let json = json!({"code":200,"result":{"mode":"direct","url":format!("{base_url}/object?signature=secret"),"log_id":11}});
+                let body = kx_ed::KxEd::en(&serde_json::to_vec(&json).unwrap())
+                    .await
+                    .unwrap();
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes()).await;
+                let _ = stream.write_all(&body).await;
+            } else if path.ends_with("/receipt") {
+                receipt_calls += 1;
+                if fail_receipt && receipt_calls == 1 {
+                    let _ = stream.write_all(b"HTTP/1.1 503 Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
+                    continue;
+                }
+                let body = kx_ed::KxEd::en(br#"{"code":200,"result":true}"#)
+                    .await
+                    .unwrap();
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes()).await;
+                let _ = stream.write_all(&body).await;
+            } else {
+                if path.starts_with("/object") {
+                    assert!(!header.to_ascii_lowercase().contains("authorization:"));
+                    assert!(!header.to_ascii_lowercase().contains("x-kx-client:"));
+                    assert!(!header.to_ascii_lowercase().contains("security:"));
+                }
+                count.fetch_add(1, Ordering::SeqCst);
+                let _ = stream.write_all(response.as_bytes()).await;
+            }
         }
     });
     Ok((base, calls, tokio_util::task::AbortOnDropHandle::new(task)))
+}
+
+#[tokio::test]
+async fn signs_each_episode_only_when_its_download_slot_starts() -> Result<()> {
+    let root = Dir::new()?;
+    let (base, calls, _server) = server("200 OK", "new", "application/octet-stream").await?;
+    let d = desktop(&root, &base, "待下载").await?;
+    {
+        let mut q = d.download_queue.lock().await;
+        q[0].concurrency = 1;
+        q[0].files.push(DownloadFile {
+            file_id: 4,
+            file_name: "2.mp4".into(),
+            size: 3,
+            status: "待下载".into(),
+            ..Default::default()
+        });
+    }
+    run(&d, false).await?;
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(tokio::fs::read(root.0.join("2.mp4")).await?, b"new");
+    Ok(())
+}
+
+#[tokio::test]
+async fn failed_receipt_is_retried_without_redownloading_saved_file() -> Result<()> {
+    let root = Dir::new()?;
+    let (base, calls, _server) =
+        server_with_receipt_failure("200 OK", "new", "application/octet-stream", true).await?;
+    let d = desktop(&root, &base, "待下载").await?;
+    run(&d, false).await?;
+    assert!(load(&root.0)?[0].files[0].pending_receipt.is_some());
+    assert_eq!(tokio::fs::read(root.0.join("1.mp4")).await?, b"new");
+    run(&d, false).await?;
+    assert!(load(&root.0)?[0].files[0].pending_receipt.is_none());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    Ok(())
 }
 async fn desktop(root: &Dir, base: &str, file_status: &str) -> Result<Arc<Desktop>> {
     let d = Desktop::new(root.0.clone())?;
@@ -119,6 +223,9 @@ async fn existing_file_is_skipped_without_network_and_explicit_overwrite_replace
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(tokio::fs::read(root.0.join("1.mp4")).await?, b"new");
     assert_eq!(load(&root.0)?[0].status, "已完成");
+    let persisted = std::fs::read_to_string(root.0.join("download-queue.json"))?;
+    assert!(!persisted.contains("signature=secret"));
+    assert!(!persisted.contains("/object"));
     Ok(())
 }
 

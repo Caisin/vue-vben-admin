@@ -9,6 +9,10 @@ export interface DownloadGrant {
   res_name: string;
   uid: number | string;
   user_name: string;
+  granted_by: number | string;
+  granted_by_name: string;
+  created_at: number;
+  updated_at: number;
   valid_from: number;
   valid_until: number;
 }
@@ -16,6 +20,27 @@ export type DownloadGrantWrite = Pick<
   DownloadGrant,
   'can_download' | 'uid' | 'valid_from' | 'valid_until'
 >;
+export interface DownloadBatchWrite {
+  mode: 'code' | 'name';
+  text: string;
+  grant: DownloadGrantWrite;
+  expected_res_ids?: Array<number | string>;
+}
+export interface DownloadBatchView {
+  granted_count: number;
+  matched_res_ids: Array<number | string>;
+  lines: Array<{
+    line: number;
+    input: string;
+    status: 'ambiguous' | 'duplicate' | 'matched' | 'not_found';
+    message: string;
+    matches: Array<{
+      res_id: number | string;
+      res_name: string;
+      resource_code: string;
+    }>;
+  }>;
+}
 export interface DownloadLog {
   bytes: number;
   client: string;
@@ -33,6 +58,13 @@ export interface DownloadUserOption {
   id: number | string;
   name: string;
   tel: string;
+}
+export interface DownloadUserTreeNode {
+  value: string;
+  title: string;
+  selectable: boolean;
+  disabled: boolean;
+  children: DownloadUserTreeNode[];
 }
 export interface DownloadStats {
   from: number;
@@ -82,6 +114,18 @@ export interface DownloadTaskItem {
 }
 
 export const ResDownloadApi = {
+  userTree: () =>
+    requestClient.get<DownloadUserTreeNode[]>('/adm/res/download-users/tree'),
+  previewBatch: (data: DownloadBatchWrite) =>
+    requestClient.post<DownloadBatchView>(
+      '/adm/res/download-permissions/batch/preview',
+      data,
+    ),
+  saveBatch: (data: DownloadBatchWrite) =>
+    requestClient.post<DownloadBatchView>(
+      '/adm/res/download-permissions/batch',
+      data,
+    ),
   grants: (resId: number | string, params?: PageQuery & { uid?: number }) =>
     requestClient.get<Page<DownloadGrant>>(
       `/adm/res/${resId}/download-permissions`,

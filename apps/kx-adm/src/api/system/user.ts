@@ -24,6 +24,8 @@ export interface SystemUser {
   avatar?: string;
   createTime?: number | string;
   deptId?: number | string;
+  /** 用户所属组织架构完整路径（公司 / 部门）。由用户列表结合部门树补全。 */
+  deptPath?: string;
   email?: string;
   effectiveApiIds?: string[];
   effectivePermissionIds?: string[];

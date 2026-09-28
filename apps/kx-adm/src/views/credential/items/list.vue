@@ -369,6 +369,7 @@ function retire(row: CredentialView) {
       <template #operation="{ row }">
         <Space>
           <Button
+            v-access:code="'credential:reveal'"
             size="small"
             title="查看明文"
             type="text"

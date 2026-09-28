@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
             :value="totpCode"
             autocomplete="one-time-code"
             inputmode="numeric"
-            ::maxlength="6"
+            :maxlength="6"
             placeholder="请输入 6 位验证码"
             @update:value="totpCode = normalizeCode($event)"
             @press-enter="revealCredential"

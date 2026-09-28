@@ -4,7 +4,7 @@ import type { Dayjs } from 'dayjs';
 import type {
   DownloadGrant,
   DownloadGrantWrite,
-  DownloadUserOption,
+  DownloadUserTreeNode,
 } from '#/api/res/downloads';
 import type { ResRecord } from '#/api/res/seas/global/source_manage';
 
@@ -30,14 +30,17 @@ import { ResDownloadApi } from '#/api/res/downloads';
 import { global } from '#/api/res/seas';
 import { requestErrorMessage } from '#/request-errors';
 
+import BatchGrant from './modules/batch-grant.vue';
+import UserTreeSelect from './modules/user-tree-select.vue';
+
 const rows = ref<DownloadGrant[]>([]);
-const users = ref<DownloadUserOption[]>([]);
+const userTree = ref<DownloadUserTreeNode[]>([]);
+const userTreeLoading = ref(false);
+const userTreeError = ref('');
 const resources = ref<ResRecord[]>([]);
-const grantUserOptions = ref<Array<{ label: string; value: number }>>([]);
-const userSearching = ref(false);
-let userSearchRevision = 0;
 const loading = ref(false);
 const editorOpen = ref(false);
+const batchOpen = ref(false);
 const editing = ref(false);
 const saving = ref(false);
 const saveError = ref('');
@@ -56,40 +59,22 @@ const form = reactive<DownloadGrantWrite>({
   valid_until: 0,
 });
 const grantUid = computed({
-  get: () => form.uid || undefined,
+  get: () => Number(form.uid) || undefined,
   set: (value: number | string | undefined) => {
     form.uid = value ?? 0;
   },
 });
 
-async function searchGrantUsers(keyword = '') {
-  const revision = ++userSearchRevision;
-  userSearching.value = true;
+async function loadUserTree() {
+  if (userTreeLoading.value) return;
+  userTreeLoading.value = true;
+  userTreeError.value = '';
   try {
-    const result = await ResDownloadApi.users({
-      page: 1,
-      size: 50,
-      keyword: keyword.trim() || undefined,
-    });
-    if (revision !== userSearchRevision) return;
-    const selected = grantUserOptions.value.find(
-      (option) => String(option.value) === String(form.uid),
-    );
-    const options = result.items.map((user) => ({
-      label: `${user.name}（${user.id}）`,
-      value: Number(user.id),
-    }));
-    if (
-      selected &&
-      !options.some((option) => String(option.value) === String(selected.value))
-    )
-      options.unshift(selected);
-    grantUserOptions.value = options;
+    userTree.value = await ResDownloadApi.userTree();
   } catch (error) {
-    if (revision === userSearchRevision)
-      message.error(requestErrorMessage(error, '搜索授权用户失败'));
+    userTreeError.value = requestErrorMessage(error, '加载用户组织树失败');
   } finally {
-    if (revision === userSearchRevision) userSearching.value = false;
+    userTreeLoading.value = false;
   }
 }
 
@@ -109,12 +94,17 @@ function formatTime(value: number | string, emptyLabel: string) {
     ? dayjs.unix(Number(value)).format('YYYY-MM-DD HH:mm:ss')
     : emptyLabel;
 }
+function personName(name: string | undefined, id: number | string | undefined) {
+  if (!id || Number(id) <= 0) return '未记录';
+  return name && name !== String(id) ? name : '姓名不可用';
+}
 
 const columns = [
   { title: '剧名', dataIndex: 'res_name', key: 'res_name' },
   { title: '资源 ID', dataIndex: 'res_id', key: 'res_id' },
-  { title: '用户', dataIndex: 'user_name', key: 'user_name' },
-  { title: '用户 ID', dataIndex: 'uid', key: 'uid' },
+  { title: '授权人（最近操作）', key: 'grantor', width: 175 },
+  { title: '被授权人', key: 'grantee', width: 175 },
+  { title: '授权更新时间', key: 'updated_at', width: 175 },
   { title: '生效时间', dataIndex: 'valid_from', key: 'valid_from' },
   { title: '失效时间', dataIndex: 'valid_until', key: 'valid_until' },
   { title: '状态', dataIndex: 'can_download', key: 'can_download' },
@@ -122,15 +112,10 @@ const columns = [
 ];
 
 async function loadOptions() {
-  const [userPage, resourceList] = await Promise.all([
-    ResDownloadApi.users({ page: 1, size: 500 }),
+  const [, resourceList] = await Promise.all([
+    loadUserTree(),
     global.source_manage.getListAll({}),
   ]);
-  users.value = userPage.items;
-  grantUserOptions.value = userPage.items.map((user) => ({
-    label: `${user.name}（${user.id}）`,
-    value: Number(user.id),
-  }));
   resources.value = resourceList;
 }
 async function query() {
@@ -177,16 +162,6 @@ function edit(row: DownloadGrant) {
   ) {
     resources.value.push({ id: row.res_id, res_name: row.res_name });
   }
-  if (
-    !grantUserOptions.value.some(
-      (option) => String(option.value) === String(row.uid),
-    )
-  ) {
-    grantUserOptions.value.unshift({
-      label: `${row.user_name}（${row.uid}）`,
-      value: Number(row.uid),
-    });
-  }
   Object.assign(form, {
     uid: Number(row.uid),
     can_download: row.can_download,
@@ -232,6 +207,15 @@ async function revoke(row: DownloadGrant) {
   await ResDownloadApi.removeGrant(row.res_id, row.uid);
   await query();
 }
+async function refreshAfterBatch() {
+  try {
+    await query();
+  } catch (error) {
+    message.error(
+      requestErrorMessage(error, '授权已保存，刷新列表失败，请重新查询'),
+    );
+  }
+}
 onMounted(async () => {
   await loadOptions();
   await query();
@@ -256,22 +240,20 @@ onMounted(async () => {
             placeholder="按剧目查看授权用户"
           />
         </FormItem>
-        <FormItem label="用户">
-          <Select
+        <FormItem label="用户" html-for="filter-grant-user">
+          <UserTreeSelect
+            id="filter-grant-user"
+            allow-disabled
             v-model:value="filters.uid"
-            allow-clear
-            show-search
-            :options="
-              users.map((u) => ({
-                label: `${u.name}（${u.id}）`,
-                value: Number(u.id),
-              }))
-            "
-            placeholder="按用户查看已授权剧目"
+            :tree-data="userTree"
+            :loading="userTreeLoading"
+            :error="userTreeError"
+            @retry="loadUserTree"
           />
         </FormItem>
         <Button type="primary" :loading="loading" @click="query">查询</Button>
         <Button @click="create">新增授权</Button>
+        <Button @click="batchOpen = true">批量授权</Button>
       </Form>
     </div>
     <Table
@@ -280,8 +262,25 @@ onMounted(async () => {
       :data-source="rows"
       :pagination="false"
       row-key="id"
+      :scroll="{ x: 1300 }"
     >
       <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'grantor'">
+          <div>{{ personName(record.granted_by_name, record.granted_by) }}</div>
+          <div
+            v-if="Number(record.granted_by) > 0"
+            class="text-muted-foreground text-xs"
+          >
+            ID：{{ record.granted_by }}
+          </div>
+        </template>
+        <template v-if="column.key === 'grantee'">
+          <div>{{ personName(record.user_name, record.uid) }}</div>
+          <div class="text-muted-foreground text-xs">ID：{{ record.uid }}</div>
+        </template>
+        <span v-if="column.key === 'updated_at'">{{
+          formatTime(record.updated_at, '未记录')
+        }}</span>
         <span v-if="column.key === 'valid_from'">{{
           formatTime(record.valid_from, '立即生效')
         }}</span>
@@ -305,6 +304,15 @@ onMounted(async () => {
         </Button>
       </template>
     </Table>
+    <BatchGrant
+      v-model:open="batchOpen"
+      :initial-uid="filters.uid"
+      :user-tree="userTree"
+      :user-tree-loading="userTreeLoading"
+      :user-tree-error="userTreeError"
+      @retry="loadUserTree"
+      @saved="refreshAfterBatch"
+    />
     <Modal
       v-model:open="editorOpen"
       :title="editing ? '编辑授权' : '新增授权'"
@@ -336,18 +344,15 @@ onMounted(async () => {
             placeholder="选择授权剧目"
           />
         </FormItem>
-        <FormItem label="授权用户" required>
-          <Select
+        <FormItem label="授权用户" html-for="single-grant-user" required>
+          <UserTreeSelect
+            id="single-grant-user"
             v-model:value="grantUid"
+            :tree-data="userTree"
+            :loading="userTreeLoading"
+            :error="userTreeError"
             :disabled="editing || saving"
-            allow-clear
-            show-search
-            :filter-option="false"
-            :loading="userSearching"
-            :options="grantUserOptions"
-            placeholder="搜索姓名、手机号或邮箱选择用户"
-            class="min-w-72"
-            @search="searchGrantUsers"
+            @retry="loadUserTree"
           />
         </FormItem>
         <FormItem label="生效时间">

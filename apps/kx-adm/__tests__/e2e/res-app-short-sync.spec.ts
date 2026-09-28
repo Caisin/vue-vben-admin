@@ -14,6 +14,8 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     res_id: id,
     res_name: `测试短剧${id}`,
     resource_code: `DR-${id}`,
+    cover_synced: id === 1,
+    cover_error: '',
     source_id: `${100 + id}`,
     languages: ['zh-CN'],
     version_count: 1,
@@ -33,6 +35,8 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   const detailRequests: URL[] = [];
   const resumed: number[] = [];
   const stopped: number[] = [];
+  const batches: Array<any> = [null, null];
+  let stopFails = false;
   await page.route('**/api/**', (route) => {
     if (!new URL(route.request().url()).pathname.startsWith('/api/'))
       return route.continue();
@@ -68,12 +72,31 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
       return fulfillApi(route, { items: [], total: 0 });
     if (path.endsWith('/videos/migrate')) {
       const request = route.request();
+      if (request.method() === 'GET') {
+        return fulfillApi(
+          route,
+          batches[url.searchParams.get('cover_only') === 'true' ? 1 : 0],
+        );
+      }
       const body =
         request.headers().security === 'true'
           ? JSON.parse(
               KxEd.decodeText(KxEd.decrypt(request.postDataBuffer() as Buffer)),
             )
           : request.postDataJSON();
+      if (!body.res_id) {
+        const index = body.cover_only ? 1 : 0;
+        batches[index] = {
+          id: 200 + index,
+          status: 'running',
+          total_count: 2,
+          succeeded_count: 0,
+          failed_count: 0,
+          cancel_requested_at: null,
+          message: '正在同步',
+        };
+        return fulfillApi(route, batches[index]);
+      }
       resumed.push(body.res_id);
       const row = dramas[body.res_id - 1];
       if (!row) throw new Error('资源不存在');
@@ -84,6 +107,12 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     }
     if (path.endsWith('/stop')) {
       const id = Number(path.split('/').at(-2));
+      if (path.includes('/videos/migrate/')) {
+        if (stopFails) return route.fulfill({ status: 503, body: '停止失败' });
+        const task = batches[id - 200];
+        task.cancel_requested_at = 1;
+        return fulfillApi(route, task);
+      }
       stopped.push(id);
       const row = dramas[id - 1];
       if (!row) throw new Error('资源不存在');
@@ -186,16 +215,60 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     drama1.getByRole('button', { name: '停止', exact: true }),
   ).toHaveCount(0);
   await expect(drama2).not.toContainText('已停止');
-  await drama1.getByRole('button', { name: '重新同步', exact: true }).click();
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: '重新同步', exact: true })
-    .click();
+  await drama1.getByRole('button', { name: '同步', exact: true }).click();
   await expect.poll(() => resumed).toEqual([1]);
   await expect(drama1).toContainText('待同步');
   await expect(
     drama1.getByRole('button', { name: '停止', exact: true }),
   ).toHaveCount(0);
+  await expect(
+    page.getByRole('columnheader', { name: '操作', exact: true }),
+  ).toHaveCount(0);
+  await expect(drama1).toContainText('封面已同步');
+  await page.getByRole('button', { name: '全部同步', exact: true }).click();
+  await page.getByRole('button', { name: '全量同步封面', exact: true }).click();
+  expect(batches[0].id).toBe(200);
+  expect(batches[1].id).toBe(201);
+  await page.reload();
+  await expect(
+    page.getByRole('button', { name: '停止全部同步', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '停止全量同步封面', exact: true }),
+  ).toBeVisible();
+  stopFails = true;
+  await page.getByRole('button', { name: '停止全部同步', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '停止全部同步', exact: true }),
+  ).toBeEnabled();
+  stopFails = false;
+  await page.getByRole('button', { name: '停止全部同步', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '正在停止全部同步', exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: '停止全量同步封面', exact: true }),
+  ).toBeEnabled();
+  batches[0].status = 'cancelled';
+  batches[0].message = '已停止';
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '全部同步', exact: true }),
+  ).toBeEnabled();
+  await drama2.getByRole('button', { name: '同步', exact: true }).click();
+  await expect.poll(() => resumed).toEqual([1, 2]);
+  batches[1].status = 'succeeded';
+  dramas[1].state = 'succeeded';
+  dramas[1].cover_synced = true;
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(
+    drama2.getByRole('button', { name: '同步', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    drama2.getByRole('button', { name: '重新同步', exact: true }),
+  ).toBeVisible();
+  await drama2.getByRole('button', { name: '重新同步', exact: true }).click();
+  await expect.poll(() => resumed).toEqual([1, 2, 2]);
   await page.route('**/auth/per/codes', (route) => fulfillApi(route, []));
   await page.reload();
   await expect(limit).toHaveValue('3');

@@ -220,7 +220,11 @@ export function useDescriptionItems(row?: SystemUser): DescriptionsItemType[] {
   return [
     { label: $t('system.user.name'), content: row?.name },
     { label: $t('system.user.id'), content: row?.id },
-    { label: $t('system.user.dept'), content: row?.deptId },
+    {
+      label: $t('system.user.dept'),
+      content:
+        row?.deptPath || (row?.deptId ? `部门 #${row.deptId}` : '未分配部门'),
+    },
     { label: $t('system.user.roles'), content: row?.roles?.join(', ') },
     {
       label: '登录默认页面',
@@ -268,6 +272,12 @@ export function useColumns<T = SystemUser>(
       field: 'tel',
       title: '手机号',
       width: 140,
+    },
+    {
+      field: 'deptPath',
+      title: '组织架构 / 部门',
+      minWidth: 220,
+      showOverflow: 'tooltip',
     },
     {
       cellRender: {

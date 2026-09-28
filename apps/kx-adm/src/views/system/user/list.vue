@@ -201,13 +201,20 @@ const [Grid, gridApi] = useVbenVxeGrid({
     proxyConfig: {
       ajax: {
         query: async ({ page }, formValues: UserSearchSubmitValues) => {
-          return await SystemUserApi.list({
+          const result = await SystemUserApi.list({
             page: page.currentPage,
             pageSize: page.pageSize,
             ...formValues,
             deptIds: selectedDeptIds.value,
             sourceId: selectedSourceId.value,
           });
+          return {
+            ...result,
+            items: result.items.map((item) => ({
+              ...item,
+              deptPath: resolveDeptPath(item.deptId),
+            })),
+          };
         },
       },
     },
@@ -387,6 +394,23 @@ function applyDeptSelection(value?: number | string) {
     return;
   }
   gridApi.reload();
+}
+
+function resolveDeptPath(deptId?: number | string): string {
+  if (deptId === undefined || deptId === null || String(deptId) === '0') {
+    return '未分配部门';
+  }
+  const target = String(deptId);
+  const walk = (nodes: SystemDept[], parents: string[]): string | undefined => {
+    for (const node of nodes) {
+      const path = [...parents, node.name];
+      if (String(node.id) === target) return path.join(' / ');
+      const child = walk(node.children ?? [], path);
+      if (child) return child;
+    }
+    return undefined;
+  };
+  return walk(allDeptList.value, []) ?? `部门 #${deptId}`;
 }
 
 function findDeptSource(
@@ -713,6 +737,8 @@ function filterDeptTree(nodes: SystemDept[], keyword: string): SystemDept[] {
 
 onMounted(async () => {
   await loadDeptList();
+  // 部门树异步加载后补全列表中的组织架构路径。
+  await gridApi.query();
   const publishId = route.query.weekly_report_publish_id;
   if (typeof publishId === 'string' && publishId.trim()) {
     weeklyReportPublishOpen.value = true;
