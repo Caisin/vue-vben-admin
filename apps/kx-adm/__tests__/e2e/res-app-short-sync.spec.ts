@@ -14,6 +14,7 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     res_id: id,
     res_name: `测试短剧${id}`,
     resource_code: `DR-${id}`,
+    create_time: 1_600_000_000 + id * 86_400,
     cover_synced: id === 1,
     cover_error: '',
     source_id: `${100 + id}`,
@@ -31,8 +32,10 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     failure_reasons: ['HTTP 404: file missing'],
   }));
   let concurrency = 5;
+  let segmentConcurrency = 8;
   let failSettingsSave = false;
   const detailRequests: URL[] = [];
+  const resourceRequests: URL[] = [];
   const resumed: number[] = [];
   const stopped: number[] = [];
   const batches: Array<any> = [null, null];
@@ -64,10 +67,24 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
               )
             : request.postDataJSON();
         concurrency = body.concurrency;
+        segmentConcurrency = body.segment_concurrency;
       }
-      return fulfillApi(route, { concurrency });
+      return fulfillApi(route, {
+        concurrency,
+        segment_concurrency: segmentConcurrency,
+      });
     }
-    if (path.endsWith('/videos/resources')) return fulfillApi(route, dramas);
+    if (path.endsWith('/videos/resources')) {
+      resourceRequests.push(url);
+      return fulfillApi(
+        route,
+        dramas.filter(
+          (row) =>
+            !url.searchParams.get('resource_code') ||
+            row.resource_code === url.searchParams.get('resource_code'),
+        ),
+      );
+    }
     if (path.endsWith('/runs'))
       return fulfillApi(route, { items: [], total: 0 });
     if (path.endsWith('/videos/migrate')) {
@@ -172,23 +189,35 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     name: '同时同步集数',
     exact: true,
   });
+  const segments = page.getByRole('spinbutton', {
+    name: '单集分片并发数',
+    exact: true,
+  });
+  await expect(segments).toHaveValue('8');
+  await segments.fill('4');
   await expect(limit).toHaveValue('5');
   await limit.fill('3');
   await page.getByRole('button', { name: '保存同步配置', exact: true }).click();
   await expect.poll(() => concurrency).toBe(3);
+  await expect.poll(() => segmentConcurrency).toBe(4);
   await page.reload();
   await expect(limit).toHaveValue('3');
+  await expect(segments).toHaveValue('4');
   failSettingsSave = true;
   await limit.fill('2');
+  await segments.fill('2');
   await page.getByRole('button', { name: '保存同步配置', exact: true }).click();
   await expect(
     page.getByRole('button', { name: '重新加载配置' }),
   ).toBeVisible();
   await expect(limit).toHaveValue('2');
   expect(concurrency).toBe(3);
+  expect(segmentConcurrency).toBe(4);
+  await expect(segments).toHaveValue('2');
   failSettingsSave = false;
   await page.getByRole('button', { name: '重新加载配置' }).click();
   await expect(limit).toHaveValue('3');
+  await expect(segments).toHaveValue('4');
   await drama1.getByRole('button', { name: '测试短剧1', exact: true }).click();
   const drawer = page.getByRole('dialog');
   await expect(drawer).toContainText('测试短剧1');
@@ -269,10 +298,30 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   ).toBeVisible();
   await drama2.getByRole('button', { name: '重新同步', exact: true }).click();
   await expect.poll(() => resumed).toEqual([1, 2, 2]);
+  await page
+    .getByRole('textbox', { name: '作品编号', exact: true })
+    .fill(' DR-2 ');
+  await page.getByPlaceholder('原始创建开始日期').fill('2020-09-13');
+  await page.getByPlaceholder('原始创建开始日期').press('Enter');
+  await page.getByPlaceholder('原始创建结束日期').fill('2020-09-16');
+  await page.getByPlaceholder('原始创建结束日期').press('Enter');
+  await page.getByRole('button', { name: /查\s*询/ }).click();
+  await expect
+    .poll(() => resourceRequests.at(-1)?.searchParams.get('resource_code'))
+    .toBe('DR-2');
+  await expect(drama1).toHaveCount(0);
+  await expect(drama2).toBeVisible();
+  expect(
+    Number(resourceRequests.at(-1)?.searchParams.get('created_until')),
+  ).toBeGreaterThan(
+    Number(resourceRequests.at(-1)?.searchParams.get('created_from')),
+  );
   await page.route('**/auth/per/codes', (route) => fulfillApi(route, []));
   await page.reload();
   await expect(limit).toHaveValue('3');
+  await expect(segments).toHaveValue('4');
   await expect(limit).toBeDisabled();
+  await expect(segments).toBeDisabled();
   await expect(
     page.getByRole('button', { name: '保存同步配置', exact: true }),
   ).toHaveCount(0);

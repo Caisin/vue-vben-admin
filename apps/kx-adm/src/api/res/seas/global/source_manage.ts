@@ -14,6 +14,9 @@ export interface ResRecord {
   [key: string]: any;
   ad_cfg?: Record<string, any>;
   cover?: string;
+  cover_url?: null | string;
+  cover_error?: null | string;
+  create_time?: number;
   ext_info?: Record<string, any>;
   heat_num?: number;
   id: number | string;

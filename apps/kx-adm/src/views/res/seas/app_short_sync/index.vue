@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import type { Dayjs } from 'dayjs';
+
 import type {
   AppShortSyncResourceSummary,
   AppShortSyncRunRecord,
@@ -23,6 +25,7 @@ import {
   Alert,
   Button,
   Card,
+  DatePicker,
   Drawer,
   Form,
   FormItem,
@@ -49,6 +52,8 @@ const summaries = ref<AppShortSyncResourceSummary[]>([]);
 const loading = ref(false);
 const listError = ref('');
 const keyword = ref('');
+const resourceCode = ref('');
+const createdRange = ref<[Dayjs, Dayjs]>();
 const resourceState = ref<string>();
 const resourcePage = ref(1);
 const busyIds = ref<number[]>([]);
@@ -77,6 +82,7 @@ const runs = ref<AppShortSyncRunRecord[]>([]);
 const resourceText = ref('');
 const form = ref<AppShortSyncRunWrite>({ cdn_base: '' });
 const concurrency = ref<null | number>(5);
+const segmentConcurrency = ref<null | number>(8);
 const settingsLoading = ref(false);
 const settingsReady = ref(false);
 const settingsSaving = ref(false);
@@ -110,6 +116,7 @@ const resourceColumns = [
     width: 240,
     fixed: 'left' as const,
   },
+  { title: '原始创建时间', key: 'create_time', width: 180 },
   { title: '源剧 ID', dataIndex: 'source_id', width: 100 },
   { title: '版本 / 语言', key: 'versions', width: 160 },
   { title: '状态', key: 'state', width: 150 },
@@ -200,6 +207,9 @@ async function loadResources() {
   try {
     const result = await AppShortSyncApi.resourceSummary({
       keyword: keyword.value.trim() || undefined,
+      resource_code: resourceCode.value.trim() || undefined,
+      created_from: createdRange.value?.[0]?.startOf('day').unix(),
+      created_until: createdRange.value?.[1]?.endOf('day').unix(),
       state: resourceState.value,
     });
     if (!alive || sequence !== listSequence) return;
@@ -369,6 +379,7 @@ async function loadSettings() {
     const result = await AppShortSyncApi.getSettings();
     if (!alive) return;
     concurrency.value = result.concurrency;
+    segmentConcurrency.value = result.segment_concurrency ?? 8;
     settingsReady.value = true;
   } catch (error) {
     if (alive)
@@ -384,12 +395,26 @@ async function saveSettings() {
     settingsError.value = '同时同步集数必须为 1 至 32 的整数';
     return;
   }
+  const segments = segmentConcurrency.value;
+  if (
+    segments === null ||
+    !Number.isInteger(segments) ||
+    segments < 1 ||
+    segments > 32
+  ) {
+    settingsError.value = '单集分片并发数必须为 1 至 32 的整数';
+    return;
+  }
   settingsSaving.value = true;
   settingsError.value = '';
   try {
-    const result = await AppShortSyncApi.saveSettings({ concurrency: value });
+    const result = await AppShortSyncApi.saveSettings({
+      concurrency: value,
+      segment_concurrency: segments,
+    });
     concurrency.value = result.concurrency;
-    message.success('同步配置已保存，当前迁移任务结束后生效');
+    segmentConcurrency.value = result.segment_concurrency ?? 8;
+    message.success('同步配置已保存；分片并发从下一集开始生效');
   } catch (error) {
     settingsError.value = requestErrorMessage(error, '保存同步配置失败');
   } finally {
@@ -485,6 +510,18 @@ onBeforeUnmount(stopPolling);
           "
           aria-label="同时同步集数"
         />
+        <label for="sync-segment-concurrency">单集分片并发数</label>
+        <InputNumber
+          id="sync-segment-concurrency"
+          v-model:value="segmentConcurrency"
+          :min="1"
+          :max="32"
+          :precision="0"
+          :disabled="
+            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+          "
+          aria-label="单集分片并发数"
+        />
         <Button
           v-if="canMigrate"
           type="primary"
@@ -502,7 +539,8 @@ onBeforeUnmount(stopPolling);
           重新加载配置
         </Button>
         <div class="text-muted-foreground">
-          默认 5 集，范围 1–32 集；保存后在当前迁移任务全部结束后生效。
+          同时同步默认 5 集，范围 1–32 集，当前迁移任务全部结束后生效。每集 m3u8
+          默认并发下载 8 个分片，范围 1–32，从下一集开始生效。
         </div>
       </Space>
       <Alert
@@ -549,7 +587,7 @@ onBeforeUnmount(stopPolling);
         </Space>
       </template>
       <p class="text-muted-foreground mb-3">
-        全部同步按剧顺序处理未完成视频；封面单独补同步，已同步的自动跳过。停止全部同步后可启动紧急单剧。
+        全部同步按原始创建时间从新到旧处理未完成视频；封面单独补同步，已同步的自动跳过。停止全部同步后可启动紧急单剧。
       </p>
       <Alert
         v-if="batchError"
@@ -568,6 +606,19 @@ onBeforeUnmount(stopPolling);
         />
       </template>
       <Space wrap class="mb-4">
+        <Input
+          v-model:value="resourceCode"
+          allow-clear
+          placeholder="作品编号（精确匹配）"
+          aria-label="作品编号"
+          class="w-52"
+          @press-enter="filterResources"
+        />
+        <DatePicker.RangePicker
+          v-model:value="createdRange"
+          :placeholder="['原始创建开始日期', '原始创建结束日期']"
+        />
+
         <Input
           v-model:value="keyword"
           allow-clear
@@ -679,6 +730,11 @@ onBeforeUnmount(stopPolling);
             <div v-if="record.cover_error" class="text-destructive text-xs">
               {{ record.cover_error }}
             </div>
+          </template>
+          <template v-else-if="column.key === 'create_time'">
+            <span>{{
+              record.create_time ? time(record.create_time) : '未记录'
+            }}</span>
           </template>
           <template v-else-if="column.key === 'progress'">
             <Progress :percent="percent(record)" size="small" />

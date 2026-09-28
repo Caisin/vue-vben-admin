@@ -5,6 +5,8 @@ import type {
   ResRecord,
 } from '#/api/res/seas/global/source_manage';
 
+import dayjs from 'dayjs';
+
 import { useResourceCodeSearch } from './modules/resource-code-search';
 
 export const resTypeOptions = [
@@ -21,6 +23,13 @@ export const resStateOptions = [
 export function useGridFormSchema(): VbenFormSchema[] {
   const codes = useResourceCodeSearch();
   return [
+    {
+      component: 'RangePicker',
+      fieldName: 'createdRange',
+      label: '创建/上架日期',
+      componentProps: { placeholder: ['开始日期', '结束日期'] },
+      help: '同步剧使用源剧的原始创建时间，重新扫描可补齐历史记录',
+    },
     { component: 'InputNumber', fieldName: 'id', label: 'ID' },
     {
       component: 'Input',
@@ -93,6 +102,15 @@ export function useColumns(): VxeTableGridColumns<ResRecord> {
       slots: { default: 'state' },
       title: '状态',
       width: 90,
+    },
+    {
+      field: 'create_time',
+      title: '创建/上架时间',
+      width: 180,
+      formatter: ({ cellValue }) =>
+        Number(cellValue) > 0
+          ? dayjs.unix(Number(cellValue)).format('YYYY-MM-DD HH:mm:ss')
+          : '未记录',
     },
     { field: 'heat_num', title: '热度', width: 100 },
     {

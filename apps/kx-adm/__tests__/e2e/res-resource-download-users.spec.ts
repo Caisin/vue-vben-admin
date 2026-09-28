@@ -8,6 +8,7 @@ test('资源下载权限按组织多选用户，失败保留选择，保存后�
   page,
 }) => {
   test.setTimeout(60_000);
+  const resourceQueries: URL[] = [];
   let failTree = true;
   let failSave = true;
   const writes: Array<
@@ -23,6 +24,9 @@ test('资源下载权限按组织多选用户，失败保留选择，保存后�
     id: 41,
     res_name: '测试短剧',
     res_type: 'drama',
+    create_time: 1_600_000_000,
+    cover: 'source/old.png',
+    cover_url: 'https://cover.example.test/current.png',
     state: 0,
     ext_info: {},
     lang_info: {},
@@ -63,8 +67,10 @@ test('资源下载权限按组织多选用户，失败保留选择，保存后�
         },
       ];
     else if (path === '/notify/inbox') result = { items: [], unread_count: 0 };
-    else if (path === '/adm/res') result = { items: [res], total: 1 };
-    else if (path === '/adm/res/info/41') result = res;
+    else if (path === '/adm/res') {
+      resourceQueries.push(new URL(req.url()));
+      result = { items: [res], total: 1 };
+    } else if (path === '/adm/res/info/41') result = res;
     else if (path === '/adm/res/download-users/tree') {
       if (failTree)
         return route.fulfill({ status: 503, body: '组织树加载失败' });
@@ -118,10 +124,49 @@ test('资源下载权限按组织多选用户，失败保留选择，保存后�
           : body,
     });
   });
+  await page.route('https://cover.example.test/current.png', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aVscAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    }),
+  );
   await page.goto('/');
   await page.locator("input[name='username']").fill('admin');
   await page.locator("input[name='password']").fill('123456');
   await page.getByRole('button', { name: /登录|login/i }).click();
+  const cover = page.getByRole('img', { name: '测试短剧封面', exact: true });
+  await expect(cover).toHaveAttribute(
+    'src',
+    'https://cover.example.test/current.png',
+  );
+  await expect
+    .poll(() => cover.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBe(1);
+  await expect(page.getByRole('main')).toContainText('2020-09-13');
+  await page.getByPlaceholder('开始日期', { exact: true }).click();
+  await page.getByText('今天', { exact: true }).click();
+  await page.getByRole('button', { name: /搜\s*索/ }).click();
+  await expect
+    .poll(() => resourceQueries.at(-1)?.searchParams.get('created_from'))
+    .not.toBeNull();
+  const dateQuery = resourceQueries.at(-1);
+  expect(
+    Number(dateQuery?.searchParams.get('created_until')) -
+      Number(dateQuery?.searchParams.get('created_from')),
+  ).toBe(86_399);
+  await page.getByText('卡片', { exact: true }).click();
+  await expect(cover).toHaveAttribute(
+    'src',
+    'https://cover.example.test/current.png',
+  );
+  await page
+    .getByText('表格', { exact: true })
+    .and(page.locator(':visible'))
+    .click();
+
   await page.getByRole('button', { name: '版本与内容', exact: true }).click();
   await page.getByRole('button', { name: '下载权限', exact: true }).click();
   const dialog = page.getByRole('dialog', {

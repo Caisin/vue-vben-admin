@@ -35,6 +35,7 @@ import {
   Tooltip,
   Upload,
 } from 'antdv-next';
+import dayjs from 'dayjs';
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
 import { global, set } from '#/api/res/seas';
@@ -162,6 +163,10 @@ function labelize(key: string) {
   return labels[key] ?? key;
 }
 
+function resourceCover(row: ResRecord) {
+  return row.cover_url || (row.cover_error ? '' : row.cover);
+}
+
 function normalizeList(payload: any) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.items)) return payload.items;
@@ -195,6 +200,12 @@ const [Grid, gridApi] = useVbenVxeGrid<ResRecord>({
             resource_code: formValues.resource_code?.trim() || undefined,
             res_type: formValues.res_type,
             state: formValues.state,
+            created_from: formValues.createdRange?.[0]
+              ? dayjs(formValues.createdRange[0]).startOf('day').unix()
+              : undefined,
+            created_until: formValues.createdRange?.[1]
+              ? dayjs(formValues.createdRange[1]).endOf('day').unix()
+              : undefined,
             page: page.currentPage,
             size: page.pageSize,
           });
@@ -618,8 +629,18 @@ async function reindexSearch() {
         </Button>
       </template>
       <template #cover="{ row }">
-        <Image v-if="row.cover" :height="56" :src="row.cover" class="rounded" />
-        <span v-else>-</span>
+        <Image
+          v-if="resourceCover(row)"
+          :height="56"
+          :src="resourceCover(row)"
+          :alt="`${row.res_name}封面`"
+          class="rounded"
+        />
+        <template v-else>
+          <span :title="row.cover_error || undefined">
+            {{ row.cover_error ? '封面不可用' : '-' }}
+          </span>
+        </template>
       </template>
       <template #resType="{ row }">
         {{
@@ -740,8 +761,9 @@ async function reindexSearch() {
           <template #cover>
             <div class="bg-gray-50 py-3 text-center">
               <Image
-                v-if="item.cover"
-                :src="item.cover"
+                v-if="resourceCover(item)"
+                :src="resourceCover(item)"
+                :alt="`${item.res_name}封面`"
                 :height="260"
                 class="rounded object-cover"
               />

@@ -58,6 +58,7 @@ export interface AppShortSyncResourceSummary {
   cover_synced: boolean;
   cover_error: string;
   source_id: string;
+  create_time: number;
   languages: string[];
   version_count: number;
   state: string;
@@ -74,6 +75,7 @@ export interface AppShortSyncResourceSummary {
 
 export interface AppShortSyncSettings {
   concurrency: number;
+  segment_concurrency: number;
 }
 
 export interface SyncTask {
@@ -124,6 +126,9 @@ export const AppShortSyncApi = {
       params,
     }),
   resourceSummary: (params?: {
+    resource_code?: string;
+    created_from?: number;
+    created_until?: number;
     keyword?: string;
     res_id?: number;
     state?: string;
