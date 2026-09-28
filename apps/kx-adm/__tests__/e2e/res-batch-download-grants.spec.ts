@@ -8,6 +8,8 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   test.setTimeout(90_000);
   const writes: any[] = [];
   let grantReads = 0;
+  const singleWrites: any[] = [];
+  const filterRequests: URL[] = [];
   let failSave = false;
   let failTree = true;
   const user = { id: 7, name: '测试用户', tel: '', email: '' };
@@ -25,6 +27,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
         exp_in: 3600,
         exp_at: 4_102_444_800,
       };
+    else if (path.startsWith('/auth/user/tz')) result = 'Asia/Shanghai';
     else if (path === '/auth/user/user_info')
       result = {
         id: 1,
@@ -74,7 +77,14 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
                 },
                 {
                   value: '8',
-                  title: '停用用户（8）',
+                  title: '第二用户（8）',
+                  selectable: true,
+                  disabled: false,
+                  children: [],
+                },
+                {
+                  value: '9',
+                  title: '停用用户（9）',
                   selectable: true,
                   disabled: true,
                   children: [],
@@ -102,6 +112,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
         });
       if (apply) {
         expect(body.grant.uid).toBe(7);
+        expect(body.uids).toEqual([7, 8]);
         expect(body.expected_res_ids).toEqual([3]);
         writes.push(body);
       }
@@ -110,6 +121,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
       result = {
         matched_res_ids: [3],
         granted_count: apply ? 1 : 0,
+        granted_user_count: apply ? 2 : 0,
         lines: [
           {
             line: 1,
@@ -134,7 +146,18 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
           },
         ],
       };
+    } else if (path === '/adm/res/list')
+      result = [{ id: 3, res_name: '匹配剧' }];
+    else if (
+      path === '/adm/res/3/download-permissions' &&
+      request.method() === 'PUT'
+    ) {
+      singleWrites.push(
+        JSON.parse(KxEd.decryptText(request.postDataBuffer() as Buffer)),
+      );
+      result = [];
     } else if (path === '/adm/res/download-permissions') {
+      filterRequests.push(new URL(request.url()));
       grantReads += 1;
       result = {
         items:
@@ -192,21 +215,22 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
     .locator('.ant-select-tree-switcher')
     .click();
   await page.getByText('测试用户（7）', { exact: true }).click();
+  await page.getByText('第二用户（8）', { exact: true }).click();
   await dialog
     .getByRole('textbox', { name: '剧名列表' })
     .fill('匹配剧\nmissing\n匹配剧');
   await expect(
-    dialog.getByRole('button', { name: '确认授权 0 部剧' }),
+    dialog.getByRole('button', { name: '确认向 2 人授权 0 部剧' }),
   ).toBeDisabled();
   await dialog.getByRole('button', { name: '预览匹配' }).click();
   await expect(dialog).toContainText('未找到匹配短剧');
   await expect(dialog).toContainText('重复输入，已忽略');
   const before = grantReads;
-  await dialog.getByRole('button', { name: '确认授权 1 部剧' }).click();
+  await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect.poll(() => writes.length).toBe(1);
   await expect.poll(() => grantReads).toBeGreaterThan(before);
   await expect(
-    dialog.getByRole('button', { name: '确认授权 1 部剧' }),
+    dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }),
   ).toBeDisabled();
   await dialog.getByRole('combobox', { name: '匹配方式' }).click();
   await page.getByTitle('每行一个作品编码', { exact: true }).click();
@@ -214,13 +238,13 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
     .getByRole('textbox', { name: '作品编码列表' })
     .fill('dr-3\nmissing\ndr-3');
   await expect(
-    dialog.getByRole('button', { name: '确认授权 0 部剧' }),
+    dialog.getByRole('button', { name: '确认向 2 人授权 0 部剧' }),
   ).toBeDisabled();
   await dialog.getByRole('button', { name: '预览匹配' }).click();
   failSave = true;
-  await dialog.getByRole('button', { name: '确认授权 1 部剧' }).click();
+  await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect(
-    dialog.getByRole('button', { name: '确认授权 0 部剧' }),
+    dialog.getByRole('button', { name: '确认向 2 人授权 0 部剧' }),
   ).toBeDisabled();
   await expect(
     dialog.getByRole('alert').filter({ hasText: /失败|变化/ }),
@@ -228,7 +252,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   expect(writes).toHaveLength(1);
   failSave = false;
   await dialog.getByRole('button', { name: '预览匹配' }).click();
-  await dialog.getByRole('button', { name: '确认授权 1 部剧' }).click();
+  await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1].mode).toBe('code');
   await dialog.getByRole('button', { name: /完\s*成/ }).click();
@@ -247,13 +271,54 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   await userFilter.click();
   await userFilter.fill('停用用户');
   await page
-    .getByText('停用用户（8）', { exact: true })
+    .getByText('停用用户（9）', { exact: true })
     .and(page.locator(':visible'))
     .click();
+  await page.getByRole('button', { name: /查\s*询/ }).click();
   await expect(userFilter).toHaveAttribute('aria-expanded', 'false');
   await expect(
     page
-      .getByText('停用用户（8）', { exact: true })
+      .getByText('停用用户（9）', { exact: true })
       .and(page.locator(':visible')),
   ).toBeVisible();
+  await expect
+    .poll(() => filterRequests.at(-1)?.searchParams.get('uids[0]'))
+    .toBe('9');
+  await userFilter.click();
+  await userFilter.fill('测试用户');
+  await page
+    .getByText('测试用户（7）', { exact: true })
+    .and(page.locator(':visible'))
+    .click();
+  await page.getByRole('button', { name: /查\s*询/ }).click();
+  await expect
+    .poll(() => filterRequests.at(-1)?.searchParams.getAll('uids[1]'))
+    .toEqual(['7']);
+  await page.getByRole('button', { name: '新增授权', exact: true }).click();
+  const single = page.getByRole('dialog', { name: '新增授权', exact: true });
+  await single.getByRole('combobox').first().click();
+  await page.getByTitle('匹配剧（3）', { exact: true }).click();
+  const selectedUsers = single.getByRole('combobox', { name: '授权用户' });
+  await selectedUsers.click();
+  await selectedUsers.fill('测试用户');
+  await page
+    .getByText('测试用户（7）', { exact: true })
+    .and(page.locator('.ant-select-tree-title:visible'))
+    .click();
+  await selectedUsers.fill('第二用户');
+  await page
+    .getByText('第二用户（8）', { exact: true })
+    .and(page.locator('.ant-select-tree-title:visible'))
+    .click();
+  await single.getByText('允许下载', { exact: true }).click();
+  await single.getByRole('button', { name: '保存授权', exact: true }).click();
+  await expect(single).not.toBeVisible();
+  expect(singleWrites).toEqual([
+    [7, 8].map((uid) => ({
+      uid,
+      can_download: true,
+      valid_from: 0,
+      valid_until: 0,
+    })),
+  ]);
 });

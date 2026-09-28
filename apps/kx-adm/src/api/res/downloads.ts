@@ -24,10 +24,12 @@ export interface DownloadBatchWrite {
   mode: 'code' | 'name';
   text: string;
   grant: DownloadGrantWrite;
+  uids: number[];
   expected_res_ids?: Array<number | string>;
 }
 export interface DownloadBatchView {
   granted_count: number;
+  granted_user_count: number;
   matched_res_ids: Array<number | string>;
   lines: Array<{
     line: number;
@@ -113,6 +115,13 @@ export interface DownloadTaskItem {
   task_id: number | string;
 }
 
+// QsQuery 严格模式要求数组键中的括号保持字面形式，值仍按 URL 规则编码。
+const grantQuerySerializer = {
+  indexes: true,
+  encode: (value: string) =>
+    encodeURIComponent(value).replaceAll('%5B', '[').replaceAll('%5D', ']'),
+};
+
 export const ResDownloadApi = {
   userTree: () =>
     requestClient.get<DownloadUserTreeNode[]>('/adm/res/download-users/tree'),
@@ -126,14 +135,20 @@ export const ResDownloadApi = {
       '/adm/res/download-permissions/batch',
       data,
     ),
-  grants: (resId: number | string, params?: PageQuery & { uid?: number }) =>
+  grants: (
+    resId: number | string,
+    params?: PageQuery & { uid?: number; uids?: number[] },
+  ) =>
     requestClient.get<Page<DownloadGrant>>(
       `/adm/res/${resId}/download-permissions`,
-      { params },
+      { params, paramsSerializer: grantQuerySerializer },
     ),
-  allGrants: (params?: PageQuery & { keyword?: string; uid?: number }) =>
+  allGrants: (
+    params?: PageQuery & { keyword?: string; uid?: number; uids?: number[] },
+  ) =>
     requestClient.get<Page<DownloadGrant>>('/adm/res/download-permissions', {
       params,
+      paramsSerializer: grantQuerySerializer,
     }),
   users: (params?: PageQuery & { keyword?: string }) =>
     requestClient.get<Page<DownloadUserOption>>('/adm/res/download-users', {

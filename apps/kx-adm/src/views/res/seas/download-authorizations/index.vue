@@ -51,18 +51,13 @@ const resourceOptions = computed(() =>
     value: Number(resource.id),
   })),
 );
-const filters = reactive<{ resId?: number; uid?: number }>({});
+const filters = reactive<{ resId?: number; uids: number[] }>({ uids: [] });
+const grantUids = ref<number[]>([]);
 const form = reactive<DownloadGrantWrite>({
   uid: 0,
   can_download: true,
   valid_from: 0,
   valid_until: 0,
-});
-const grantUid = computed({
-  get: () => Number(form.uid) || undefined,
-  set: (value: number | string | undefined) => {
-    form.uid = value ?? 0;
-  },
 });
 
 async function loadUserTree() {
@@ -125,14 +120,14 @@ async function query() {
       const result = await ResDownloadApi.grants(filters.resId, {
         page: 1,
         size: 500,
-        uid: filters.uid,
+        uids: filters.uids,
       });
       rows.value = result.items;
     } else {
       const result = await ResDownloadApi.allGrants({
         page: 1,
         size: 500,
-        uid: filters.uid,
+        uids: filters.uids,
       });
       rows.value = result.items;
     }
@@ -144,8 +139,9 @@ function create() {
   if (saving.value) return;
   editing.value = false;
   formResId.value = filters.resId;
+  grantUids.value = [];
   Object.assign(form, {
-    uid: filters.uid ?? 0,
+    uid: 0,
     can_download: true,
     valid_from: 0,
     valid_until: 0,
@@ -168,6 +164,7 @@ function edit(row: DownloadGrant) {
     valid_from: row.valid_from,
     valid_until: row.valid_until,
   });
+  grantUids.value = [Number(row.uid)];
   formResId.value = Number(row.res_id);
   editing.value = true;
   saveError.value = '';
@@ -176,7 +173,7 @@ function edit(row: DownloadGrant) {
 async function save() {
   if (saving.value) return;
   saveError.value = '';
-  if (!formResId.value || !form.uid) {
+  if (!formResId.value || grantUids.value.length === 0) {
     saveError.value = '请选择剧目和授权用户';
     return;
   }
@@ -186,9 +183,12 @@ async function save() {
   }
   saving.value = true;
   try {
-    await ResDownloadApi.saveGrants(formResId.value, [{ ...form }]);
+    await ResDownloadApi.saveGrants(
+      formResId.value,
+      grantUids.value.map((uid) => ({ ...form, uid })),
+    );
     editorOpen.value = false;
-    message.success('授权已保存');
+    message.success(`已保存 ${grantUids.value.length} 位用户的授权`);
   } catch (error) {
     saveError.value = requestErrorMessage(error, '保存授权失败，请重试');
     return;
@@ -244,7 +244,7 @@ onMounted(async () => {
           <UserTreeSelect
             id="filter-grant-user"
             allow-disabled
-            v-model:value="filters.uid"
+            v-model:value="filters.uids"
             :tree-data="userTree"
             :loading="userTreeLoading"
             :error="userTreeError"
@@ -306,7 +306,7 @@ onMounted(async () => {
     </Table>
     <BatchGrant
       v-model:open="batchOpen"
-      :initial-uid="filters.uid"
+      :initial-uids="filters.uids"
       :user-tree="userTree"
       :user-tree-loading="userTreeLoading"
       :user-tree-error="userTreeError"
@@ -347,11 +347,11 @@ onMounted(async () => {
         <FormItem label="授权用户" html-for="single-grant-user" required>
           <UserTreeSelect
             id="single-grant-user"
-            v-model:value="grantUid"
+            v-model:value="grantUids"
             :tree-data="userTree"
             :loading="userTreeLoading"
             :error="userTreeError"
-            :disabled="editing || saving"
+            :disabled="saving"
             @retry="loadUserTree"
           />
         </FormItem>

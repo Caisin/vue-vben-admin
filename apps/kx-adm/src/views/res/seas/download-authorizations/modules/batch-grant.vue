@@ -31,7 +31,7 @@ import { requestErrorMessage } from '#/request-errors';
 import UserTreeSelect from './user-tree-select.vue';
 
 const props = defineProps<{
-  initialUid?: number;
+  initialUids: number[];
   userTree: DownloadUserTreeNode[];
   userTreeLoading: boolean;
   userTreeError: string;
@@ -41,18 +41,15 @@ const open = defineModel<boolean>('open', { default: false });
 const form = reactive<DownloadBatchWrite>({
   mode: 'name',
   text: '',
+  uids: [],
   grant: { uid: 0, can_download: true, valid_from: 0, valid_until: 0 },
 });
+const uids = ref<number[]>([]);
 const preview = ref<DownloadBatchView>();
 const applied = ref(false);
 const busy = ref(false);
 const submitError = ref('');
-const uid = computed({
-  get: () => Number(form.grant.uid) || undefined,
-  set: (v: number | undefined) => {
-    form.grant.uid = v ?? 0;
-  },
-});
+
 function timeField(field: 'valid_from' | 'valid_until') {
   return computed({
     get: () => (form.grant[field] > 0 ? dayjs.unix(form.grant[field]) : null),
@@ -79,10 +76,20 @@ watch(open, (value) => {
   if (!value) {
     return;
   }
+  uids.value = [];
+  // 历史筛选允许停用用户，新增授权只继承仍启用的用户。
+  const enabled = (nodes: DownloadUserTreeNode[]): number[] =>
+    nodes.flatMap((node) => [
+      ...(node.selectable && !node.disabled ? [Number(node.value)] : []),
+      ...enabled(node.children),
+    ]);
+  uids.value = props.initialUids.filter((id) =>
+    enabled(props.userTree).includes(id),
+  );
   form.text = '';
   form.mode = 'name';
   form.grant = {
-    uid: props.initialUid ?? 0,
+    uid: 0,
     can_download: true,
     valid_from: 0,
     valid_until: 0,
@@ -95,7 +102,7 @@ watch(
   () => [
     form.mode,
     form.text,
-    form.grant.uid,
+    uids.value.join(','),
     form.grant.valid_from,
     form.grant.valid_until,
   ],
@@ -108,7 +115,7 @@ watch(
 async function submit(apply: boolean) {
   if (busy.value) return;
   submitError.value = '';
-  if (!form.grant.uid || !form.text.trim()) {
+  if (uids.value.length === 0 || !form.text.trim()) {
     submitError.value = '请选择用户并输入剧名或作品编码';
     return;
   }
@@ -118,7 +125,8 @@ async function submit(apply: boolean) {
     const data: DownloadBatchWrite = {
       mode: form.mode,
       text: form.text,
-      grant: { ...form.grant },
+      grant: { ...form.grant, uid: uids.value[0] ?? 0 },
+      uids: [...uids.value],
       ...(apply ? { expected_res_ids: preview.value?.matched_res_ids } : {}),
     };
     const result = await (apply
@@ -127,7 +135,9 @@ async function submit(apply: boolean) {
     preview.value = result;
     if (apply) {
       applied.value = true;
-      message.success(`已授权 ${result.granted_count} 部剧`);
+      message.success(
+        `已向 ${result.granted_user_count} 位用户授权 ${result.granted_count} 部剧`,
+      );
       emit('saved');
     }
   } catch (error) {
@@ -157,7 +167,7 @@ async function submit(apply: boolean) {
       type="info"
       show-icon
       message="剧名完整匹配；同名剧不自动授权。作品编码匹配其关联的全部短剧。空行忽略，重复行去重。"
-      description="每次最多 200 行、500 部剧。确认后仅授权匹配成功的剧目，已有授权按本次有效期更新。"
+      description="每次最多 100 位用户、200 行、500 部剧，用户与剧目组合最多 5000 条。确认后仅授权匹配成功的剧目，已有授权按本次有效期更新。"
     />
     <Alert
       v-if="submitError"
@@ -170,7 +180,7 @@ async function submit(apply: boolean) {
       <FormItem label="授权用户" html-for="batch-grant-user" required>
         <UserTreeSelect
           id="batch-grant-user"
-          v-model:value="uid"
+          v-model:value="uids"
           :tree-data="userTree"
           :loading="userTreeLoading"
           :error="userTreeError"
@@ -228,8 +238,8 @@ async function submit(apply: boolean) {
       show-icon
       :message="
         applied
-          ? `已授权 ${preview.granted_count} 部剧，未匹配及重名项未授权`
-          : `可授权 ${count} 部剧，请检查下方匹配结果`
+          ? `已向 ${preview.granted_user_count} 位用户授权 ${preview.granted_count} 部剧，未匹配及重名项未授权`
+          : `将向 ${uids.length} 位用户授权 ${count} 部剧，请检查下方匹配结果`
       "
     />
     <Table
@@ -269,7 +279,7 @@ async function submit(apply: boolean) {
         :disabled="!preview || !count || applied"
         @click="submit(true)"
       >
-        确认授权 {{ count }} 部剧
+        确认向 {{ uids.length }} 人授权 {{ count }} 部剧
       </Button>
     </Space>
   </Modal>
