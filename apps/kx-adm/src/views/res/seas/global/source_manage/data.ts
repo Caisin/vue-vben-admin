@@ -5,6 +5,8 @@ import type {
   ResRecord,
 } from '#/api/res/seas/global/source_manage';
 
+import { useResourceCodeSearch } from './modules/resource-code-search';
+
 export const resTypeOptions = [
   { label: '短剧', value: 'drama' },
   { label: '小说', value: 'novel' },
@@ -17,6 +19,7 @@ export const resStateOptions = [
 ];
 
 export function useGridFormSchema(): VbenFormSchema[] {
+  const codes = useResourceCodeSearch();
   return [
     { component: 'InputNumber', fieldName: 'id', label: 'ID' },
     {
@@ -29,8 +32,8 @@ export function useGridFormSchema(): VbenFormSchema[] {
       label: '全文关键字',
     },
     {
-      component: 'Input',
-      componentProps: { allowClear: true, placeholder: '作品编号（精确）' },
+      component: 'Select',
+      componentProps: codes.componentProps,
       fieldName: 'resource_code',
       label: '作品编号',
     },
@@ -52,7 +55,12 @@ export function useGridFormSchema(): VbenFormSchema[] {
 export function useColumns(): VxeTableGridColumns<ResRecord> {
   return [
     { field: 'id', fixed: 'left', title: 'ID', width: 80 },
-    { field: 'resource_code', title: '作品编号', width: 150 },
+    {
+      field: 'resource_code',
+      title: '作品编号',
+      width: 200,
+      slots: { default: 'resourceCode' },
+    },
     { field: 'team_id', title: '制作团队', width: 100 },
     {
       field: 'cover',
@@ -107,14 +115,14 @@ export function useColumns(): VxeTableGridColumns<ResRecord> {
       title: '备注',
     },
     {
-      align: 'right',
+      align: 'center',
       field: 'operation',
       fixed: 'right',
       headerAlign: 'center',
       showOverflow: false,
       slots: { default: 'operation' },
       title: '操作',
-      width: 150,
+      width: 120,
     },
   ];
 }

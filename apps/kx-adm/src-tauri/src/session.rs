@@ -58,7 +58,9 @@ pub struct Desktop {
     pub http: reqwest::Client,
     pub data: PathBuf,
     pub queue: Mutex<Vec<crate::queue::Job>>,
+    pub download_queue: Mutex<Vec<crate::download::DownloadJob>>,
     pub active: Mutex<std::collections::HashSet<String>>,
+    pub download_active: Mutex<std::collections::HashSet<String>>,
     pub upload_pool: kx_tk_pool::TkPool,
     base_configured: bool,
 }
@@ -94,6 +96,7 @@ impl Desktop {
             .and_then(|v| protocol::server(&v).ok())
             .unwrap_or_else(|| "http://localhost:8883".into());
         let jobs = crate::queue::load(&data)?;
+        let download_jobs = crate::download::load(&data)?;
         Ok(Arc::new(Self {
             auth: Mutex::new(Auth {
                 session: None,
@@ -107,7 +110,9 @@ impl Desktop {
                 .build()?,
             data,
             queue: Mutex::new(jobs),
+            download_queue: Mutex::new(download_jobs),
             active: Mutex::new(Default::default()),
+            download_active: Mutex::new(Default::default()),
             upload_pool: kx_tk_pool::TkPool::new(8),
             base_configured,
         }))
@@ -142,7 +147,8 @@ impl Desktop {
             .http
             .request(method, format!("{}{path}", s.api_base))
             .bearer_auth(&s.token)
-            .header("security", "true");
+            .header("security", "true")
+            .header("x-kx-client", "tauri");
         if let Some(body) = body {
             req = req
                 .header("content-type", "application/json")

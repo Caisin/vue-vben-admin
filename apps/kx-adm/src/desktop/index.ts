@@ -55,6 +55,25 @@ export interface UploadJob {
   status: string;
   version: string;
 }
+export interface DownloadFile {
+  bytes: number;
+  error: string;
+  fileId: number | string;
+  fileName: string;
+  size: number;
+  status: string;
+}
+export interface DownloadJob {
+  targetDirectory: string;
+  concurrency: number;
+  error: string;
+  files: DownloadFile[];
+  id: string;
+  resId: number | string;
+  versionId: number | string;
+  taskId: number | string;
+  status: string;
+}
 export interface ImageEnvStatus {
   available: boolean;
   variableName: string;
@@ -219,6 +238,31 @@ export const desktopUploads = {
   pause: (id: string) => invoke('desktop_pause', { id }),
   listen: (onJob: (job: UploadJob) => void) =>
     listen<UploadJob>('desktop-upload-updated', ({ payload }) =>
+      onJob(payload),
+    ),
+};
+export const desktopDownloads = {
+  list: () => invoke<DownloadJob[]>('desktop_download_jobs'),
+  pickDirectory: () => invoke<null | string>('desktop_download_pick_directory'),
+  add: (
+    resId: number,
+    versionId: number,
+    fileIds: number[],
+    directory: string,
+    concurrency = 4,
+  ) =>
+    invoke<DownloadJob>('desktop_download_add', {
+      resId,
+      versionId,
+      fileIds,
+      directory,
+      concurrency,
+    }),
+  pause: (id: string) => invoke('desktop_download_pause', { id }),
+  resume: (id: string, overwrite = false) =>
+    invoke('desktop_download_resume', { id, overwrite }),
+  listen: (onJob: (job: DownloadJob) => void) =>
+    listen<DownloadJob>('desktop-download-updated', ({ payload }) =>
       onJob(payload),
     ),
 };

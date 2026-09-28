@@ -1,0 +1,565 @@
+use anyhow::{Context, Result, ensure};
+use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::{path::PathBuf, sync::Arc};
+use tauri::{AppHandle, Emitter};
+use tokio::io::AsyncWriteExt;
+
+use crate::{
+    protocol,
+    session::{Desktop, Session},
+};
+mod local_files;
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DownloadFile {
+    pub file_id: i64,
+    pub file_name: String,
+    pub size: u64,
+    pub bytes: u64,
+    pub status: String,
+    pub error: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DownloadJob {
+    pub id: String,
+    pub api_base: String,
+    pub uid: String,
+    pub res_id: i64,
+    #[serde(default)]
+    pub version_id: i64,
+    #[serde(default)]
+    pub task_id: i64,
+    pub directory: PathBuf,
+    pub concurrency: usize,
+    pub overwrite: bool,
+    pub status: String,
+    pub error: String,
+    pub files: Vec<DownloadFile>,
+}
+
+impl Default for DownloadJob {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            api_base: String::new(),
+            uid: String::new(),
+            res_id: 0,
+            version_id: 0,
+            task_id: 0,
+            directory: PathBuf::new(),
+            concurrency: 4,
+            overwrite: false,
+            status: "已暂停".into(),
+            error: String::new(),
+            files: Vec::new(),
+        }
+    }
+}
+
+impl DownloadJob {
+    fn view(&self) -> Value {
+        let mut value = serde_json::to_value(self).expect("download job serializes");
+        value.as_object_mut().unwrap().remove("directory");
+        value["targetDirectory"] = json!(self.directory.to_string_lossy());
+        value
+    }
+}
+
+pub trait DownloadEvents: crate::session::SessionEvents + Clone + Send + Sync + 'static {
+    fn download_updated(&self, job: Value) -> Result<()>;
+}
+impl DownloadEvents for AppHandle {
+    fn download_updated(&self, job: Value) -> Result<()> {
+        self.emit_to("main", "desktop-download-updated", job)?;
+        Ok(())
+    }
+}
+
+pub fn load(data: &std::path::Path) -> Result<Vec<DownloadJob>> {
+    let path = data.join("download-queue.json");
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let mut jobs: Vec<DownloadJob> = serde_json::from_slice(&std::fs::read(path)?)?;
+    for job in &mut jobs {
+        if job.status == "下载中" {
+            job.status = "已暂停".into();
+        }
+    }
+    Ok(jobs)
+}
+
+fn persist(data: &std::path::Path, jobs: &[DownloadJob]) -> Result<()> {
+    let tmp = data.join("download-queue.tmp");
+    std::fs::write(&tmp, serde_json::to_vec(jobs)?)?;
+    std::fs::rename(tmp, data.join("download-queue.json"))?;
+    Ok(())
+}
+
+impl Desktop {
+    pub(crate) async fn pause_downloads(&self) -> Result<()> {
+        let mut queue = self.download_queue.lock().await;
+        for job in queue.iter_mut() {
+            if job.status == "下载中" {
+                job.status = "已暂停".into();
+            }
+        }
+        persist(&self.data, &queue)
+    }
+
+    pub async fn download_jobs(&self) -> Result<Vec<Value>> {
+        let s = self.identity().await?;
+        Ok(self
+            .download_queue
+            .lock()
+            .await
+            .iter()
+            .filter(|j| j.uid == s.uid && j.api_base == s.api_base)
+            .map(DownloadJob::view)
+            .collect())
+    }
+
+    pub async fn add_download(
+        self: &Arc<Self>,
+        app: &impl DownloadEvents,
+        res_id: i64,
+        version_id: i64,
+        file_ids: Vec<i64>,
+        directory: PathBuf,
+        concurrency: usize,
+    ) -> Result<Value> {
+        ensure!((1..=8).contains(&concurrency), "下载并发数须为 1 至 8");
+        let identity = self.identity().await?;
+        ensure!(directory.is_dir(), "下载目录不存在");
+        let prepared = self
+            .api(
+                app,
+                &identity,
+                reqwest::Method::POST,
+                "/api/res/downloads/prepare",
+                Some(&json!({"res_id": res_id, "version_id": version_id, "file_ids": file_ids})),
+            )
+            .await
+            .map_err(|error| anyhow::anyhow!("服务端准备下载失败：{error}"))?;
+        let (directory, files) = download_layout(&directory, &prepared)?;
+        tokio::fs::create_dir_all(&directory)
+            .await
+            .map_err(|error| anyhow::anyhow!("创建剧目下载目录失败：{error}"))?;
+        let job = DownloadJob {
+            id: uuid::Uuid::new_v4().to_string(),
+            api_base: identity.api_base.clone(),
+            uid: identity.uid.clone(),
+            res_id,
+            version_id,
+            task_id: prepared["task_id"].as_i64().unwrap_or_default(),
+            directory,
+            concurrency,
+            overwrite: false,
+            status: "已暂停".into(),
+            error: String::new(),
+            files,
+        };
+        let view = job.view();
+        let mut queue = self.download_queue.lock().await;
+        queue.push(job);
+        persist(&self.data, &queue)?;
+        app.download_updated(view.clone())?;
+        Ok(view)
+    }
+
+    pub async fn pause_download(&self, app: &impl DownloadEvents, id: &str) -> Result<()> {
+        let identity = self.identity().await?;
+        let mut queue = self.download_queue.lock().await;
+        let view = {
+            let job = queue
+                .iter_mut()
+                .find(|j| j.id == id && j.uid == identity.uid && j.api_base == identity.api_base)
+                .ok_or_else(|| anyhow::anyhow!("下载任务不存在或属于其他账号"))?;
+            job.status = "已暂停".into();
+            job.view()
+        };
+        persist(&self.data, &queue)?;
+        app.download_updated(view)?;
+        Ok(())
+    }
+
+    pub async fn resume_download(
+        self: &Arc<Self>,
+        app: impl DownloadEvents,
+        id: String,
+        overwrite: bool,
+    ) -> Result<()> {
+        let mut active = self.download_active.lock().await;
+        ensure!(!active.contains(&id), "任务仍在停止中，请稍后再继续");
+        let s = self.identity().await?;
+        {
+            let mut queue = self.download_queue.lock().await;
+            let job = queue
+                .iter_mut()
+                .find(|j| j.id == id && j.uid == s.uid && j.api_base == s.api_base)
+                .ok_or_else(|| anyhow::anyhow!("下载任务不存在或属于其他账号"))?;
+            ensure!(job.status != "下载中", "下载任务正在执行");
+            job.status = "下载中".into();
+            job.overwrite = overwrite;
+            job.error.clear();
+            for file in &mut job.files {
+                file.error.clear();
+                if overwrite {
+                    file.status = "待下载".into();
+                    file.bytes = 0;
+                }
+            }
+            persist(&self.data, &queue)?;
+        }
+        active.insert(id.clone());
+        drop(active);
+        let this = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let result = this.run_download(&app, &id).await;
+            if let Err(error) = result {
+                {
+                    let mut queue = this.download_queue.lock().await;
+                    let view = if let Some(job) = queue.iter_mut().find(|j| j.id == id) {
+                        job.status = "下载失败".into();
+                        job.error = protocol::safe_message(&format!("{error:#}"));
+                        Some(job.view())
+                    } else {
+                        None
+                    };
+                    let _ = persist(&this.data, &queue);
+                    if let Some(view) = view {
+                        let _ = app.download_updated(view);
+                    }
+                }
+            }
+            this.download_active.lock().await.remove(&id);
+        });
+        Ok(())
+    }
+
+    async fn run_download(self: &Arc<Self>, app: &impl DownloadEvents, id: &str) -> Result<()> {
+        let session = self.identity().await?;
+        let job = {
+            let queue = self.download_queue.lock().await;
+            let job = queue
+                .iter()
+                .find(|j| j.id == id)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("下载任务不存在"))?;
+            job
+        };
+        let pool = kx_tk_pool::TkPool::new(job.concurrency.clamp(1, 8));
+        let futures = (0..job.files.len())
+            .map(|index| {
+                let this = self.clone();
+                let app = app.clone();
+                let session = session.clone();
+                let id = id.to_owned();
+                async move {
+                    let result = this.download_one(&app, &id, session, index).await;
+                    if let Err(error) = &result {
+                        let detail = protocol::safe_message(&format!("{error:#}"));
+                        this.update_download_file(&app, &id, index, "下载失败", None, &detail)
+                            .await?;
+                    }
+                    result
+                }
+            })
+            .collect();
+        for result in pool.spawn_all(futures).await? {
+            result?;
+        }
+        let mut queue = self.download_queue.lock().await;
+        if let Some(job) = queue.iter_mut().find(|j| j.id == id) {
+            if job
+                .files
+                .iter()
+                .all(|f| matches!(f.status.as_str(), "已完成" | "已跳过"))
+            {
+                job.status = "已完成".into();
+            } else if job.status != "已暂停" {
+                job.status = "已暂停".into();
+            }
+            let view = job.view();
+            persist(&self.data, &queue)?;
+            app.download_updated(view)?;
+        }
+        Ok(())
+    }
+
+    async fn update_download_file(
+        &self,
+        app: &impl DownloadEvents,
+        id: &str,
+        index: usize,
+        status: &str,
+        bytes: Option<u64>,
+        error: &str,
+    ) -> Result<()> {
+        let mut queue = self.download_queue.lock().await;
+        let job = queue
+            .iter_mut()
+            .find(|job| job.id == id)
+            .context("下载任务不存在")?;
+        let file = job.files.get_mut(index).context("下载文件不存在")?;
+        file.status = status.into();
+        if let Some(bytes) = bytes {
+            file.bytes = bytes;
+        }
+        file.error = error.into();
+        let view = job.view();
+        persist(&self.data, &queue).context("保存下载进度失败")?;
+        app.download_updated(view)
+    }
+
+    async fn download_running(&self, id: &str, session: &Session) -> Result<bool> {
+        let current = self.identity().await?;
+        ensure!(
+            current.uid == session.uid && current.api_base == session.api_base,
+            "登录身份已变化，下载已停止"
+        );
+        let queue = self.download_queue.lock().await;
+        Ok(queue
+            .iter()
+            .find(|job| job.id == id)
+            .context("下载任务不存在")?
+            .status
+            == "下载中")
+    }
+
+    async fn download_one(
+        self: &Arc<Self>,
+        app: &impl DownloadEvents,
+        id: &str,
+        session: Session,
+        index: usize,
+    ) -> Result<()> {
+        if !self.download_running(id, &session).await? {
+            return Ok(());
+        }
+        let job = self
+            .download_queue
+            .lock()
+            .await
+            .iter()
+            .find(|job| job.id == id)
+            .cloned()
+            .context("下载任务不存在")?;
+        let file = job.files.get(index).context("下载文件不存在")?;
+        let target = local_files::target_path(&job.directory, &file.file_name)?;
+        if let Some(bytes) = local_files::existing_file(&target).await? {
+            if !job.overwrite {
+                self.update_download_file(app, id, index, "已跳过", Some(bytes), "")
+                    .await?;
+                return Ok(());
+            }
+        }
+        self.update_download_file(app, id, index, "下载中", Some(0), "")
+            .await?;
+        let response = self
+            .http
+            .get(format!(
+                "{}/api/res/downloads/{}/{}?task_id={}",
+                session.api_base, job.res_id, file.file_id, job.task_id
+            ))
+            .bearer_auth(&session.token)
+            .header("security", "true")
+            .header("x-kx-client", "tauri")
+            .send()
+            .await
+            .context("请求下载文件失败")?;
+        if !response.status().is_success()
+            || response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.contains("application/json"))
+        {
+            match protocol::response(response, false).await {
+                Err(error) => return Err(error).context("下载接口返回错误"),
+                Ok(_) => anyhow::bail!("下载接口返回 JSON，未收到文件内容"),
+            }
+        }
+        let temp = job
+            .directory
+            .join(format!(".{}.{}.part", file.file_name, uuid::Uuid::new_v4()));
+        let result = async {
+            let mut output = tokio::fs::OpenOptions::new().write(true).create_new(true).open(&temp).await.context("创建下载临时文件失败")?;
+            let mut bytes = 0u64;
+            let mut body = response.bytes_stream();
+            let mut check = tokio::time::interval(std::time::Duration::from_millis(250));
+            loop {
+                let chunk = tokio::select! {
+                    chunk = body.next() => chunk,
+                    _ = check.tick() => {
+                        if !self.download_running(id, &session).await? {
+                            self.update_download_file(app, id, index, "已暂停", Some(bytes), "").await?;
+                            return Ok(());
+                        }
+                        continue;
+                    }
+                };
+                let Some(chunk) = chunk else { break; };
+                let chunk = chunk.context("接收文件内容失败")?;
+                output.write_all(&chunk).await.context("写入下载文件失败")?;
+                bytes += chunk.len() as u64;
+                let mut queue = self.download_queue.lock().await;
+                let job = queue.iter_mut().find(|job| job.id == id).context("下载任务不存在")?;
+                job.files[index].bytes = bytes;
+                app.download_updated(job.view())?;
+            }
+            ensure!(bytes == file.size, "下载文件大小不符：实际 {bytes} 字节，预期 {} 字节", file.size);
+            output.flush().await.context("刷新下载文件失败")?;
+            output.sync_all().await.context("下载文件落盘失败")?;
+            drop(output);
+            if !self.download_running(id, &session).await? {
+                self.update_download_file(app, id, index, "已暂停", Some(bytes), "").await?;
+                return Ok(());
+            }
+            let installed = local_files::install(&temp, &target, job.overwrite).await?;
+            self.update_download_file(app, id, index, if installed { "已完成" } else { "已跳过" }, Some(bytes), "").await
+        }.await;
+        let _ = tokio::fs::remove_file(&temp).await;
+        result
+    }
+}
+
+// 下载名只取服务端作品元数据和章节序号，不使用源文件名拼接本地路径。
+fn download_layout(
+    root: &std::path::Path,
+    prepared: &Value,
+) -> Result<(PathBuf, Vec<DownloadFile>)> {
+    let code = prepared["resource_code"].as_str().unwrap_or_default();
+    let name = prepared["res_name"].as_str().unwrap_or_default();
+    ensure!(
+        !code.trim().is_empty() && !name.trim().is_empty(),
+        "下载响应缺少剧编号或剧名，请更新后端后重新创建任务"
+    );
+    let folder = format!("{}_{}", path_component(code), path_component(name));
+    ensure!(folder.len() <= 240, "剧编号和剧名过长，无法创建下载目录");
+    let entries = prepared["files"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("下载响应缺少章节清单"))?;
+    ensure!(!entries.is_empty(), "没有可下载的文件");
+    let mut sequences = std::collections::HashSet::new();
+    let mut files = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let seq = entry["seq_no"]
+            .as_i64()
+            .filter(|seq| *seq > 0)
+            .ok_or_else(|| anyhow::anyhow!("下载章节序号无效"))?;
+        ensure!(sequences.insert(seq), "下载章节序号重复：{seq}");
+        let file_id = entry["file_id"]
+            .as_i64()
+            .filter(|id| *id > 0)
+            .ok_or_else(|| anyhow::anyhow!("下载文件编号无效"))?;
+        let size = entry["size"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("下载文件大小无效"))?;
+        files.push(DownloadFile {
+            file_id,
+            file_name: format!("{seq}.mp4"),
+            size,
+            bytes: 0,
+            status: "待下载".into(),
+            error: String::new(),
+        });
+    }
+    Ok((root.join(folder), files))
+}
+
+fn path_component(value: &str) -> String {
+    let clean: String = value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_control() || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .collect();
+    let clean = clean.trim_matches(['.', ' ']);
+    if clean.is_empty() {
+        "_".into()
+    } else {
+        clean.into()
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    fn prepared() -> Value {
+        json!({"resource_code":"aigc123", "res_name":"剧名", "files":[
+            {"file_id":11,"file_name":"source-a.mp4","seq_no":1,"size":10},
+            {"file_id":12,"file_name":"source-b.mp4","seq_no":2,"size":20}
+        ]})
+    }
+
+    #[test]
+    fn saves_episodes_under_work_code_and_title_and_restores_same_paths() -> Result<()> {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&root)?;
+        let (directory, files) = download_layout(&root, &prepared())?;
+        assert_eq!(directory, root.join("aigc123_剧名"));
+        assert_eq!(
+            files
+                .iter()
+                .map(|file| file.file_name.as_str())
+                .collect::<Vec<_>>(),
+            ["1.mp4", "2.mp4"]
+        );
+        let job = DownloadJob {
+            directory: directory.clone(),
+            files,
+            status: "下载中".into(),
+            ..Default::default()
+        };
+        persist(&root, &[job])?;
+        let restored = load(&root)?;
+        assert_eq!(
+            restored[0].directory.join(&restored[0].files[0].file_name),
+            root.join("aigc123_剧名/1.mp4")
+        );
+        assert_eq!(restored[0].status, "已暂停");
+        assert_eq!(
+            restored[0].view()["targetDirectory"],
+            directory.to_string_lossy().as_ref()
+        );
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_missing_metadata_and_duplicate_sequences_and_contains_unsafe_names() -> Result<()> {
+        let root = PathBuf::from("downloads");
+        let mut input = prepared();
+        input["resource_code"] = json!("../aigc123");
+        input["res_name"] = json!("剧/名\\测试:*?");
+        let (directory, _) = download_layout(&root, &input)?;
+        assert_eq!(directory.parent(), Some(root.as_path()));
+        assert!(
+            !directory
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .contains('\\')
+        );
+        input["files"][1]["seq_no"] = json!(1);
+        assert!(download_layout(&root, &input).is_err());
+        assert!(download_layout(&root, &json!({"files":[]})).is_err());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests;

@@ -27,9 +27,13 @@ import {
 import { versionVideoAdapter } from '#/api/res/version-files';
 import { ResourceVersionApi as api } from '#/api/res/versions';
 import { FileUrlInput } from '#/components/file-picker';
+import { uploadErrorMessage } from '#/components/file-picker/internal/upload-error';
+import { desktop, desktopDownloads } from '#/desktop';
 import DirectoryUpload from '#/desktop/directory-upload.vue';
+import DownloadHistory from '#/desktop/download-history.vue';
 import { requestErrorMessage } from '#/request-errors';
 
+import DownloadPermissions from './download-permissions.vue';
 import NovelImport from './novel-import.vue';
 import NovelReader from './novel-reader.vue';
 import VersionPreview from './version-preview.vue';
@@ -42,6 +46,9 @@ const busy = ref(false);
 const errorText = ref('');
 const editorOpen = ref(false);
 const versionOpen = ref(false);
+const permissionsOpen = ref(false);
+const downloadHistoryOpen = ref(false);
+const downloadConcurrency = ref(4);
 const editingVersion = ref<ResourceVersion>();
 const itemId = ref<Id>();
 const versionForm = reactive({ name: '', lang: '', remark: '' });
@@ -93,6 +100,14 @@ const visibleItems = computed(() =>
     ),
   ),
 );
+const downloadFileIds = computed(() => [
+  ...new Set(
+    (detail.value?.items ?? [])
+      .map((item) => item.link.match(/^storage:file:(\d+)$/)?.[1])
+      .filter((id): id is string => Boolean(id))
+      .map(Number),
+  ),
+]);
 const textCount = computed(() =>
   (detail.value?.items ?? []).reduce(
     (sum, item) => sum + item.content.length,
@@ -150,6 +165,32 @@ async function select(version: ResourceVersion) {
   if (busy.value || loading.value || !props.resource) return;
   detail.value = undefined;
   await refresh(version.id);
+}
+async function startDownload() {
+  if (!desktop || !props.resource || !detail.value) return;
+  const fileIds = downloadFileIds.value;
+  if (fileIds.length === 0) {
+    errorText.value = '当前版本没有可下载的视频文件';
+    return;
+  }
+  const directory = await desktopDownloads.pickDirectory();
+  if (!directory) return;
+  busy.value = true;
+  errorText.value = '';
+  try {
+    await desktopDownloads.add(
+      Number(props.resource.id),
+      Number(detail.value.version.id),
+      fileIds,
+      directory,
+      downloadConcurrency.value,
+    );
+    downloadHistoryOpen.value = true;
+  } catch (error) {
+    errorText.value = uploadErrorMessage(error, '创建下载任务失败');
+  } finally {
+    busy.value = false;
+  }
 }
 function editVersion(version?: ResourceVersion) {
   editingVersion.value = version;
@@ -332,6 +373,28 @@ async function removeVersion() {
       >
         新增版本
       </Button>
+      <Button
+        :disabled="loading || busy || !resource"
+        @click="permissionsOpen = true"
+      >
+        下载权限
+      </Button>
+      <template v-if="desktop && downloadFileIds.length">
+        <InputNumber
+          v-model:value="downloadConcurrency"
+          :min="1"
+          :max="8"
+          :precision="0"
+          addon-before="并发"
+          :disabled="loading || busy || !detail"
+        />
+        <Button :disabled="loading || busy || !detail" @click="startDownload">
+          下载当前版本
+        </Button>
+        <Button :disabled="busy" @click="downloadHistoryOpen = true">
+          我的下载记录
+        </Button>
+      </template>
       <Button :loading="loading" :disabled="busy" @click="refresh()">
         刷新版本
       </Button>
@@ -513,6 +576,11 @@ async function removeVersion() {
         />
       </div>
     </Spin>
+    <DownloadPermissions
+      v-model:open="permissionsOpen"
+      :res-id="resource?.id"
+    />
+    <DownloadHistory v-model:open="downloadHistoryOpen" />
   </Modal>
   <Modal
     :open="versionOpen"

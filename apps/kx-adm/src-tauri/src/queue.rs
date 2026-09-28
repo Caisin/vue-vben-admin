@@ -66,7 +66,8 @@ impl Desktop {
                 job.status = "暂停中".into();
             }
         }
-        persist(&self.data, &jobs)
+        persist(&self.data, &jobs)?;
+        self.pause_downloads().await
     }
 
     pub async fn jobs(&self) -> Result<Vec<Value>> {

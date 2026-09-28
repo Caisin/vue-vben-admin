@@ -1,3 +1,4 @@
+mod download;
 mod image;
 mod protocol;
 mod queue;
@@ -82,6 +83,71 @@ async fn desktop_clear_session(
 #[tauri::command]
 async fn desktop_jobs(state: Native<'_>) -> Reply<Vec<serde_json::Value>> {
     state.jobs().await.map_err(error)
+}
+#[tauri::command]
+async fn desktop_download_jobs(state: Native<'_>) -> Reply<Vec<serde_json::Value>> {
+    state.download_jobs().await.map_err(error)
+}
+#[tauri::command]
+async fn desktop_download_add(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    res_id: i64,
+    version_id: i64,
+    file_ids: Vec<i64>,
+    directory: String,
+    concurrency: Option<usize>,
+) -> Reply<serde_json::Value> {
+    state
+        .add_download(
+            &app,
+            res_id,
+            version_id,
+            file_ids,
+            std::path::PathBuf::from(directory),
+            concurrency.unwrap_or(4),
+        )
+        .await
+        .map_err(error)
+}
+#[tauri::command]
+async fn desktop_download_pick_directory(app: tauri::AppHandle) -> Reply<Option<String>> {
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("选择资源下载目录")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|_| "无法打开目录选择器")?;
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    Ok(Some(
+        selected
+            .into_path()
+            .map_err(|_| "目录路径无效".to_owned())?
+            .canonicalize()
+            .map_err(|_| "无法读取目录".to_owned())?
+            .to_string_lossy()
+            .into_owned(),
+    ))
+}
+#[tauri::command]
+async fn desktop_download_pause(app: tauri::AppHandle, state: Native<'_>, id: String) -> Reply<()> {
+    state.pause_download(&app, &id).await.map_err(error)
+}
+#[tauri::command]
+async fn desktop_download_resume(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    id: String,
+    overwrite: Option<bool>,
+) -> Reply<()> {
+    state
+        .resume_download(app, id, overwrite.unwrap_or(false))
+        .await
+        .map_err(error)
 }
 #[tauri::command]
 async fn desktop_pause(app: tauri::AppHandle, state: Native<'_>, id: String) -> Reply<()> {
@@ -471,6 +537,11 @@ pub fn run() {
             desktop_refresh_session,
             desktop_clear_session,
             desktop_jobs,
+            desktop_download_jobs,
+            desktop_download_add,
+            desktop_download_pick_directory,
+            desktop_download_pause,
+            desktop_download_resume,
             desktop_scan,
             desktop_start,
             desktop_pause,

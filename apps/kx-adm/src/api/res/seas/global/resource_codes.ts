@@ -1,3 +1,5 @@
+import type { ResRecord } from './source_manage';
+
 import { requestClient } from '#/api/request';
 
 export interface ResourceCode {
@@ -29,6 +31,10 @@ export interface ResourceCodeUpdate extends ResourceCodeWrite {
 }
 
 export const ResourceCodeApi = {
+  associate: (
+    resId: number | string,
+    data: { resource_code: string; expected_resource_code: string },
+  ) => requestClient.put<ResRecord>(`/adm/res/${resId}/resource-code`, data),
   list: (params?: { keyword?: string; page?: number; size?: number }) =>
     requestClient.get<ResourceCodePage>('/adm/res/codes', { params }),
   create: (data: ResourceCodeWrite) =>

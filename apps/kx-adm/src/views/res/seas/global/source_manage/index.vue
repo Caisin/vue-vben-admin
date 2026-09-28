@@ -38,6 +38,8 @@ import {
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
 import { global, set } from '#/api/res/seas';
+import { desktop } from '#/desktop';
+import DownloadHistory from '#/desktop/download-history.vue';
 
 import {
   resTypeOptions,
@@ -47,10 +49,24 @@ import {
   useGridFormSchema,
 } from './data';
 import CreateResource from './modules/create-resource.vue';
+import ResourceCodeBinding from './modules/resource-code-binding.vue';
 import ResourceVersions from './modules/resource-versions.vue';
 
+const codeBindingOpen = ref(false);
+const codeBindingResource = ref<ResRecord>();
+function bindCode(resource: ResRecord) {
+  codeBindingResource.value = resource;
+  codeBindingOpen.value = true;
+}
+async function codeBound(resource: ResRecord) {
+  if (String(versionResource.value?.id) === String(resource.id))
+    versionResource.value = resource;
+  message.success('作品编号已关联');
+  await gridApi.query();
+}
 const creatingResource = ref(false);
 const versionsOpen = ref(false);
+const downloadHistoryOpen = ref(false);
 const versionResource = ref<ResRecord>();
 function openVersions(resource: ResRecord) {
   versionResource.value = resource;
@@ -561,8 +577,14 @@ async function reindexSearch() {
     content-class="management-content"
     title="资源管理"
   >
+    <ResourceCodeBinding
+      v-model:open="codeBindingOpen"
+      :resource="codeBindingResource"
+      @saved="codeBound"
+    />
     <CreateResource v-model:open="creatingResource" @saved="resourceCreated" />
     <ResourceVersions v-model:open="versionsOpen" :resource="versionResource" />
+    <DownloadHistory v-model:open="downloadHistoryOpen" />
     <Grid
       v-show="mode === 'table'"
       class="management-grid"
@@ -585,7 +607,15 @@ async function reindexSearch() {
           <Button type="primary" @click="creatingResource = true">
             新增资源
           </Button>
+          <Button v-if="desktop" @click="downloadHistoryOpen = true">
+            我的下载记录
+          </Button>
         </Space>
+      </template>
+      <template #resourceCode="{ row }">
+        <Button type="link" @click="bindCode(row)">
+          {{ row.resource_code || '关联作品编号' }}
+        </Button>
       </template>
       <template #cover="{ row }">
         <Image v-if="row.cover" :height="56" :src="row.cover" class="rounded" />
@@ -637,15 +667,16 @@ async function reindexSearch() {
             {
               icon: 'lucide:edit',
               onClick: () => openDialog('edit', row),
-              text: '编辑',
+              tooltip: '编辑',
             },
             {
               icon: 'lucide:badge-dollar-sign',
               onClick: () => openDialog('price', row),
-              text: '价格',
+              tooltip: '价格',
             },
           ]"
           :dropdown-actions="[
+            { onClick: () => bindCode(row), text: '关联作品编号' },
             {
               onClick: () => openDialog('tags', row),
               text: '标签',
@@ -752,6 +783,9 @@ async function reindexSearch() {
                     @click="openDialog('price', item)"
                   >
                     价格
+                  </Button>
+                  <Button size="small" type="link" @click="bindCode(item)">
+                    关联作品编号
                   </Button>
                   <Button size="small" type="link" @click="openVersions(item)">
                     版本与内容

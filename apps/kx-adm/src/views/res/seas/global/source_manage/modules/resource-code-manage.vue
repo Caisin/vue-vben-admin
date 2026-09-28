@@ -12,6 +12,7 @@ import { ResourceCodeApi } from '#/api/res/seas/global/resource_codes';
 import { requestErrorMessage } from '#/request-errors';
 
 const props = defineProps<{
+  defaultName?: string;
   initial?: ResourceCode;
 }>();
 const emit = defineEmits<{ saved: [code: ResourceCode] }>();
@@ -28,7 +29,7 @@ const busy = defineModel<boolean>('busy', { default: false });
 function load() {
   Object.assign(form, {
     code: props.initial?.code ?? '',
-    name: props.initial?.name ?? '',
+    name: props.initial?.name ?? props.defaultName ?? '',
     author: props.initial?.author ?? '',
     remark: props.initial?.remark ?? '',
   });
