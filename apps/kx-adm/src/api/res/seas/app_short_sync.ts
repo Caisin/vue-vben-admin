@@ -76,6 +76,8 @@ export interface AppShortSyncResourceSummary {
 export interface AppShortSyncSettings {
   concurrency: number;
   segment_concurrency: number;
+  video_timeout_seconds: number;
+  cover_timeout_seconds: number;
 }
 
 export interface SyncTask {

@@ -33,6 +33,8 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   }));
   let concurrency = 5;
   let segmentConcurrency = 8;
+  let videoTimeout = 1800;
+  let coverTimeout = 120;
   let failSettingsSave = false;
   const detailRequests: URL[] = [];
   const resourceRequests: URL[] = [];
@@ -68,10 +70,14 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
             : request.postDataJSON();
         concurrency = body.concurrency;
         segmentConcurrency = body.segment_concurrency;
+        videoTimeout = body.video_timeout_seconds;
+        coverTimeout = body.cover_timeout_seconds;
       }
       return fulfillApi(route, {
         concurrency,
         segment_concurrency: segmentConcurrency,
+        video_timeout_seconds: videoTimeout,
+        cover_timeout_seconds: coverTimeout,
       });
     }
     if (path.endsWith('/videos/resources')) {
@@ -193,6 +199,12 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     name: '单集分片并发数',
     exact: true,
   });
+  const videoLimit = page.getByRole('spinbutton', { name: '单集超时（秒）' });
+  const coverLimit = page.getByRole('spinbutton', { name: '封面超时（秒）' });
+  await expect(videoLimit).toHaveValue('1800');
+  await expect(coverLimit).toHaveValue('120');
+  await videoLimit.fill('600');
+  await coverLimit.fill('60');
   await expect(segments).toHaveValue('8');
   await segments.fill('4');
   await expect(limit).toHaveValue('5');
@@ -200,8 +212,12 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   await page.getByRole('button', { name: '保存同步配置', exact: true }).click();
   await expect.poll(() => concurrency).toBe(3);
   await expect.poll(() => segmentConcurrency).toBe(4);
+  expect(videoTimeout).toBe(600);
+  expect(coverTimeout).toBe(60);
   await page.reload();
   await expect(limit).toHaveValue('3');
+  await expect(videoLimit).toHaveValue('600');
+  await expect(coverLimit).toHaveValue('60');
   await expect(segments).toHaveValue('4');
   failSettingsSave = true;
   await limit.fill('2');
@@ -217,6 +233,8 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   failSettingsSave = false;
   await page.getByRole('button', { name: '重新加载配置' }).click();
   await expect(limit).toHaveValue('3');
+  await expect(videoLimit).toHaveValue('600');
+  await expect(coverLimit).toHaveValue('60');
   await expect(segments).toHaveValue('4');
   await drama1.getByRole('button', { name: '测试短剧1', exact: true }).click();
   const drawer = page.getByRole('dialog');
@@ -319,6 +337,8 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   await page.route('**/auth/per/codes', (route) => fulfillApi(route, []));
   await page.reload();
   await expect(limit).toHaveValue('3');
+  await expect(videoLimit).toHaveValue('600');
+  await expect(coverLimit).toHaveValue('60');
   await expect(segments).toHaveValue('4');
   await expect(limit).toBeDisabled();
   await expect(segments).toBeDisabled();

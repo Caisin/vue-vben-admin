@@ -83,6 +83,8 @@ const resourceText = ref('');
 const form = ref<AppShortSyncRunWrite>({ cdn_base: '' });
 const concurrency = ref<null | number>(5);
 const segmentConcurrency = ref<null | number>(8);
+const videoTimeout = ref<null | number>(1800);
+const coverTimeout = ref<null | number>(120);
 const settingsLoading = ref(false);
 const settingsReady = ref(false);
 const settingsSaving = ref(false);
@@ -380,6 +382,8 @@ async function loadSettings() {
     if (!alive) return;
     concurrency.value = result.concurrency;
     segmentConcurrency.value = result.segment_concurrency ?? 8;
+    videoTimeout.value = result.video_timeout_seconds ?? 1800;
+    coverTimeout.value = result.cover_timeout_seconds ?? 120;
     settingsReady.value = true;
   } catch (error) {
     if (alive)
@@ -405,16 +409,37 @@ async function saveSettings() {
     settingsError.value = '单集分片并发数必须为 1 至 32 的整数';
     return;
   }
+  const videoSeconds = videoTimeout.value;
+  const coverSeconds = coverTimeout.value;
+  if (
+    videoSeconds === null ||
+    !Number.isInteger(videoSeconds) ||
+    videoSeconds < 30 ||
+    videoSeconds > 86_400 ||
+    coverSeconds === null ||
+    !Number.isInteger(coverSeconds) ||
+    coverSeconds < 10 ||
+    coverSeconds > 3600
+  ) {
+    settingsError.value = '单集超时为 30–86400 秒，封面超时为 10–3600 秒';
+    return;
+  }
   settingsSaving.value = true;
   settingsError.value = '';
   try {
     const result = await AppShortSyncApi.saveSettings({
       concurrency: value,
       segment_concurrency: segments,
+      video_timeout_seconds: videoSeconds,
+      cover_timeout_seconds: coverSeconds,
     });
     concurrency.value = result.concurrency;
     segmentConcurrency.value = result.segment_concurrency ?? 8;
-    message.success('同步配置已保存；分片并发从下一集开始生效');
+    videoTimeout.value = result.video_timeout_seconds ?? 1800;
+    coverTimeout.value = result.cover_timeout_seconds ?? 120;
+    message.success(
+      '同步配置已保存；分片并发从下一集开始生效，超时设置从下一轮生效',
+    );
   } catch (error) {
     settingsError.value = requestErrorMessage(error, '保存同步配置失败');
   } finally {
@@ -522,6 +547,30 @@ onBeforeUnmount(stopPolling);
           "
           aria-label="单集分片并发数"
         />
+        <label for="video-timeout">单集超时（秒）</label>
+        <InputNumber
+          id="video-timeout"
+          v-model:value="videoTimeout"
+          :min="30"
+          :max="86400"
+          :precision="0"
+          aria-label="单集超时（秒）"
+          :disabled="
+            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+          "
+        />
+        <label for="cover-timeout">封面超时（秒）</label>
+        <InputNumber
+          id="cover-timeout"
+          v-model:value="coverTimeout"
+          :min="10"
+          :max="3600"
+          :precision="0"
+          aria-label="封面超时（秒）"
+          :disabled="
+            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+          "
+        />
         <Button
           v-if="canMigrate"
           type="primary"
@@ -539,8 +588,8 @@ onBeforeUnmount(stopPolling);
           重新加载配置
         </Button>
         <div class="text-muted-foreground">
-          同时同步默认 5 集，范围 1–32 集，当前迁移任务全部结束后生效。每集 m3u8
-          默认并发下载 8 个分片，范围 1–32，从下一集开始生效。
+          同时同步默认 5 集，范围 1–32 集，当前轮结束且并发池空闲后生效。每集
+          m3u8 默认并发下载 8 个分片，范围 1–32，从下一集开始生效。
         </div>
       </Space>
       <Alert
@@ -587,7 +636,9 @@ onBeforeUnmount(stopPolling);
         </Space>
       </template>
       <p class="text-muted-foreground mb-3">
-        全部同步按原始创建时间从新到旧处理未完成视频；封面单独补同步，已同步的自动跳过。停止全部同步后可启动紧急单剧。
+        每轮最多处理 300
+        条记录，新剧优先；成功项跳过。失败或超时释放并发位置，下一轮重试，最多重试
+        3 次后记为最终失败。系统重启后继续，手动停止后可启动紧急单剧。
       </p>
       <Alert
         v-if="batchError"
