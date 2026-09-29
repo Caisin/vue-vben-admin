@@ -41,6 +41,7 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   const resourceRequests: URL[] = [];
   const resumed: number[] = [];
   const stopped: number[] = [];
+  const cleared: boolean[] = [];
   const batches: Array<any> = [null, null];
   let stopFails = false;
   await page.route('**/api/**', (route) => {
@@ -56,6 +57,17 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   await page.route('**/adm/res/app-short-sync/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
+    if (path.endsWith('/clear-failures')) {
+      const request = route.request();
+      const body =
+        request.headers().security === 'true'
+          ? JSON.parse(
+              KxEd.decodeText(KxEd.decrypt(request.postDataBuffer() as Buffer)),
+            )
+          : request.postDataJSON();
+      cleared.push(body.cover_only);
+      return fulfillApi(route, { updated: 5 });
+    }
     if (path.endsWith('/settings')) {
       if (route.request().method() === 'PUT') {
         if (failSettingsSave)
@@ -121,7 +133,12 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
           cancel_requested_at: null,
           message: '正在同步',
         };
-        return fulfillApi(route, batches[index]);
+        return fulfillApi(route, {
+          empty: false,
+          duplicate: false,
+          message: '任务已开始执行',
+          task_run: batches[index],
+        });
       }
       resumed.push(body.res_id);
       const row = dramas[body.res_id - 1];
@@ -129,7 +146,12 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
       row.state = 'pending';
       row.pending = 2;
       row.paused = 0;
-      return fulfillApi(route, { id: 91 });
+      return fulfillApi(route, {
+        empty: false,
+        duplicate: false,
+        message: '任务已开始执行',
+        task_run: { id: 91 },
+      });
     }
     if (path.endsWith('/stop')) {
       const id = Number(path.split('/').at(-2));
@@ -149,6 +171,8 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
       return fulfillApi(route, null);
     }
     if (path.endsWith('/videos')) {
+      if (!url.searchParams.has('res_id'))
+        return fulfillApi(route, { items: [], total: 0, counts: {} });
       detailRequests.push(url);
       return fulfillApi(route, {
         items: [
@@ -165,6 +189,7 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
               progress_total: 2,
               progress_unit: 'segments',
               attempts: 2,
+              failure_count: 2,
               error_code: 'HTTP 404: file missing',
               updated_at: 1,
             },
@@ -183,6 +208,14 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   const drama1 = page.getByRole('row').filter({ hasText: '测试短剧1' });
   const drama2 = page.getByRole('row').filter({ hasText: '测试短剧2' });
   await expect(drama1).toBeVisible();
+  await page
+    .getByRole('button', { name: '清理视频失败次数', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: '清理封面失败次数', exact: true })
+    .click();
+  await expect.poll(() => cleared).toEqual([false, true]);
+
   await expect(drama1).toContainText('DR-1');
   await expect(
     drama1.getByRole('button', { name: '停止', exact: true }),

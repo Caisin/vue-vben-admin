@@ -41,6 +41,7 @@ export interface AppShortSyncVideoRecord {
   progress_total: null | number;
   progress_unit: string;
   attempts: number;
+  failure_count: number;
   error_code: string;
   updated_at: number;
 }
@@ -92,6 +93,12 @@ export interface SyncTask {
   failed_count: number;
   message: string;
   error_message?: null | string;
+}
+export interface SyncTrigger {
+  empty: boolean;
+  duplicate: boolean;
+  message: string;
+  task_run: null | SyncTask;
 }
 export interface SyncLogEvent {
   id: number;
@@ -185,10 +192,15 @@ export const AppShortSyncApi = {
       { params: { cover_only, res_id } },
     ),
   migrateVideos: (res_id?: number, cover_only = false) =>
-    requestClient.post<SyncTask>('/adm/res/app-short-sync/videos/migrate', {
+    requestClient.post<SyncTrigger>('/adm/res/app-short-sync/videos/migrate', {
       res_id,
       cover_only,
     }),
+  clearFailures: (cover_only = false, res_id?: number) =>
+    requestClient.post<{ updated: number }>(
+      '/adm/res/app-short-sync/videos/migrate/clear-failures',
+      { cover_only, res_id },
+    ),
   stopResource: (resId: number) =>
     requestClient.post(`/adm/res/app-short-sync/resources/${resId}/stop`),
   stopMigration: (taskId: number) =>

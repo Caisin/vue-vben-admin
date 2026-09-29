@@ -28,6 +28,7 @@ import {
   Card,
   DatePicker,
   Drawer,
+  Empty,
   Form,
   FormItem,
   Input,
@@ -68,27 +69,29 @@ const syncLogs = ref<SyncLogEvent[]>([]);
 let logAbort: AbortController | undefined;
 async function openSyncLogs(task: SyncTask) {
   logAbort?.abort();
-  logAbort = new AbortController();
+  const controller = new AbortController();
+  logAbort = controller;
   logTask.value = task;
   syncLogs.value = [];
   let cursor = 0;
-  while (!logAbort.signal.aborted) {
+  while (!controller.signal.aborted) {
     try {
       await watchSyncLogs(
         task.id,
         cursor,
         (event) => {
+          if (controller.signal.aborted || event.id <= cursor) return;
           cursor = Math.max(cursor, event.id);
           syncLogs.value = [...syncLogs.value, event].slice(-500);
         },
         (state) => {
-          logTask.value = state;
+          if (!controller.signal.aborted) logTask.value = state;
         },
-        logAbort.signal,
+        controller.signal,
       );
       if (logTask.value && !taskActive(logTask.value)) break;
     } catch {
-      if (!logAbort.signal.aborted)
+      if (!controller.signal.aborted)
         await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
@@ -117,6 +120,7 @@ const activeVideoColumns = [
   { title: '阶段', dataIndex: 'stage', key: 'stage' },
   { title: '进度', dataIndex: 'progress_current', key: 'progress' },
   { title: '尝试次数', dataIndex: 'attempts', key: 'attempts' },
+  { title: '失败次数', dataIndex: 'failure_count', key: 'failure_count' },
   { title: '更新时间', dataIndex: 'updated_at', key: 'updated_at' },
 ];
 const chapterTotal = ref(0);
@@ -187,6 +191,7 @@ const chapterColumns = [
   { title: '状态', key: 'state', width: 100 },
   { title: '执行环节 / 环节进度', key: 'stage', width: 250 },
   { title: '尝试次数', dataIndex: 'attempts', width: 90 },
+  { title: '失败次数', dataIndex: 'failure_count', width: 90 },
   { title: '失败原因', dataIndex: 'error_code', width: 280 },
   { title: '更新时间', key: 'updated_at', width: 170 },
 ];
@@ -399,18 +404,31 @@ async function operateBatch(index: number, stop = false) {
   batchBusy.value[index] = true;
   try {
     const task = batchTasks.value[index];
-    batchTasks.value[index] =
-      stop && task
-        ? await AppShortSyncApi.stopMigration(task.id)
-        : await AppShortSyncApi.migrateVideos(undefined, index === 1);
-    message.success(
-      stop ? '已请求停止，正在释放当前任务' : '已提交后台同步任务',
-    );
+    if (stop && task) {
+      batchTasks.value[index] = await AppShortSyncApi.stopMigration(task.id);
+      message.success('已请求停止，正在释放当前任务');
+    } else {
+      const result = await AppShortSyncApi.migrateVideos(
+        undefined,
+        index === 1,
+      );
+      batchTasks.value[index] = result.task_run;
+      message.success(result.message);
+    }
     await refresh();
   } catch (error) {
     message.error(requestErrorMessage(error, stop ? '停止失败' : '提交失败'));
   } finally {
     batchBusy.value[index] = false;
+  }
+}
+async function clearFailures(coverOnly: boolean) {
+  try {
+    const result = await AppShortSyncApi.clearFailures(coverOnly);
+    message.success(`已清理 ${result.updated} 条失败次数，可重新启动同步`);
+    await refresh();
+  } catch (error) {
+    message.error(requestErrorMessage(error, '清理失败次数失败'));
   }
 }
 async function operate(
@@ -428,9 +446,9 @@ async function operate(
         );
       await AppShortSyncApi.stopResource(row.res_id);
     } else {
-      singleTasks.value[row.res_id] = await AppShortSyncApi.migrateVideos(
-        row.res_id,
-      );
+      const result = await AppShortSyncApi.migrateVideos(row.res_id);
+      singleTasks.value[row.res_id] = result.task_run;
+      if (result.empty) message.info(result.message);
     }
     message.success(
       action === 'stop'
@@ -523,7 +541,9 @@ async function saveSettings() {
     coverConcurrency.value = result.cover_concurrency ?? 5;
     videoTimeout.value = result.video_timeout_seconds ?? 1800;
     coverTimeout.value = result.cover_timeout_seconds ?? 120;
-    message.success('同步配置已保存；封面并发从下一轮生效');
+    message.success(
+      '配置已保存，下次启动同步任务时生效；分片并发从下一集开始生效',
+    );
   } catch (error) {
     settingsError.value = requestErrorMessage(error, '保存同步配置失败');
   } finally {
@@ -697,7 +717,7 @@ onBeforeUnmount(closeSyncLogs);
           重新加载配置
         </Button>
         <div class="text-muted-foreground">
-          同时同步默认 5 集，范围 1–32 集，下一轮领取时生效。每集 m3u8
+          同时同步默认 5 集，范围 1–32 集，下次启动任务时生效。每集 m3u8
           默认并发下载 8 个分片，范围 1–32，从下一集开始生效。
         </div>
       </Space>
@@ -768,6 +788,20 @@ onBeforeUnmount(closeSyncLogs);
             </template>
           </template>
           <Button
+            v-if="canMigrate"
+            aria-label="清理视频失败次数"
+            @click="clearFailures(false)"
+          >
+            清理视频失败次数
+          </Button>
+          <Button
+            v-if="canMigrate"
+            aria-label="清理封面失败次数"
+            @click="clearFailures(true)"
+          >
+            清理封面失败次数
+          </Button>
+          <Button
             v-if="canScan"
             type="primary"
             aria-label="扫描源数据"
@@ -778,10 +812,9 @@ onBeforeUnmount(closeSyncLogs);
         </Space>
       </template>
       <p class="text-muted-foreground mb-3">
-        每轮最多处理 300
-        条集表记录，最新记录优先；成功项跳过。失败或超时释放并发位置，下一轮重试，最多重试
-        1 次（总共 2
-        次尝试）后记为最终失败。系统重启后继续，手动停止后可启动紧急单剧。
+        每次最多读取 300
+        条，有空位持续补充。超时或失败计一次失败，后续批次重试； 累计失败 3
+        次后停止自动同步，手动清理失败次数后才能再次进入队列。
       </p>
       <Alert
         v-if="batchError"
