@@ -106,6 +106,8 @@ const detailOpen = ref(false);
 const chapters = ref<AppShortSyncVideoRecord[]>([]);
 const activeVideos = ref<AppShortSyncVideoRecord[]>([]);
 const activeVideosError = ref('');
+let activeLoading = false;
+let activeTimer: ReturnType<typeof setTimeout> | undefined;
 const activeVideoColumns = [
   { title: '剧名', dataIndex: 'res_name', key: 'res_name' },
   { title: '剧 ID', dataIndex: 'res_id', key: 'res_id' },
@@ -330,7 +332,8 @@ function filterChapters() {
   void loadChapters();
 }
 async function loadActiveVideos() {
-  if (!canMigrate.value) return;
+  if (!canMigrate.value || activeLoading) return;
+  activeLoading = true;
   try {
     const result = await AppShortSyncApi.listVideos({
       state: 'running',
@@ -344,6 +347,8 @@ async function loadActiveVideos() {
       error,
       '读取正在同步的集失败',
     );
+  } finally {
+    activeLoading = false;
   }
 }
 async function refresh() {
@@ -574,9 +579,21 @@ function stopPolling() {
   ++detailSequence;
   if (timer) clearTimeout(timer);
   timer = undefined;
+  if (activeTimer) clearTimeout(activeTimer);
+  activeTimer = undefined;
+}
+function scheduleActivePolling() {
+  if (!alive || activeTimer) return;
+  activeTimer = setTimeout(async () => {
+    activeTimer = undefined;
+    if (!alive) return;
+    await loadActiveVideos();
+    scheduleActivePolling();
+  }, 2000);
 }
 function startPolling() {
   alive = true;
+  scheduleActivePolling();
   if (timer) return;
   timer = setTimeout(async () => {
     await Promise.all([refresh(), loadRuns()]);
@@ -680,8 +697,8 @@ onBeforeUnmount(closeSyncLogs);
           重新加载配置
         </Button>
         <div class="text-muted-foreground">
-          同时同步默认 5 集，范围 1–32 集，当前轮结束且并发池空闲后生效。每集
-          m3u8 默认并发下载 8 个分片，范围 1–32，从下一集开始生效。
+          同时同步默认 5 集，范围 1–32 集，下一轮领取时生效。每集 m3u8
+          默认并发下载 8 个分片，范围 1–32，从下一集开始生效。
         </div>
       </Space>
       <Alert
@@ -762,7 +779,7 @@ onBeforeUnmount(closeSyncLogs);
       </template>
       <p class="text-muted-foreground mb-3">
         每轮最多处理 300
-        条记录，新剧优先；成功项跳过。失败或超时释放并发位置，下一轮重试，最多重试
+        条集表记录，最新记录优先；成功项跳过。失败或超时释放并发位置，下一轮重试，最多重试
         1 次（总共 2
         次尝试）后记为最终失败。系统重启后继续，手动停止后可启动紧急单剧。
       </p>
