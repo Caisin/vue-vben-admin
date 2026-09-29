@@ -33,6 +33,7 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   }));
   let concurrency = 5;
   let segmentConcurrency = 8;
+  let coverConcurrency = 5;
   let videoTimeout = 1800;
   let coverTimeout = 120;
   let failSettingsSave = false;
@@ -70,12 +71,14 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
             : request.postDataJSON();
         concurrency = body.concurrency;
         segmentConcurrency = body.segment_concurrency;
+        coverConcurrency = body.cover_concurrency;
         videoTimeout = body.video_timeout_seconds;
         coverTimeout = body.cover_timeout_seconds;
       }
       return fulfillApi(route, {
         concurrency,
         segment_concurrency: segmentConcurrency,
+        cover_concurrency: coverConcurrency,
         video_timeout_seconds: videoTimeout,
         cover_timeout_seconds: coverTimeout,
       });
@@ -199,6 +202,9 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     name: '单集分片并发数',
     exact: true,
   });
+  const coverParallel = page.getByRole('spinbutton', { name: '封面并发数' });
+  await expect(coverParallel).toHaveValue('5');
+  await coverParallel.fill('3');
   const videoLimit = page.getByRole('spinbutton', { name: '单集超时（秒）' });
   const coverLimit = page.getByRole('spinbutton', { name: '封面超时（秒）' });
   await expect(videoLimit).toHaveValue('1800');
@@ -212,6 +218,7 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   await page.getByRole('button', { name: '保存同步配置', exact: true }).click();
   await expect.poll(() => concurrency).toBe(3);
   await expect.poll(() => segmentConcurrency).toBe(4);
+  expect(coverConcurrency).toBe(3);
   expect(videoTimeout).toBe(600);
   expect(coverTimeout).toBe(60);
   await page.reload();

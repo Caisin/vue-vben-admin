@@ -1,4 +1,4 @@
-import { requestClient } from '#/api/request';
+import { plaintextRequestClient, requestClient } from '#/api/request';
 
 export interface AppShortSyncRunWrite {
   cdn_base: string;
@@ -31,7 +31,9 @@ export interface AppShortSyncVideoRecord {
   id: number;
   source_id: number;
   res_id: number;
+  res_name: string;
   version_id: number;
+  version_name: string;
   seq_no: number;
   state: string;
   stage: string;
@@ -76,6 +78,7 @@ export interface AppShortSyncResourceSummary {
 export interface AppShortSyncSettings {
   concurrency: number;
   segment_concurrency: number;
+  cover_concurrency: number;
   video_timeout_seconds: number;
   cover_timeout_seconds: number;
 }
@@ -89,6 +92,38 @@ export interface SyncTask {
   failed_count: number;
   message: string;
   error_message?: null | string;
+}
+export interface SyncLogEvent {
+  id: number;
+  task_id: number;
+  level: string;
+  stage: string;
+  message: string;
+  created_at: number;
+}
+
+export async function watchSyncLogs(
+  taskId: number,
+  after: number,
+  onLog: (event: SyncLogEvent) => void,
+  onState: (state: SyncTask) => void,
+  signal: AbortSignal,
+) {
+  const parser = (chunk: string) => {
+    for (const frame of chunk.replaceAll('\r\n', '\n').split('\n\n')) {
+      const event = frame.match(/^event:\s*(\w+)/m)?.[1];
+      const data = frame.match(/^data:\s*(.*)$/m)?.[1];
+      if (!data) continue;
+      if (event === 'error') throw new Error(data);
+      if (event === 'log') onLog(JSON.parse(data) as SyncLogEvent);
+      if (event === 'state') onState(JSON.parse(data) as SyncTask);
+    }
+  };
+  await plaintextRequestClient.requestSSE(
+    `/adm/res/app-short-sync/videos/migrate/${taskId}/logs?after=${after}`,
+    undefined,
+    { signal, onMessage: parser },
+  );
 }
 
 export const AppShortSyncApi = {

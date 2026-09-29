@@ -6,6 +6,7 @@ import type {
   AppShortSyncRunRecord,
   AppShortSyncRunWrite,
   AppShortSyncVideoRecord,
+  SyncLogEvent,
   SyncTask,
 } from '#/api/res/seas/app_short_sync';
 
@@ -40,7 +41,7 @@ import {
   Tag,
 } from 'antdv-next';
 
-import { AppShortSyncApi } from '#/api/res/seas/app_short_sync';
+import { AppShortSyncApi, watchSyncLogs } from '#/api/res/seas/app_short_sync';
 import { requestErrorMessage } from '#/request-errors';
 
 const { hasAccessByCodes } = useAccess();
@@ -62,12 +63,60 @@ const batchTasks = ref<Array<null | SyncTask>>([null, null]);
 const batchBusy = ref([false, false]);
 const batchReady = ref(false);
 const batchError = ref('');
+const logTask = ref<null | SyncTask>(null);
+const syncLogs = ref<SyncLogEvent[]>([]);
+let logAbort: AbortController | undefined;
+async function openSyncLogs(task: SyncTask) {
+  logAbort?.abort();
+  logAbort = new AbortController();
+  logTask.value = task;
+  syncLogs.value = [];
+  let cursor = 0;
+  while (!logAbort.signal.aborted) {
+    try {
+      await watchSyncLogs(
+        task.id,
+        cursor,
+        (event) => {
+          cursor = Math.max(cursor, event.id);
+          syncLogs.value = [...syncLogs.value, event].slice(-500);
+        },
+        (state) => {
+          logTask.value = state;
+        },
+        logAbort.signal,
+      );
+      if (logTask.value && !taskActive(logTask.value)) break;
+    } catch {
+      if (!logAbort.signal.aborted)
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+}
+function closeSyncLogs() {
+  logAbort?.abort();
+  logAbort = undefined;
+  logTask.value = null;
+}
 const taskActive = (task?: null | SyncTask) =>
   Boolean(task && ['queued', 'retrying', 'running'].includes(task.status));
 const batchLabels = ['全部同步', '全量同步封面'];
 const selected = ref<AppShortSyncResourceSummary>();
 const detailOpen = ref(false);
 const chapters = ref<AppShortSyncVideoRecord[]>([]);
+const activeVideos = ref<AppShortSyncVideoRecord[]>([]);
+const activeVideosError = ref('');
+const activeVideoColumns = [
+  { title: '剧名', dataIndex: 'res_name', key: 'res_name' },
+  { title: '剧 ID', dataIndex: 'res_id', key: 'res_id' },
+  { title: '版本', dataIndex: 'version_name', key: 'version_name' },
+  { title: '版本 ID', dataIndex: 'version_id', key: 'version_id' },
+  { title: '集数', dataIndex: 'seq_no', key: 'seq_no' },
+  { title: '阶段', dataIndex: 'stage', key: 'stage' },
+  { title: '进度', dataIndex: 'progress_current', key: 'progress' },
+  { title: '尝试次数', dataIndex: 'attempts', key: 'attempts' },
+  { title: '更新时间', dataIndex: 'updated_at', key: 'updated_at' },
+];
 const chapterTotal = ref(0);
 const chapterPage = ref(1);
 const chapterState = ref<string>();
@@ -83,6 +132,7 @@ const resourceText = ref('');
 const form = ref<AppShortSyncRunWrite>({ cdn_base: '' });
 const concurrency = ref<null | number>(5);
 const segmentConcurrency = ref<null | number>(8);
+const coverConcurrency = ref<null | number>(5);
 const videoTimeout = ref<null | number>(1800);
 const coverTimeout = ref<null | number>(120);
 const settingsLoading = ref(false);
@@ -279,9 +329,27 @@ function filterChapters() {
   chapterPage.value = 1;
   void loadChapters();
 }
+async function loadActiveVideos() {
+  if (!canMigrate.value) return;
+  try {
+    const result = await AppShortSyncApi.listVideos({
+      state: 'running',
+      page: 1,
+      size: 100,
+    });
+    activeVideos.value = result.items.map((item) => item.video);
+    activeVideosError.value = '';
+  } catch (error) {
+    activeVideosError.value = requestErrorMessage(
+      error,
+      '读取正在同步的集失败',
+    );
+  }
+}
 async function refresh() {
   await Promise.all([
     loadResources(),
+    loadActiveVideos(),
     loadChapters(),
     loadBatchTasks(),
     loadSingleTasks(),
@@ -382,6 +450,7 @@ async function loadSettings() {
     if (!alive) return;
     concurrency.value = result.concurrency;
     segmentConcurrency.value = result.segment_concurrency ?? 8;
+    coverConcurrency.value = result.cover_concurrency ?? 5;
     videoTimeout.value = result.video_timeout_seconds ?? 1800;
     coverTimeout.value = result.cover_timeout_seconds ?? 120;
     settingsReady.value = true;
@@ -409,6 +478,16 @@ async function saveSettings() {
     settingsError.value = '单集分片并发数必须为 1 至 32 的整数';
     return;
   }
+  const coverParallel = coverConcurrency.value;
+  if (
+    coverParallel === null ||
+    !Number.isInteger(coverParallel) ||
+    coverParallel < 1 ||
+    coverParallel > 32
+  ) {
+    settingsError.value = '封面并发数必须为 1 至 32 的整数';
+    return;
+  }
   const videoSeconds = videoTimeout.value;
   const coverSeconds = coverTimeout.value;
   if (
@@ -430,16 +509,16 @@ async function saveSettings() {
     const result = await AppShortSyncApi.saveSettings({
       concurrency: value,
       segment_concurrency: segments,
+      cover_concurrency: coverParallel,
       video_timeout_seconds: videoSeconds,
       cover_timeout_seconds: coverSeconds,
     });
     concurrency.value = result.concurrency;
     segmentConcurrency.value = result.segment_concurrency ?? 8;
+    coverConcurrency.value = result.cover_concurrency ?? 5;
     videoTimeout.value = result.video_timeout_seconds ?? 1800;
     coverTimeout.value = result.cover_timeout_seconds ?? 120;
-    message.success(
-      '同步配置已保存；分片并发从下一集开始生效，超时设置从下一轮生效',
-    );
+    message.success('同步配置已保存；封面并发从下一轮生效');
   } catch (error) {
     settingsError.value = requestErrorMessage(error, '保存同步配置失败');
   } finally {
@@ -517,6 +596,7 @@ onActivated(() => {
 });
 onDeactivated(stopPolling);
 onBeforeUnmount(stopPolling);
+onBeforeUnmount(closeSyncLogs);
 </script>
 
 <template>
@@ -546,6 +626,18 @@ onBeforeUnmount(stopPolling);
             !canMigrate || !settingsReady || settingsLoading || settingsSaving
           "
           aria-label="单集分片并发数"
+        />
+        <label for="cover-concurrency">封面并发数</label>
+        <InputNumber
+          id="cover-concurrency"
+          v-model:value="coverConcurrency"
+          :min="1"
+          :max="32"
+          :precision="0"
+          aria-label="封面并发数"
+          :disabled="
+            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+          "
         />
         <label for="video-timeout">单集超时（秒）</label>
         <InputNumber
@@ -600,6 +692,39 @@ onBeforeUnmount(stopPolling);
         class="mt-3"
       />
     </Card>
+    <Card title="正在同步的集" class="mb-4">
+      <Alert
+        v-if="activeVideosError"
+        :message="activeVideosError"
+        type="error"
+        show-icon
+      />
+      <Table
+        v-else
+        :columns="activeVideoColumns"
+        :data-source="activeVideos"
+        :pagination="false"
+        size="small"
+        row-key="id"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'progress'">
+            {{ record.progress_current }}
+            <span v-if="record.progress_total != null">
+              / {{ record.progress_total }}
+            </span>
+            {{ record.progress_unit }}
+          </template>
+          <span v-else-if="column.key === 'updated_at'">
+            {{ time(record.updated_at) }}
+          </span>
+        </template>
+      </Table>
+      <Empty
+        v-if="!activeVideosError && activeVideos.length === 0"
+        description="当前没有正在同步的集"
+      />
+    </Card>
     <Card title="按剧同步进度">
       <template #extra>
         <Space wrap>
@@ -638,7 +763,8 @@ onBeforeUnmount(stopPolling);
       <p class="text-muted-foreground mb-3">
         每轮最多处理 300
         条记录，新剧优先；成功项跳过。失败或超时释放并发位置，下一轮重试，最多重试
-        3 次后记为最终失败。系统重启后继续，手动停止后可启动紧急单剧。
+        1 次（总共 2
+        次尝试）后记为最终失败。系统重启后继续，手动停止后可启动紧急单剧。
       </p>
       <Alert
         v-if="batchError"
@@ -654,8 +780,39 @@ onBeforeUnmount(stopPolling);
           :type="task.error_message || task.failed_count ? 'warning' : 'info'"
           :message="`${batchLabels[index]}：${task.message || task.status}，成功 ${task.succeeded_count} / ${task.total_count ?? '-'}，失败 ${task.failed_count}`"
           :description="task.error_message || undefined"
-        />
+        >
+          <template #action>
+            <Button size="small" @click="openSyncLogs(task)">
+              查看实时日志
+            </Button>
+          </template>
+        </Alert>
       </template>
+      <Card v-if="logTask" title="全量同步实时日志" class="mt-3" size="small">
+        <template #extra>
+          <Button size="small" @click="closeSyncLogs">关闭</Button>
+        </template>
+        <Alert
+          :message="`${logTask.message || logTask.status} · 成功 ${logTask.succeeded_count} · 失败 ${logTask.failed_count}`"
+          type="info"
+          class="mb-2"
+        />
+        <div
+          class="max-h-72 overflow-auto rounded bg-muted p-2 font-mono text-xs"
+        >
+          <div
+            v-for="event in syncLogs"
+            :key="event.id"
+            :class="event.level === 'error' ? 'text-destructive' : ''"
+          >
+            [{{ time(event.created_at) }}] [{{ event.stage }}]
+            {{ event.message }}
+          </div>
+          <div v-if="syncLogs.length === 0" class="text-muted-foreground">
+            等待日志事件…
+          </div>
+        </div>
+      </Card>
       <Space wrap class="mb-4">
         <Input
           v-model:value="resourceCode"
