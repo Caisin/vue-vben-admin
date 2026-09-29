@@ -59,6 +59,8 @@ export const ResourceVersionApi = {
   list: (res: Id) => requestClient.get<ResourceVersion[]>(base(res)),
   detail: (res: Id, id: Id) =>
     requestClient.get<VersionDetail>(`${base(res)}/${id}`),
+  manifest: (res: Id, id: Id) =>
+    requestClient.get<VersionDetail>(`${base(res)}/${id}/manifest`),
   create: (res: Id, data: VersionWrite) =>
     requestClient.post<ResourceVersion>(base(res), data),
   update: (res: Id, id: Id, data: VersionWrite) =>

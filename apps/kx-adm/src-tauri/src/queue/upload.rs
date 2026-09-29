@@ -150,10 +150,14 @@ impl Desktop {
                     .to_string(),
             )
             .mime_str(&content_type)?;
-            let response = client
+            let mut request = client
                 .post(format!("{}{base}/upload", s.api_base))
                 .bearer_auth(&s.token)
-                .multipart(reqwest::multipart::Form::new().part("file", part))
+                .multipart(reqwest::multipart::Form::new().part("file", part));
+            for (name, value) in self.device.headers(&s.token) {
+                request = request.header(name, value);
+            }
+            let response = request
                 .send()
                 .await
                 .map_err(|_| anyhow::anyhow!("上传连接失败，可重试"))?;

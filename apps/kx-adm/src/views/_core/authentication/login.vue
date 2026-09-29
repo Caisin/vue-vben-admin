@@ -12,6 +12,7 @@ import { $t } from '@vben/locales';
 import { Button, message, Select } from 'antdv-next';
 
 import { DingTalkApi } from '#/api';
+import { desktop, desktopDeviceInfo } from '#/desktop';
 import DesktopConnection from '#/desktop/connection.vue';
 import { useAuthStore } from '#/store';
 
@@ -27,6 +28,8 @@ const authStore = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 
+const deviceId = ref('');
+const desktopError = ref('');
 const dingtalkApps = ref<Awaited<ReturnType<typeof DingTalkApi.apps>>>([]);
 const selectedDingtalkAppKey = ref<string>();
 
@@ -109,7 +112,16 @@ async function exchangeDingTalkCode() {
   }
 }
 
-function onDingTalkLogin() {
+async function onDingTalkLogin() {
+  if (desktop) {
+    desktopError.value = '';
+    try {
+      await authStore.authDesktopDingTalk(selectedAppKey());
+    } catch (error) {
+      desktopError.value = String(error);
+    }
+    return;
+  }
   window.location.href = DingTalkApi.loginUrl(
     selectedAppKey(),
     currentLoginUrl(),
@@ -121,7 +133,18 @@ async function onSubmit(params: Recordable<any>) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadDingTalkApps(), exchangeDingTalkCode()]);
+  await Promise.all([
+    loadDingTalkApps(),
+    desktop
+      ? desktopDeviceInfo()
+          .then((info) => {
+            deviceId.value = info.device_id;
+          })
+          .catch((error) => {
+            desktopError.value = String(error);
+          })
+      : exchangeDingTalkCode(),
+  ]);
 });
 </script>
 
@@ -129,7 +152,44 @@ onMounted(async () => {
   <div v-bind="$attrs">
     <DesktopConnection />
     <TotpLogin />
+    <section v-if="desktop" class="space-y-4">
+      <h1 class="text-2xl font-semibold">钉钉登录</h1>
+      <p class="text-muted-foreground">
+        使用钉钉确认登录人。首次登录后，请联系管理员授权此设备。
+      </p>
+      <Select
+        v-if="showDingtalkSelect"
+        v-model:value="selectedDingtalkAppKey"
+        class="w-full"
+        :options="
+          visibleDingtalkApps.map((app) => ({
+            label: app.app_name,
+            value: app.app_key,
+          }))
+        "
+        placeholder="请选择钉钉应用"
+      />
+      <Button
+        type="primary"
+        class="w-full"
+        :loading="authStore.loginLoading"
+        :disabled="!hasDingtalkLogin || !deviceId"
+        @click="onDingTalkLogin"
+      >
+        使用钉钉登录
+      </Button>
+      <p v-if="!hasDingtalkLogin" role="alert">
+        暂未获取到钉钉登录应用，请检查服务地址或联系管理员。
+      </p>
+      <p v-if="desktopError" class="text-destructive" role="alert">
+        {{ desktopError }}
+      </p>
+      <div class="text-sm text-muted-foreground">
+        设备号 <code class="block select-all break-all">{{ deviceId }}</code>
+      </div>
+    </section>
     <AuthenticationLogin
+      v-else
       :form-schema="formSchema"
       :loading="authStore.loginLoading"
       :show-code-login="false"

@@ -4,6 +4,8 @@ import type { Id, ResourceCreate } from '#/api/res/versions';
 
 import { reactive, ref, watch } from 'vue';
 
+import { useAccess } from '@vben/access';
+
 import {
   Alert,
   Button,
@@ -23,6 +25,7 @@ import ResourceCodeManage from './resource-code-manage.vue';
 const emit = defineEmits<{
   saved: [resource: { id: Id; res_name: string; res_type: string }];
 }>();
+const { hasAccessByCodes } = useAccess();
 const open = defineModel<boolean>('open', { required: true });
 const form = reactive<ResourceCreate>({
   name: '',
@@ -144,7 +147,12 @@ async function save() {
               }
             "
           />
-          <Button @click="codeManageOpen = true">维护编号</Button>
+          <Button
+            v-if="hasAccessByCodes(['res:content:manage'])"
+            @click="codeManageOpen = true"
+          >
+            维护编号
+          </Button>
         </div>
       </FormItem>
       <FormItem label="作品名称">

@@ -22,7 +22,12 @@ import {
   toAuthSession,
 } from '#/api/core';
 import { adminPasswordLoginRequest } from '#/auth';
-import { clearDesktopSession, importDesktopSession } from '#/desktop';
+import {
+  clearDesktopSession,
+  desktop,
+  desktopDingTalkLogin,
+  importDesktopSession,
+} from '#/desktop';
 import { $t } from '#/locales';
 import { routes } from '#/router/routes';
 
@@ -48,6 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function establishSession(
     accessToken: string,
     onSuccess?: () => Promise<void> | void,
+    deviceAuthorized = false,
   ) {
     let userInfo: null | UserInfo = null;
 
@@ -55,9 +61,11 @@ export const useAuthStore = defineStore('auth', () => {
       return { userInfo };
     }
 
-    accessStore.setAccessToken(accessToken);
     try {
-      await importDesktopSession(accessToken);
+      const token = deviceAuthorized
+        ? accessToken
+        : await importDesktopSession(accessToken);
+      accessStore.setAccessToken(token);
       const [fetchUserInfoResult, accessCodes] = await Promise.all([
         fetchUserInfo(),
         AuthApi.accessCodes(),
@@ -124,12 +132,39 @@ export const useAuthStore = defineStore('auth', () => {
   ) {
     try {
       loginLoading.value = true;
+      if (desktop) throw new Error('桌面客户端必须使用钉钉登录');
       const body = await AuthApi.accessToken(
         adminPasswordLoginRequest(params.username, params.password),
       );
       return await handleLoginResponse(body, onSuccess);
     } finally {
       loginLoading.value = false;
+    }
+  }
+
+  async function authDesktopDingTalk(appKey?: string) {
+    try {
+      loginLoading.value = true;
+      return await establishSession(
+        await desktopDingTalkLogin(appKey),
+        undefined,
+        true,
+      );
+    } finally {
+      loginLoading.value = false;
+    }
+  }
+
+  /** 原生会话撤销时立即清理页面，不再请求已失效的退出接口。 */
+  async function desktopSessionCleared() {
+    if (isLoggingOut.value) return;
+    isLoggingOut.value = true;
+    try {
+      resetAllStores();
+      resetStaticRoutes(router, routes);
+      await router.replace(LOGIN_PATH);
+    } finally {
+      isLoggingOut.value = false;
     }
   }
 
@@ -257,6 +292,8 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     $reset,
     authDingTalkExchange,
+    authDesktopDingTalk,
+    desktopSessionCleared,
     authLogin,
     authorizePrivacyReveal,
     authorizeStepUp,

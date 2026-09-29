@@ -7,6 +7,7 @@ import type {
 
 import { computed, nextTick, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { RotateCw } from '@vben/icons';
 
@@ -42,6 +43,7 @@ import { global, set } from '#/api/res/seas';
 import { desktop } from '#/desktop';
 import DownloadHistory from '#/desktop/download-history.vue';
 
+import { resourceCapabilities } from './access';
 import {
   resTypeOptions,
   resStateOptions as stateOptions,
@@ -53,6 +55,8 @@ import CreateResource from './modules/create-resource.vue';
 import ResourceCodeBinding from './modules/resource-code-binding.vue';
 import ResourceVersions from './modules/resource-versions.vue';
 
+const { hasAccessByCodes } = useAccess();
+const access = computed(() => resourceCapabilities(hasAccessByCodes));
 const codeBindingOpen = ref(false);
 const codeBindingResource = ref<ResRecord>();
 function bindCode(resource: ResRecord) {
@@ -610,23 +614,32 @@ async function reindexSearch() {
           >
             <RotateCw class="size-4" />重建搜索索引
           </Button>
-          <Button @click="refreshAllCategory">刷新所有分类</Button>
+          <Button v-if="access.manage" @click="refreshAllCategory">
+            刷新所有分类
+          </Button>
           <RadioGroup v-model:value="mode" button-style="solid">
             <RadioButton value="table">表格</RadioButton>
             <RadioButton value="card">卡片</RadioButton>
           </RadioGroup>
-          <Button type="primary" @click="creatingResource = true">
+          <Button
+            v-if="access.upload"
+            type="primary"
+            @click="creatingResource = true"
+          >
             新增资源
           </Button>
-          <Button v-if="desktop" @click="downloadHistoryOpen = true">
+          <Button
+            v-if="desktop && access.download"
+            @click="downloadHistoryOpen = true"
+          >
             我的下载记录
           </Button>
         </Space>
       </template>
       <template #resourceCode="{ row }">
-        <Button type="link" @click="bindCode(row)">
+        <Button v-if="access.manage" type="link" @click="bindCode(row)">
           {{ row.resource_code || '关联作品编号' }}
-        </Button>
+</Button><span v-else>{{ row.resource_code || '—' }}</span>
       </template>
       <template #cover="{ row }">
         <Image
@@ -668,12 +681,16 @@ async function reindexSearch() {
             v-for="tag in row.ext_info?.tags ?? []"
             :key="tag.id ?? tag.name"
             :color="tag.color"
-            closable
+            :closable="access.manage"
             @close.prevent="removeCategory(row, tag)"
           >
             {{ tag.zh_name || tag.name?.zh || tag.name || tag.id }}
           </Tag>
-          <Button size="small" @click="openDialog('category', row)">
+          <Button
+            v-if="access.manage"
+            size="small"
+            @click="openDialog('category', row)"
+          >
             增加分类
           </Button>
         </Space>
@@ -684,6 +701,7 @@ async function reindexSearch() {
       </template>
       <template #operation="{ row }">
         <VbenTableAction
+          v-if="access.manage"
           :actions="[
             {
               icon: 'lucide:edit',
@@ -741,7 +759,13 @@ async function reindexSearch() {
     </Grid>
 
     <div v-if="mode === 'card'" class="mb-3 flex justify-end gap-2">
-      <Button type="primary" @click="creatingResource = true">新增资源</Button>
+      <Button
+        v-if="access.upload"
+        type="primary"
+        @click="creatingResource = true"
+      >
+        新增资源
+      </Button>
       <RadioGroup v-model:value="mode" button-style="solid">
         <RadioButton value="table">表格</RadioButton>
         <RadioButton value="card">卡片</RadioButton>
@@ -780,7 +804,7 @@ async function reindexSearch() {
                 </Tooltip>
                 <Space wrap>
                   <Button
-                    v-for="lang in langKeys(item)"
+                    v-for="lang in access.manage ? langKeys(item) : []"
                     :key="lang"
                     size="small"
                     @click="
@@ -793,6 +817,7 @@ async function reindexSearch() {
                 </Space>
                 <Space wrap>
                   <Button
+                    v-if="access.manage"
                     size="small"
                     type="link"
                     @click="openDialog('edit', item)"
@@ -800,13 +825,19 @@ async function reindexSearch() {
                     编辑
                   </Button>
                   <Button
+                    v-if="access.manage"
                     size="small"
                     type="link"
                     @click="openDialog('price', item)"
                   >
                     价格
                   </Button>
-                  <Button size="small" type="link" @click="bindCode(item)">
+                  <Button
+                    v-if="access.manage"
+                    size="small"
+                    type="link"
+                    @click="bindCode(item)"
+                  >
                     关联作品编号
                   </Button>
                   <Button size="small" type="link" @click="openVersions(item)">

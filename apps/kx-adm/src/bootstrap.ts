@@ -12,6 +12,7 @@ import { useTitle } from '@vueuse/core';
 
 import { $t, setupI18n } from '#/locales';
 import { router } from '#/router';
+import { useAuthStore } from '#/store';
 
 import { initComponentAdapter } from './adapter/component';
 import { initSetupVbenForm, useVbenForm } from './adapter/form';
@@ -59,7 +60,6 @@ async function bootstrap(namespace: string) {
 
   // 配置 pinia-tore
   await initStores(app, { namespace });
-  await bindDesktopSession((token) => useAccessStore().setAccessToken(token));
 
   // 在布局挂载前应用系统展示参数，避免先渲染缓存或编译期 Logo。
   await loadPublicSystemSettings();
@@ -76,6 +76,12 @@ async function bootstrap(namespace: string) {
 
   // 配置路由及路由守卫
   app.use(router);
+  await bindDesktopSession((token) => {
+    const store = useAccessStore();
+    const hadSession = !!store.accessToken;
+    store.setAccessToken(token);
+    if (!token && hadSession) void useAuthStore().desktopSessionCleared();
+  });
 
   // 配置@tanstack/vue-query
   const { VueQueryPlugin } = await import('@tanstack/vue-query');

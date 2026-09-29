@@ -34,6 +34,8 @@ async fn native_refresh_is_singleflight_and_restart_has_no_persisted_token() -> 
     let counter = calls.clone();
     let next = token(7, now() + 3600, "next");
     let response_token = next.clone();
+    let old = token(7, now() - 120, "old");
+    let exchange_token = old.clone();
     let server = tokio::spawn(async move {
         loop {
             let (mut socket, _) = listener.accept().await.unwrap();
@@ -54,10 +56,13 @@ async fn native_refresh_is_singleflight_and_restart_has_no_persisted_token() -> 
                 counter.fetch_add(1, Ordering::SeqCst);
                 tokio::time::sleep(Duration::from_millis(30)).await;
                 serde_json::json!({"access_token":response_token})
+            } else if request.starts_with("POST /auth/client-devices/exchange ") {
+                serde_json::json!({"access_token":exchange_token})
             } else {
                 serde_json::json!({"id":7})
             };
             assert!(request.to_lowercase().contains("security: true"));
+            assert!(request.to_lowercase().contains("x-kx-device-signature:"));
             let body = kx_ed::KxEd::en(
                 &serde_json::to_vec(&serde_json::json!({"code":200,"result":result})).unwrap(),
             )
@@ -71,7 +76,6 @@ async fn native_refresh_is_singleflight_and_restart_has_no_persisted_token() -> 
     let d = Desktop::new(dir.clone())?;
     let events = Events::default();
     d.configure(&events, base.clone()).await?;
-    let old = token(7, now() - 120, "old");
     d.import(&events, old.clone()).await?;
     let (a, b) = tokio::join!(
         d.refresh(&events, Some(old.clone())),
@@ -172,6 +176,50 @@ async fn native_refresh_is_singleflight_and_restart_has_no_persisted_token() -> 
             .is_err()
     );
     server.abort();
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn revoked_device_heartbeat_clears_session_and_pauses_queues() -> Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let base = format!("http://{}", listener.local_addr()?);
+    let server = tokio::spawn(async move {
+        for path in ["/auth/client-devices/session", "/auth/user/refresh_token"] {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = [0; 8192];
+            let n = socket.read(&mut bytes).await.unwrap();
+            let request = String::from_utf8_lossy(&bytes[..n]);
+            assert!(request.contains(path));
+            assert!(request.to_lowercase().contains("x-kx-device-signature:"));
+            socket
+                .write_all(
+                    b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .await
+                .unwrap();
+        }
+    });
+    let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+    let d = Desktop::new(dir.clone())?;
+    let events = Events::default();
+    d.configure(&events, base.clone()).await?;
+    let mut auth = d.auth.lock().await;
+    let session = token_session(
+        token(7, now() + 3600, "bound"),
+        base.clone(),
+        auth.generation + 1,
+    )?;
+    d.save(&events, &mut auth, session).await?;
+    drop(auth);
+    d.queue.lock().await.push(serde_json::from_value(serde_json::json!({
+        "id":"revoked-upload","apiBase":base,"uid":"7","res":"1","version":"2","storage":"media","localStorage":false,"root":dir,"name":"剧","status":"上传中","error":"","items":[],"importId":null
+    }))?);
+    d.tick(&events).await;
+    assert!(d.identity().await.is_err());
+    assert_eq!(d.queue.lock().await[0].status, "暂停中");
+    assert!(events.0.lock().unwrap().last().unwrap().is_none());
+    server.await?;
     std::fs::remove_dir_all(dir)?;
     Ok(())
 }

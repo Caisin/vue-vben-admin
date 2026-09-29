@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub trait SessionEvents: Send + Sync {
     fn updated(&self, session: &Session) -> Result<()>;
@@ -19,6 +19,9 @@ impl SessionEvents for AppHandle {
         Ok(())
     }
     fn cleared(&self, g: u64) -> Result<()> {
+        if let Some(tiktok) = self.try_state::<Arc<crate::tiktok::TikTok>>() {
+            tiktok.pause();
+        }
         self.emit_to("main", "desktop-session-cleared", g)?;
         Ok(())
     }
@@ -55,6 +58,7 @@ pub struct Auth {
 }
 pub struct Desktop {
     pub auth: Mutex<Auth>,
+    pub device: crate::device::Device,
     pub http: reqwest::Client,
     pub data: PathBuf,
     pub queue: Mutex<Vec<crate::queue::Job>>,
@@ -98,6 +102,7 @@ impl Desktop {
         let jobs = crate::queue::load(&data)?;
         let download_jobs = crate::download::load(&data)?;
         Ok(Arc::new(Self {
+            device: crate::device::Device::load(&data)?,
             auth: Mutex::new(Auth {
                 session: None,
                 base,
@@ -149,6 +154,9 @@ impl Desktop {
             .bearer_auth(&s.token)
             .header("security", "true")
             .header("x-kx-client", "tauri");
+        for (name, value) in self.device.headers(&s.token) {
+            req = req.header(name, value);
+        }
         if let Some(body) = body {
             req = req
                 .header("content-type", "application/json")
@@ -227,17 +235,52 @@ impl Desktop {
             let next = token_session(token.into(), a.base.clone(), a.generation + 1)?;
             ensure!(next.uid == s.uid, "刷新身份不一致");
             s = next;
-        } else {
-            self.send(&s, reqwest::Method::GET, "/auth/user/user_info", None)
-                .await?;
         }
+        self.send(
+            &s,
+            reqwest::Method::GET,
+            "/auth/client-devices/session",
+            None,
+        )
+        .await?;
         self.save(app, &mut a, s).await
     }
     pub async fn import(&self, app: &impl SessionEvents, token: String) -> Result<Session> {
+        self.import_at(app, token, None).await
+    }
+    pub async fn import_at(
+        &self,
+        app: &impl SessionEvents,
+        token: String,
+        expected: Option<(String, u64)>,
+    ) -> Result<Session> {
         let mut a = self.auth.lock().await;
+        if let Some((base, generation)) = expected {
+            ensure!(
+                a.base == base && a.generation == generation,
+                "登录期间会话已变化，请重试"
+            );
+        }
         let s = token_session(token, a.base.clone(), a.generation + 1)?;
-        self.send(&s, reqwest::Method::GET, "/auth/user/user_info", None)
+        let info = self.device.info();
+        let request = serde_json::json!({"proof":self.device.proof(&s.token),"name":info.name,"os":info.os,"app_version":info.app_version});
+        let body = self
+            .send(
+                &s,
+                reqwest::Method::POST,
+                "/auth/client-devices/exchange",
+                Some(&request),
+            )
             .await?;
+        let s = token_session(
+            body["access_token"]
+                .as_str()
+                .context("设备会话响应无效")?
+                .into(),
+            a.base.clone(),
+            a.generation + 1,
+        )?;
+
         if a.session.as_ref().is_some_and(|old| old.uid != s.uid) {
             self.pause_all().await?;
         }
@@ -304,11 +347,29 @@ impl Desktop {
     }
     pub async fn tick(&self, app: &impl SessionEvents) {
         let mut a = self.auth.lock().await;
-        if a.session
-            .as_ref()
-            .is_some_and(|s| s.expires_at <= now() + 60)
+        let Some(s) = a.session.clone() else {
+            return;
+        };
+        match self
+            .send(
+                &s,
+                reqwest::Method::GET,
+                "/auth/client-devices/session",
+                None,
+            )
+            .await
         {
-            let _ = self.refresh_locked(app, &mut a).await;
+            Ok(_) if s.expires_at <= now() + 60 => {
+                let _ = self.refresh_locked(app, &mut a).await;
+            }
+            Ok(_) => {}
+            Err(error) if error.to_string() == "unauthorized" => {
+                let _ = self.refresh_locked(app, &mut a).await;
+            }
+            // 不能确认授权时暂停任务，不允许断网状态继续开始下载。
+            Err(_) => {
+                let _ = self.clear_locked(app, &mut a).await;
+            }
         }
     }
 }

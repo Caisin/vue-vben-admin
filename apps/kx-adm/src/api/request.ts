@@ -22,7 +22,12 @@ import {
 import JSONBigInt from 'json-bigint';
 
 import { AuthApi } from '#/api/core';
-import { desktop, desktopApiBase, refreshDesktopSession } from '#/desktop';
+import {
+  desktop,
+  desktopApiBase,
+  desktopDeviceHeaders,
+  refreshDesktopSession,
+} from '#/desktop';
 import { requestErrorMessage } from '#/request-errors';
 import { useAuthStore } from '#/store';
 export { isRequestNotFound } from '#/request-errors';
@@ -95,6 +100,14 @@ function addCommonRequestHeaders(client: RequestClient) {
       const accessStore = useAccessStore();
       config.headers.Authorization = formatToken(accessStore.accessToken);
       config.headers['Accept-Language'] = preferences.app.locale;
+      if (desktop) {
+        config.headers['x-kx-client'] = 'tauri';
+        if (accessStore.accessToken)
+          Object.assign(
+            config.headers,
+            await desktopDeviceHeaders(accessStore.accessToken),
+          );
+      }
       return config;
     },
   });
@@ -173,6 +186,10 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
     // 登录页或 MFA 流程中的迟到 401 来自旧会话，不得重新唤起已失活布局中的登录过期 Teleport。
     if (authStore.pendingMfaLogin || isLoginPageLocation()) {
       accessStore.setLoginExpired(false);
+      return;
+    }
+    if (desktop) {
+      await authStore.logout();
       return;
     }
     if (

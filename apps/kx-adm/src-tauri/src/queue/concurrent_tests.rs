@@ -61,6 +61,7 @@ async fn tk_pool_limits_parallel_episodes_keeps_successes_and_records_directory_
                 } else {
                     let input:Value=if len>0 {serde_json::from_slice(&kx_ed::KxEd::de(&bytes[end..end+len]).await.unwrap()).unwrap()}else{Value::Null};
                     let result=if path=="/auth/user/user_info" {json!({"id":7})}
+                    else if path=="/auth/client-devices/exchange" {json!({"access_token":format!("h.{}.s",base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"uid":7,"exp":crate::session::now()+3600})).unwrap()))})}
                     else if path=="/adm/res/drama-storage" {json!({"code":"media","storage_type":"s3"})}
                     else if path.ends_with("/native-prepare") {let name=input["file_name"].as_str().unwrap();json!({"upload_required":true,"key":format!("res/41/versions/2/{}",input["md5_hash"].as_str().unwrap()),"content_type":"video/mp4","content_disposition":format!("inline; filename={name}.mp4"),"config":{"endpoint":base,"bucket":"videos","region":"us-east-1","enable_virtual_host":false,"access_key_id":"test-access","secret_access_key":"test-secret","session_token":""}})}
                     else if path.ends_with("/complete") {let name=input["file_name"].as_str().unwrap().parse::<i64>().unwrap();json!({"file":{"file_id":100+name}})}

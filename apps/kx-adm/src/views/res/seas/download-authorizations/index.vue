@@ -10,6 +10,7 @@ import type { ResRecord } from '#/api/res/seas/global/source_manage';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
 import {
@@ -33,6 +34,10 @@ import { requestErrorMessage } from '#/request-errors';
 import BatchGrant from './modules/batch-grant.vue';
 import UserTreeSelect from './modules/user-tree-select.vue';
 
+const { hasAccessByCodes } = useAccess();
+const canManage = computed(() =>
+  hasAccessByCodes(['res:download:authorize', 'res:content:manage']),
+);
 const rows = ref<DownloadGrant[]>([]);
 const userTree = ref<DownloadUserTreeNode[]>([]);
 const userTreeLoading = ref(false);
@@ -252,8 +257,8 @@ onMounted(async () => {
           />
         </FormItem>
         <Button type="primary" :loading="loading" @click="query">查询</Button>
-        <Button @click="create">新增授权</Button>
-        <Button @click="batchOpen = true">批量授权</Button>
+        <Button v-if="canManage" @click="create">新增授权</Button>
+        <Button v-if="canManage" @click="batchOpen = true">批量授权</Button>
       </Form>
     </div>
     <Table
@@ -288,14 +293,14 @@ onMounted(async () => {
           formatTime(record.valid_until, '永久有效')
         }}</span>
         <Button
-          v-if="column.key === 'action'"
+          v-if="canManage && column.key === 'action'"
           type="link"
           @click="edit(record)"
         >
           编辑
         </Button>
         <Button
-          v-if="column.key === 'action'"
+          v-if="canManage && column.key === 'action'"
           danger
           type="link"
           @click="revoke(record)"

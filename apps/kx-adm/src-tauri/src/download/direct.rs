@@ -46,14 +46,19 @@ impl Desktop {
                     current.uid == session.uid && current.api_base == session.api_base,
                     "登录身份已变化"
                 );
-                self.http
+                let mut request = self
+                    .http
                     .get(format!(
                         "{}/api/res/downloads/{}/{}?task_id={}",
                         current.api_base, job.res_id, file.file_id, job.task_id
                     ))
                     .bearer_auth(&current.token)
                     .header("security", "true")
-                    .header("x-kx-client", "tauri")
+                    .header("x-kx-client", "tauri");
+                for (name, value) in self.device.headers(&current.token) {
+                    request = request.header(name, value);
+                }
+                request
                     .send()
                     .await
                     .map_err(|e| anyhow::anyhow!("请求本地存储失败：{}", e.without_url()))?

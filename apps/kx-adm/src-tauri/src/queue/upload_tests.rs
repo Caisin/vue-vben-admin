@@ -79,6 +79,9 @@ async fn exercise_upload(size: usize) -> Result<()> {
                     serde_json::json!({"code":"media","storage_name":"剧视频","storage_type":"s3"})
                 }
                 "/auth/user/user_info" => serde_json::json!({"id":7}),
+                "/auth/client-devices/exchange" => {
+                    serde_json::json!({"access_token":format!("h.{}.s",base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&serde_json::json!({"uid":7,"exp":crate::session::now()+3600})).unwrap()))})
+                }
                 "/adm/res/41/versions/2/files/media/native-prepare" => {
                     let body: Value = serde_json::from_slice(
                         &kx_ed::KxEd::de(&bytes[end..end + len]).await.unwrap(),

@@ -1,3 +1,5 @@
+mod device;
+mod dingtalk;
 mod download;
 mod image;
 mod protocol;
@@ -13,6 +15,34 @@ type Native<'a> = State<'a, Arc<Desktop>>;
 type Reply<T> = Result<T, String>;
 fn error(e: anyhow::Error) -> String {
     e.to_string()
+}
+
+#[tauri::command]
+fn desktop_device_info(
+    window: tauri::WebviewWindow,
+    state: Native<'_>,
+) -> Reply<device::DeviceInfo> {
+    tiktok::local_caller(&window).map_err(error)?;
+    Ok(state.device.info())
+}
+#[tauri::command]
+fn desktop_device_headers(
+    window: tauri::WebviewWindow,
+    state: Native<'_>,
+    token: String,
+) -> Reply<std::collections::HashMap<String, String>> {
+    tiktok::local_caller(&window).map_err(error)?;
+    Ok(state.device.headers(&token))
+}
+#[tauri::command]
+async fn desktop_dingtalk_login(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    app_key: Option<String>,
+) -> Reply<Session> {
+    tiktok::local_caller(&window).map_err(error)?;
+    dingtalk::login(&state, &app, app_key).await.map_err(error)
 }
 
 #[tauri::command]
@@ -528,6 +558,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            desktop_device_info,
+            desktop_device_headers,
+            desktop_dingtalk_login,
             desktop_image_env_status,
             desktop_image_set_env,
             desktop_bootstrap,

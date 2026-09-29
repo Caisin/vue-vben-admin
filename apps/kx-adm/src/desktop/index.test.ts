@@ -39,6 +39,33 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 describe('桌面会话同步', () => {
+  it('钉钉设备授权成功后只保存绑定会话', async () => {
+    native.invoke.mockResolvedValue(session(2, 'device-bound'));
+    const bridge = await import('./index');
+    expect(await bridge.desktopDingTalkLogin('corp')).toBe('device-bound');
+    expect(native.invoke).toHaveBeenCalledWith('desktop_dingtalk_login', {
+      appKey: 'corp',
+    });
+    expect(
+      JSON.parse(localStorage.getItem(desktopSessionKey) ?? 'null').token,
+    ).toBe('device-bound');
+  });
+  it('设备未授权时不保存钉钉中间令牌', async () => {
+    native.invoke.mockRejectedValue(new Error('设备未授权'));
+    const bridge = await import('./index');
+    await expect(bridge.desktopDingTalkLogin()).rejects.toThrow('设备未授权');
+    expect(localStorage.getItem(desktopSessionKey)).toBeNull();
+  });
+  it('导入时返回服务器签发的设备令牌', async () => {
+    native.invoke.mockResolvedValue(session(2, 'bound'));
+    const bridge = await import('./index');
+    expect(await bridge.importDesktopSession('dingtalk-intermediate')).toBe(
+      'bound',
+    );
+    expect(
+      JSON.parse(localStorage.getItem(desktopSessionKey) ?? 'null').token,
+    ).toBe('bound');
+  });
   it('读取生图环境变量状态但不接收 key', async () => {
     native.invoke.mockResolvedValue({
       available: false,

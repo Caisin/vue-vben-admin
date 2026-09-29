@@ -165,8 +165,30 @@ export async function bindDesktopSession(
   }
 }
 export async function importDesktopSession(token: string) {
-  if (desktop)
-    receive(await invoke<DesktopSession>('desktop_import_session', { token }));
+  if (!desktop) return token;
+  const session = await invoke<DesktopSession>('desktop_import_session', {
+    token,
+  });
+  receive(session);
+  return session.token;
+}
+export function desktopDeviceInfo() {
+  return invoke<{
+    device_id: string;
+    name: string;
+    os: string;
+    app_version: string;
+  }>('desktop_device_info');
+}
+export function desktopDeviceHeaders(token: string) {
+  return invoke<Record<string, string>>('desktop_device_headers', { token });
+}
+export async function desktopDingTalkLogin(appKey?: string) {
+  const session = await invoke<DesktopSession>('desktop_dingtalk_login', {
+    appKey,
+  });
+  receive(session);
+  return session.token;
 }
 export async function refreshDesktopSession(expected?: string) {
   const session = await invoke<DesktopSession>('desktop_refresh_session', {
