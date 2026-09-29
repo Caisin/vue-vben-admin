@@ -560,6 +560,7 @@ watch(runDrawerOpen, (open) => {
             v-model:value="payloadForm[field.name]"
             allow-clear
             :loading="executorLoading"
+            :mode="field.multiple ? 'multiple' : undefined"
             not-found-content="暂无可选项"
             :options="field.options"
             :placeholder="`选择${field.label}`"

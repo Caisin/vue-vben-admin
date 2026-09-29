@@ -224,7 +224,8 @@ function stageText(video: AppShortSyncVideoRecord) {
 function bytesText(value: number) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  return `${(value / 1024 ** 3).toFixed(2)} GB`;
 }
 function stageProgressText(video: AppShortSyncVideoRecord) {
   if (video.state === 'pending' || video.state === 'succeeded') return '';
@@ -746,11 +747,12 @@ onBeforeUnmount(closeSyncLogs);
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'progress'">
-            {{ record.progress_current }}
-            <span v-if="record.progress_total != null">
-              / {{ record.progress_total }}
-            </span>
-            {{ record.progress_unit }}
+            <div>{{ stageProgressText(record) || '—' }}</div>
+            <Progress
+              v-if="stagePercent(record) !== undefined"
+              :percent="stagePercent(record)"
+              size="small"
+            />
           </template>
           <span v-else-if="column.key === 'updated_at'">
             {{ time(record.updated_at) }}

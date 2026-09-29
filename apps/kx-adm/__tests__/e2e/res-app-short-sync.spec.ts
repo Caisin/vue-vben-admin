@@ -172,7 +172,30 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
     }
     if (path.endsWith('/videos')) {
       if (!url.searchParams.has('res_id'))
-        return fulfillApi(route, { items: [], total: 0, counts: {} });
+        return fulfillApi(route, {
+          items: [
+            {
+              video: {
+                id: 999,
+                res_id: 999,
+                res_name: '字节进度测试',
+                version_id: 999,
+                version_name: '测试版',
+                seq_no: 1,
+                state: 'running',
+                stage: 'download_mp4',
+                progress_current: 512 * 1024 ** 2,
+                progress_total: 1024 ** 3,
+                progress_unit: 'bytes',
+                attempts: 1,
+                failure_count: 0,
+                updated_at: 1,
+              },
+            },
+          ],
+          total: 1,
+          counts: { running: 1 },
+        });
       detailRequests.push(url);
       return fulfillApi(route, {
         items: [
@@ -208,6 +231,10 @@ test('按剧详情和单剧停止恢复', async ({ page }) => {
   const drama1 = page.getByRole('row').filter({ hasText: '测试短剧1' });
   const drama2 = page.getByRole('row').filter({ hasText: '测试短剧2' });
   await expect(drama1).toBeVisible();
+  const active = page.getByRole('row').filter({ hasText: '字节进度测试' });
+  await expect(active).toContainText('512.0 MB / 1.00 GB');
+  await expect(active).toContainText('50%');
+
   await page
     .getByRole('button', { name: '清理视频失败次数', exact: true })
     .click();

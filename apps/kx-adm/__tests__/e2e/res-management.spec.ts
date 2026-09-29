@@ -5,13 +5,22 @@ import { Buffer } from 'node:buffer';
 import { KxEd } from '@kx/admin-core';
 import { expect, test } from '@playwright/test';
 
+test.use({ headless: true });
+
 const ok = (result: unknown) => ({ code: 200, msg: 'ok', result });
 
 test('loads dynamic RES menu and renders the resource workspace', async ({
   page,
 }) => {
+  const queries: URL[] = [];
+  await page.route('**/api/**', (route) => {
+    if (!new URL(route.request().url()).pathname.startsWith('/api/'))
+      return route.continue();
+    return fulfillApi(route, { items: [], unread_count: 0 });
+  });
   await page.route('**/auth/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const path = new URL(route.request().url()).pathname.replace(/^\/api/, '');
+    if (!path.startsWith('/auth/')) return route.continue();
     if (path === '/auth/user/access_token') {
       expect(route.request().headers().security).toBe('true');
       const body = route.request().postDataBuffer();
@@ -29,22 +38,28 @@ test('loads dynamic RES menu and renders the resource workspace', async ({
     await fulfillApi(route, result);
   });
   await page.route('**/adm/res?**', async (route) => {
+    const query = new URL(route.request().url());
+    queries.push(query);
+    const found =
+      !query.searchParams.has('id') || query.searchParams.get('id') === '10';
     await fulfillApi(route, {
-      items: [
-        {
-          cover: 'https://example.test/cover.jpg',
-          ext_info: { tags: [] },
-          id: 10,
-          lang_info: { en: { res_name: 'Migration Drama' } },
-          res_name: '迁移验收短剧',
-          res_type: 'drama',
-          state: 1,
-        },
-      ],
+      items: found
+        ? [
+            {
+              cover: 'https://example.test/cover.jpg',
+              ext_info: { tags: [] },
+              id: 10,
+              lang_info: { en: { res_name: 'Migration Drama' } },
+              res_name: '迁移验收短剧',
+              res_type: 'drama',
+              state: 1,
+            },
+          ]
+        : [],
       page_no: 1,
       page_size: 20,
       pages: 1,
-      total: 1,
+      total: found ? 1 : 0,
     });
   });
 
@@ -53,11 +68,32 @@ test('loads dynamic RES menu and renders the resource workspace', async ({
   await page.locator("input[name='password']").fill('123456');
   await page.getByRole('button', { name: /登录|login/i }).click();
 
-  await expect(page.getByText('迁移验收短剧')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '迁移验收短剧', exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText('资源管理', { exact: true }).first(),
   ).toBeVisible();
   await expect(page.getByRole('menu').getByText('资源模块')).toBeVisible();
+  const id = page.getByRole('spinbutton', { name: 'ID', exact: true });
+  await id.fill('10');
+  await expect.poll(() => queries.at(-1)?.searchParams.get('id')).toBe('10');
+  expect(queries.at(-1)?.searchParams.has('id.eq')).toBe(false);
+  await expect(
+    page.getByRole('button', { name: '迁移验收短剧', exact: true }),
+  ).toBeVisible();
+  await id.fill('999999');
+  await expect
+    .poll(() => queries.at(-1)?.searchParams.get('id'))
+    .toBe('999999');
+  await expect(
+    page.getByRole('button', { name: '迁移验收短剧', exact: true }),
+  ).toHaveCount(0);
+  await id.fill('');
+  await expect.poll(() => queries.at(-1)?.searchParams.has('id')).toBe(false);
+  await expect(
+    page.getByRole('button', { name: '迁移验收短剧', exact: true }),
+  ).toBeVisible();
 });
 
 async function fulfillApi(route: Route, result: unknown) {

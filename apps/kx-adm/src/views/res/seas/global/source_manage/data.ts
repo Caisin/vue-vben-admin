@@ -30,7 +30,12 @@ export function useGridFormSchema(): VbenFormSchema[] {
       componentProps: { placeholder: ['开始日期', '结束日期'] },
       help: '同步剧使用源剧的原始创建时间，重新扫描可补齐历史记录',
     },
-    { component: 'InputNumber', fieldName: 'id', label: 'ID' },
+    {
+      component: 'InputNumber',
+      fieldName: 'id',
+      label: 'ID',
+      help: '按资源 ID 精确查询，优先于全文关键字；可同时筛选状态、类型和日期',
+    },
     {
       component: 'Input',
       componentProps: {

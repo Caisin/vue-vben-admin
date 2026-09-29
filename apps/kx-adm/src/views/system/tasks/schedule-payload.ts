@@ -25,6 +25,7 @@ export interface PayloadFormField {
   component: PayloadFieldComponent;
   help?: string;
   label: string;
+  multiple?: boolean;
   maximum?: number;
   minimum?: number;
   name: string;
@@ -198,6 +199,9 @@ export function payloadFieldsFromExecutor(
     label: fieldLabel(name, property),
     maximum: property.maximum,
     minimum: property.minimum,
+    multiple:
+      propertyType(property) === 'array' &&
+      fieldComponent(property) === 'select',
     name,
     options: fieldOptions(property),
     required: required.has(name),
@@ -221,6 +225,7 @@ function canReusePayloadValue(
   source: PayloadFormValues,
 ): boolean {
   if (!hasOwnRecordValue(source, field.name)) return false;
+  if (field.multiple) return true; // 保留已保存的选择，不因选项变化静默扩大成“全部”。
   if (!field.options?.length) return true;
   return field.options.some((option) =>
     optionValueMatches(option, source[field.name]),
@@ -228,6 +233,10 @@ function canReusePayloadValue(
 }
 
 function displayPayloadValue(field: PayloadFormField, value: unknown): unknown {
+  if (field.multiple) {
+    if (Array.isArray(value)) return value;
+    return value ? [value] : [];
+  }
   if (
     field.component === 'textarea' &&
     value !== null &&
@@ -239,6 +248,7 @@ function displayPayloadValue(field: PayloadFormField, value: unknown): unknown {
 }
 
 function defaultValue(field: PayloadFormField): unknown {
+  if (field.multiple) return [];
   if (field.schema.const !== undefined) {
     return selectValue(primitiveOptionValue(field.schema.const));
   }
@@ -281,6 +291,16 @@ function parseComplexField(field: PayloadFormField, value: unknown) {
 
 function normalizeFieldValue(field: PayloadFormField, value: unknown): unknown {
   const parsed = parseComplexField(field, value);
+  if (field.multiple) {
+    if (isBlank(parsed)) return [];
+    return [
+      ...new Set(
+        (Array.isArray(parsed) ? parsed : [parsed]).map((item) =>
+          typeof item === 'string' ? item.trim() : item,
+        ),
+      ),
+    ];
+  }
   if (isBlank(parsed)) return undefined;
   const type = propertyType(field.schema);
   if (field.component === 'select' && type === 'boolean') {

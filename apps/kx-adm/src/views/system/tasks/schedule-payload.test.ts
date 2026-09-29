@@ -188,3 +188,40 @@ describe('task schedule payload form helpers', () => {
     ).toBe('weekly_report:dingtalk:2:2026-08-03:1:7:8');
   });
 });
+
+describe('多选任务参数', () => {
+  const fields = payloadFieldsFromExecutor({
+    payload_schema: {
+      type: 'object',
+      properties: {
+        source: {
+          type: 'array',
+          title: '组织数据源',
+          x_options_source: true,
+          x_options: [
+            { label: '组织 A', value: 'dingtalk:a' },
+            { label: '组织 B', value: 'dingtalk:b' },
+          ],
+        },
+      },
+    },
+  });
+  it('留空不自动选择第一项，保存空数组表示全部', () => {
+    expect(fields[0]?.multiple).toBe(true);
+    const values = initialPayloadFormValues(fields, {});
+    expect(values.source).toEqual([]);
+    expect(buildPayloadFromFormValues(fields, values)).toEqual({ source: [] });
+    expect(validatePayloadFormValues(fields, values)).toBeUndefined();
+  });
+  it('兼容旧单选，保留多选和不再出现在选项中的原选择', () => {
+    expect(
+      initialPayloadFormValues(fields, { source: 'dingtalk:a' }).source,
+    ).toEqual(['dingtalk:a']);
+    const values = initialPayloadFormValues(fields, {
+      source: ['dingtalk:a', 'dingtalk:old'],
+    });
+    expect(buildPayloadFromFormValues(fields, values)).toEqual({
+      source: ['dingtalk:a', 'dingtalk:old'],
+    });
+  });
+});
