@@ -57,6 +57,8 @@ rtk proxy pnpm --filter @kx/adm build:desktop
 rtk proxy pnpm --filter @kx/adm exec tauri build --debug --bundles app
 ```
 
+桌面端构建使用 `apps/kx-adm/.env.tauri` 中的服务地址，当前默认 API 为 `https://share.qinjiu8.com`；普通 Web 生产构建继续使用 `.env.production` 的相对 `/api` 地址。
+
 最后一个命令用于 macOS 本地 `.app` 验证。自动测试使用临时目录、内存会话和 loopback HTTP，不访问真实账号或业务存储。发布前另行验证各平台登录恢复、目录选择、托盘恢复与生产对象存储。
 
 原生业务 API 客户端直接使用 `reqwest::Client`；请求 JSON 通过 `kx_ed::KxEd::en` 加密，响应通过 `KxEd::de` 解密，桌面端不再维护独立加解密算法。

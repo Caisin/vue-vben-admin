@@ -25,7 +25,7 @@ import { adminPasswordLoginRequest } from '#/auth';
 import {
   clearDesktopSession,
   desktop,
-  desktopDingTalkLogin,
+  desktopDingTalkDevice,
   importDesktopSession,
 } from '#/desktop';
 import { $t } from '#/locales';
@@ -103,6 +103,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function handleLoginResponse(
     body: AuthBody | MfaLoginChallenge,
     onSuccess?: () => Promise<void> | void,
+    deviceAuthorized = false,
   ) {
     if (isMfaLoginChallenge(body)) {
       if (router.currentRoute.value.path === LOGIN_PATH) {
@@ -118,7 +119,11 @@ export const useAuthStore = defineStore('auth', () => {
 
     pendingMfaLogin.value = undefined;
     const session = toAuthSession(body);
-    return await establishSession(session.accessToken, onSuccess);
+    return await establishSession(
+      session.accessToken,
+      onSuccess,
+      deviceAuthorized,
+    );
   }
 
   /**
@@ -137,19 +142,6 @@ export const useAuthStore = defineStore('auth', () => {
         adminPasswordLoginRequest(params.username, params.password),
       );
       return await handleLoginResponse(body, onSuccess);
-    } finally {
-      loginLoading.value = false;
-    }
-  }
-
-  async function authDesktopDingTalk(appKey?: string) {
-    try {
-      loginLoading.value = true;
-      return await establishSession(
-        await desktopDingTalkLogin(appKey),
-        undefined,
-        true,
-      );
     } finally {
       loginLoading.value = false;
     }
@@ -177,8 +169,13 @@ export const useAuthStore = defineStore('auth', () => {
   ) {
     try {
       loginLoading.value = true;
-      const body = await DingTalkApi.exchange({ exchange_code });
-      return await handleLoginResponse(body, onSuccess);
+      const body = await DingTalkApi.exchange({
+        exchange_code,
+        ...(desktop
+          ? { device: await desktopDingTalkDevice(exchange_code) }
+          : {}),
+      });
+      return await handleLoginResponse(body, onSuccess, desktop);
     } finally {
       loginLoading.value = false;
     }
@@ -292,7 +289,6 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     $reset,
     authDingTalkExchange,
-    authDesktopDingTalk,
     desktopSessionCleared,
     authLogin,
     authorizePrivacyReveal,

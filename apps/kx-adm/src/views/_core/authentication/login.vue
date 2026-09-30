@@ -12,7 +12,7 @@ import { $t } from '@vben/locales';
 import { Button, message, Select } from 'antdv-next';
 
 import { DingTalkApi } from '#/api';
-import { desktop, desktopDeviceInfo } from '#/desktop';
+import { desktop } from '#/desktop';
 import DesktopConnection from '#/desktop/connection.vue';
 import { useAuthStore } from '#/store';
 
@@ -28,14 +28,16 @@ const authStore = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 
-const deviceId = ref('');
 const desktopError = ref('');
+const desktopPending = ref(false);
 const dingtalkApps = ref<Awaited<ReturnType<typeof DingTalkApi.apps>>>([]);
 const selectedDingtalkAppKey = ref<string>();
 
 const visibleDingtalkApps = computed(() => dingtalkApps.value);
 const showDingtalkSelect = computed(() => visibleDingtalkApps.value.length > 1);
-const hasDingtalkLogin = computed(() => visibleDingtalkApps.value.length > 0);
+const hasDingtalkLogin = computed(
+  () => desktop || visibleDingtalkApps.value.length > 0,
+);
 
 const formSchema = computed((): VbenFormSchema[] => {
   return [
@@ -107,21 +109,26 @@ async function exchangeDingTalkCode() {
     await authStore.authDingTalkExchange(exchange_code);
   } catch (error) {
     console.error(error);
-    message.error('钉钉登录失败，请重新发起登录');
-    await loadDingTalkApps();
+    const errorMessage = String(error).replace(/^Error:\s*/, '');
+    if (desktop) {
+      if (
+        errorMessage.includes('设备待审核') ||
+        errorMessage.includes('设备未授权')
+      ) {
+        desktopPending.value = true;
+      } else {
+        desktopError.value = errorMessage;
+      }
+    } else {
+      message.error('钉钉登录失败，请重新发起登录');
+      await loadDingTalkApps();
+    }
   }
 }
 
 async function onDingTalkLogin() {
-  if (desktop) {
-    desktopError.value = '';
-    try {
-      await authStore.authDesktopDingTalk(selectedAppKey());
-    } catch (error) {
-      desktopError.value = String(error);
-    }
-    return;
-  }
+  desktopError.value = '';
+  desktopPending.value = false;
   window.location.href = DingTalkApi.loginUrl(
     selectedAppKey(),
     currentLoginUrl(),
@@ -133,18 +140,7 @@ async function onSubmit(params: Recordable<any>) {
 }
 
 onMounted(async () => {
-  await Promise.all([
-    loadDingTalkApps(),
-    desktop
-      ? desktopDeviceInfo()
-          .then((info) => {
-            deviceId.value = info.device_id;
-          })
-          .catch((error) => {
-            desktopError.value = String(error);
-          })
-      : exchangeDingTalkCode(),
-  ]);
+  await Promise.all([loadDingTalkApps(), exchangeDingTalkCode()]);
 });
 </script>
 
@@ -155,7 +151,7 @@ onMounted(async () => {
     <section v-if="desktop" class="space-y-4">
       <h1 class="text-2xl font-semibold">钉钉登录</h1>
       <p class="text-muted-foreground">
-        使用钉钉确认登录人。首次登录后，请联系管理员授权此设备。
+        使用钉钉确认登录人，并申请本机客户端授权。管理员审核通过后即可进入系统。
       </p>
       <Select
         v-if="showDingtalkSelect"
@@ -173,20 +169,17 @@ onMounted(async () => {
         type="primary"
         class="w-full"
         :loading="authStore.loginLoading"
-        :disabled="!hasDingtalkLogin || !deviceId"
+        :disabled="authStore.loginLoading"
         @click="onDingTalkLogin"
       >
         使用钉钉登录
       </Button>
-      <p v-if="!hasDingtalkLogin" role="alert">
-        暂未获取到钉钉登录应用，请检查服务地址或联系管理员。
+      <p v-if="desktopPending" class="text-warning" role="status">
+        本机设备已提交后台审核，当前状态：待审核。管理员审核通过后，请再次点击“使用钉钉登录”。
       </p>
       <p v-if="desktopError" class="text-destructive" role="alert">
         {{ desktopError }}
       </p>
-      <div class="text-sm text-muted-foreground">
-        设备号 <code class="block select-all break-all">{{ deviceId }}</code>
-      </div>
     </section>
     <AuthenticationLogin
       v-else

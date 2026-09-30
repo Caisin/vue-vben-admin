@@ -180,15 +180,21 @@ export function desktopDeviceInfo() {
     app_version: string;
   }>('desktop_device_info');
 }
+export function desktopDingTalkDevice(exchangeCode: string) {
+  return invoke<{
+    app_version: string;
+    name: string;
+    os: string;
+    proof: {
+      device_id: string;
+      public_key: string;
+      signature: string;
+      timestamp: number;
+    };
+  }>('desktop_dingtalk_device', { exchangeCode });
+}
 export function desktopDeviceHeaders(token: string) {
   return invoke<Record<string, string>>('desktop_device_headers', { token });
-}
-export async function desktopDingTalkLogin(appKey?: string) {
-  const session = await invoke<DesktopSession>('desktop_dingtalk_login', {
-    appKey,
-  });
-  receive(session);
-  return session.token;
 }
 export async function refreshDesktopSession(expected?: string) {
   const session = await invoke<DesktopSession>('desktop_refresh_session', {

@@ -107,6 +107,17 @@ export interface DingTalkLoginApp {
 
 export interface DingTalkExchangeRequest {
   exchange_code: string;
+  device?: {
+    app_version: string;
+    name: string;
+    os: string;
+    proof: {
+      device_id: string;
+      public_key: string;
+      signature: string;
+      timestamp: number;
+    };
+  };
 }
 
 /** 前端会话模型，供 Vben store 使用。 */

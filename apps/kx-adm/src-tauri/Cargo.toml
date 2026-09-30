@@ -16,7 +16,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-dialog = "2"
-open = "5"
 machine-uid = "0.6"
 ring = "0.17"
 tauri-plugin-single-instance = "2"

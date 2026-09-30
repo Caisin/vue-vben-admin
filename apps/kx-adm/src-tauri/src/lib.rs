@@ -1,5 +1,4 @@
 mod device;
-mod dingtalk;
 mod download;
 mod image;
 mod protocol;
@@ -35,14 +34,13 @@ fn desktop_device_headers(
     Ok(state.device.headers(&token))
 }
 #[tauri::command]
-async fn desktop_dingtalk_login(
+fn desktop_dingtalk_device(
     window: tauri::WebviewWindow,
-    app: tauri::AppHandle,
     state: Native<'_>,
-    app_key: Option<String>,
-) -> Reply<Session> {
+    exchange_code: String,
+) -> Reply<device::DingTalkDevice> {
     tiktok::local_caller(&window).map_err(error)?;
-    dingtalk::login(&state, &app, app_key).await.map_err(error)
+    Ok(state.device.dingtalk_device(&exchange_code))
 }
 
 #[tauri::command]
@@ -560,7 +558,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             desktop_device_info,
             desktop_device_headers,
-            desktop_dingtalk_login,
+            desktop_dingtalk_device,
             desktop_image_env_status,
             desktop_image_set_env,
             desktop_bootstrap,

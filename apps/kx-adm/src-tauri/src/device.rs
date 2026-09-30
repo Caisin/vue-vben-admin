@@ -18,6 +18,13 @@ pub struct DeviceInfo {
     pub os: String,
     pub app_version: String,
 }
+#[derive(Serialize)]
+pub struct DingTalkDevice {
+    pub proof: Proof,
+    pub name: String,
+    pub os: String,
+    pub app_version: String,
+}
 pub struct Device {
     id: String,
     key: Ed25519KeyPair,
@@ -73,6 +80,15 @@ impl Device {
                 .unwrap_or_else(|_| "KX ADM".into()),
             os: std::env::consts::OS.into(),
             app_version: env!("CARGO_PKG_VERSION").into(),
+        }
+    }
+    pub fn dingtalk_device(&self, exchange_code: &str) -> DingTalkDevice {
+        let info = self.info();
+        DingTalkDevice {
+            proof: self.proof(exchange_code),
+            name: info.name,
+            os: info.os,
+            app_version: info.app_version,
         }
     }
     pub fn proof(&self, token: &str) -> Proof {

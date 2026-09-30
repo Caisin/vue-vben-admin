@@ -175,7 +175,7 @@ describe('设备管理操作闭环', () => {
       total: 1,
     });
     await mount();
-    expect(document.body.textContent).toContain('待授权');
+    expect(document.body.textContent).toContain('待审核');
     expect(document.body.textContent).toContain('张三');
     click('授权');
     await state.confirm.mock.calls.at(-1)?.[0].onOk();

@@ -30,7 +30,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "dev:desktop": "cross-env VITE_TAURI=true pnpm vite --port 1420 --strictPort",
-    "build:desktop": "cross-env VITE_TAURI=true pnpm vite build --mode production"
+    "build:desktop": "cross-env VITE_TAURI=true pnpm vite build --mode tauri"
   },
   "imports": {
     "#/*": "./src/*"

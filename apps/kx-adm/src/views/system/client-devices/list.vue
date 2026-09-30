@@ -31,7 +31,7 @@ const rows = ref<ClientDevice[]>([]);
 const status = ref<string>();
 const total = ref(0);
 const statusLabels: Record<string, string> = {
-  pending: '待授权',
+  pending: '待审核',
   approved: '已授权',
   revoked: '已撤销',
 };
