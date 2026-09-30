@@ -37,6 +37,7 @@ const delegatedRoleMode = computed(
     hasAccessByCodes(['users:delegate-roles']) &&
     !hasAccessByCodes(['AC_100100']),
 );
+const canAssignAllRoles = computed(() => userStore.userRoles.includes('admin'));
 
 const formData = ref<SystemUser>();
 const permissionMenus = ref<SystemMenu[]>([]);
@@ -131,11 +132,7 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
         id.value = data.id;
         selectedApiIds.value = [...(data.apiIds ?? [])];
         selectedPermissionIds.value = [...(data.permissions ?? [])];
-        immutableRoleIds.value = delegatedRoleMode.value
-          ? normalizeRoleIds(data.roles).filter(
-              (roleId) => !userStore.userRoles.includes(roleId),
-            )
-          : [];
+        immutableRoleIds.value = [];
       } else {
         formData.value = undefined;
         id.value = undefined;
@@ -148,6 +145,12 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
         loadRoles(),
         delegatedRoleMode.value ? Promise.resolve() : loadPermissionGrants(),
       ]);
+      if (data && !canAssignAllRoles.value) {
+        const assignableRoleIds = new Set(roles.value.map((role) => role.id));
+        immutableRoleIds.value = normalizeRoleIds(data.roles).filter(
+          (roleId) => !assignableRoleIds.has(roleId),
+        );
+      }
       await formApi.updateSchema([
         {
           componentProps: { disabled: editingSelf.value },
@@ -186,9 +189,7 @@ async function loadRoles() {
   loadingRoles.value = true;
   try {
     const fetchedRoles = await SystemRoleApi.assignable();
-    roles.value = delegatedRoleMode.value
-      ? fetchedRoles.filter((role) => userStore.userRoles.includes(role.id))
-      : fetchedRoles;
+    roles.value = fetchedRoles;
     await formApi.updateSchema([
       {
         componentProps: {
