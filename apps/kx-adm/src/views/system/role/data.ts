@@ -246,6 +246,7 @@ export function useColumns<T = SystemRole>(
           { auth: 'roles:manage', code: 'edit' },
           { code: 'detail' },
           { auth: 'roles:copy', code: 'copy', text: '复制' },
+          { auth: 'roles:assign-users', code: 'users', text: '用户' },
           { auth: 'roles:manage', code: 'delete' },
         ],
       },

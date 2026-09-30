@@ -26,6 +26,14 @@ export type SystemRoleWrite = Partial<Omit<SystemRole, 'createTime' | 'id'>> & {
   name?: string;
 };
 
+export interface RoleUser {
+  email: string;
+  enabled: boolean;
+  id: string;
+  name: string;
+  tel: string;
+}
+
 function homePermissionId(value: null | string | undefined) {
   return value ? Number(value) : null;
 }
@@ -63,12 +71,15 @@ function toRoleWrite(id: string, data: SystemRoleWrite): AdminRoleWrite {
 }
 
 export const SystemRoleApi = {
-  async all(): Promise<SystemRole[]> {
+  async assignable(): Promise<SystemRole[]> {
     const roles = await requestClient.get<AdminRole[]>('/auth/role/all');
     return roles.map((role) => ({
       ...toSystemRole(role, role.permission_ids),
       apiIds: role.api_ids?.map(String) ?? [],
     }));
+  },
+  all(): Promise<SystemRole[]> {
+    return this.assignable();
   },
   async detail(id: string): Promise<SystemRole> {
     const role = await requestClient.get<AdminRoleDetail>(`/auth/role/${id}`);
@@ -91,6 +102,45 @@ export const SystemRoleApi = {
       total: result.total,
     };
   },
+  async users(
+    id: string,
+    params: LegacyPageQuery = {},
+  ): Promise<LegacyPage<RoleUser>> {
+    const result = await requestClient.get<
+      import('#/api/request').Page<{
+        email: string;
+        enabled: boolean;
+        id: number | string;
+        name: string;
+        tel: string;
+      }>
+    >(`/auth/role/${id}/users`, {
+      params: {
+        ...pageParams(params),
+        keyword: params.keyword,
+        enabled:
+          params.status === undefined
+            ? undefined
+            : enabledFromStatus(params.status),
+      },
+    });
+    return {
+      items: result.items.map((user) => ({
+        email: user.email,
+        enabled: user.enabled,
+        id: String(user.id),
+        name: user.name,
+        tel: user.tel,
+      })),
+      total: result.total,
+    };
+  },
+  addUser: (id: string, uid: string) =>
+    requestClient.post<boolean>(`/auth/role/${id}/users`, {
+      uid: Number(uid),
+    }),
+  removeUser: (id: string, uid: string) =>
+    requestClient.delete<boolean>(`/auth/role/${id}/users/${uid}`),
   async create(data: SystemRoleWrite) {
     const id = data.id || data.name || '';
     const role = await requestClient.post<AdminRole>(

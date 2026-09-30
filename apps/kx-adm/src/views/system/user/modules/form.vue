@@ -172,7 +172,7 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
 async function loadRoles() {
   loadingRoles.value = true;
   try {
-    const fetchedRoles = await SystemRoleApi.all();
+    const fetchedRoles = await SystemRoleApi.assignable();
     roles.value = delegatedRoleMode.value
       ? fetchedRoles.filter((role) => userStore.userRoles.includes(role.id))
       : fetchedRoles;
