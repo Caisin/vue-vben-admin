@@ -18,7 +18,7 @@ const { tokens } = useAntdDesignTokens();
 const csp = computed(() => {
   if (typeof document === 'undefined') return undefined;
 
-  const nonce = document.querySelector('[nonce]')?.getAttribute('nonce');
+  const nonce = document.querySelector('style[nonce]')?.getAttribute('nonce');
   return nonce ? { nonce } : undefined;
 });
 
