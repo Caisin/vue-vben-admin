@@ -172,6 +172,14 @@ export async function importDesktopSession(token: string) {
   receive(session);
   return session.token;
 }
+export async function syncDesktopSession(token: string) {
+  if (!desktop) return token;
+  const session = await invoke<DesktopSession>('desktop_sync_session', {
+    token,
+  });
+  receive(session);
+  return session.token;
+}
 export function desktopDeviceInfo() {
   return invoke<{
     device_id: string;

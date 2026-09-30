@@ -14,6 +14,7 @@ export default defineConfig(async () => {
     vite: {
       ...(process.env.VITE_TAURI ? { base: './' } : {}),
       build: {
+        cssCodeSplit: process.env.VITE_TAURI ? false : undefined,
         emptyOutDir: true,
         manifest: true,
         outDir: 'dist/kx-adm',

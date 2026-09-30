@@ -79,6 +79,14 @@ async fn desktop_import_session(
     state.import(&app, token).await.map_err(error)
 }
 #[tauri::command]
+async fn desktop_sync_session(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    token: String,
+) -> Reply<Session> {
+    state.sync(&app, token).await.map_err(error)
+}
+#[tauri::command]
 async fn desktop_restore_session(
     app: tauri::AppHandle,
     state: Native<'_>,
@@ -564,6 +572,7 @@ pub fn run() {
             desktop_bootstrap,
             desktop_configure,
             desktop_import_session,
+            desktop_sync_session,
             desktop_restore_session,
             desktop_refresh_session,
             desktop_clear_session,

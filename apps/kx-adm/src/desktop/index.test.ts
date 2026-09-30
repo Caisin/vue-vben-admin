@@ -69,6 +69,19 @@ describe('桌面会话同步', () => {
       JSON.parse(localStorage.getItem(desktopSessionKey) ?? 'null').token,
     ).toBe('bound');
   });
+  it('已绑定登录令牌可以同步到原生桌面会话', async () => {
+    native.invoke.mockResolvedValue(session(3, 'already-bound'));
+    const bridge = await import('./index');
+    expect(await bridge.syncDesktopSession('already-bound')).toBe(
+      'already-bound',
+    );
+    expect(native.invoke).toHaveBeenCalledWith('desktop_sync_session', {
+      token: 'already-bound',
+    });
+    expect(
+      JSON.parse(localStorage.getItem(desktopSessionKey) ?? 'null').token,
+    ).toBe('already-bound');
+  });
   it('读取生图环境变量状态但不接收 key', async () => {
     native.invoke.mockResolvedValue({
       available: false,

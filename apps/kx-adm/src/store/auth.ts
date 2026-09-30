@@ -27,6 +27,7 @@ import {
   desktop,
   desktopDingTalkDevice,
   importDesktopSession,
+  syncDesktopSession,
 } from '#/desktop';
 import { $t } from '#/locales';
 import { routes } from '#/router/routes';
@@ -63,7 +64,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const token = deviceAuthorized
-        ? accessToken
+        ? await syncDesktopSession(accessToken)
         : await importDesktopSession(accessToken);
       accessStore.setAccessToken(token);
       const [fetchUserInfoResult, accessCodes] = await Promise.all([

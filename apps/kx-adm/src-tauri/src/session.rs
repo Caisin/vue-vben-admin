@@ -248,6 +248,21 @@ impl Desktop {
     pub async fn import(&self, app: &impl SessionEvents, token: String) -> Result<Session> {
         self.import_at(app, token, None).await
     }
+    pub async fn sync(&self, app: &impl SessionEvents, token: String) -> Result<Session> {
+        let mut a = self.auth.lock().await;
+        let s = token_session(token, a.base.clone(), a.generation + 1)?;
+        self.send(
+            &s,
+            reqwest::Method::GET,
+            "/auth/client-devices/session",
+            None,
+        )
+        .await?;
+        if a.session.as_ref().is_some_and(|old| old.uid != s.uid) {
+            self.pause_all().await?;
+        }
+        self.save(app, &mut a, s).await
+    }
     pub async fn import_at(
         &self,
         app: &impl SessionEvents,
