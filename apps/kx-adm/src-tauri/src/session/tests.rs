@@ -75,7 +75,7 @@ async fn native_refresh_is_singleflight_and_restart_has_no_persisted_token() -> 
     let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
     let d = Desktop::new(dir.clone())?;
     let events = Events::default();
-    d.configure(&events, base.clone()).await?;
+    d.bootstrap_with_default(Some(base.clone())).await?;
     d.import(&events, old.clone()).await?;
     let (a, b) = tokio::join!(
         d.refresh(&events, Some(old.clone())),
@@ -142,9 +142,8 @@ async fn native_refresh_is_singleflight_and_restart_has_no_persisted_token() -> 
     assert_eq!(d.queue.lock().await[0].status, "暂停中");
     assert!(events.0.lock().unwrap().last().unwrap().is_none());
     assert!(d.refresh(&events, Some(old.clone())).await.is_err());
-    assert!(!std::fs::read_to_string(dir.join("server.txt"))?.contains("header."));
     let restarted = Desktop::new(dir.clone())?;
-    let snapshot = restarted.bootstrap().await?;
+    let snapshot = restarted.bootstrap_with_default(Some(base.clone())).await?;
     assert!(snapshot.session.is_none());
     assert!(
         restarted
@@ -203,7 +202,7 @@ async fn revoked_device_heartbeat_clears_session_and_pauses_queues() -> Result<(
     let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
     let d = Desktop::new(dir.clone())?;
     let events = Events::default();
-    d.configure(&events, base.clone()).await?;
+    d.bootstrap_with_default(Some(base.clone())).await?;
     let mut auth = d.auth.lock().await;
     let session = token_session(
         token(7, now() + 3600, "bound"),

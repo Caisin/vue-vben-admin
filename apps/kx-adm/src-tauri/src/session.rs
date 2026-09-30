@@ -66,7 +66,6 @@ pub struct Desktop {
     pub active: Mutex<std::collections::HashSet<String>>,
     pub download_active: Mutex<std::collections::HashSet<String>>,
     pub upload_pool: kx_tk_pool::TkPool,
-    base_configured: bool,
 }
 
 fn token_session(token: String, base: String, generation: u64) -> Result<Session> {
@@ -93,19 +92,13 @@ fn token_session(token: String, base: String, generation: u64) -> Result<Session
 impl Desktop {
     pub fn new(data: PathBuf) -> Result<Arc<Self>> {
         std::fs::create_dir_all(&data)?;
-        let server_path = data.join("server.txt");
-        let base_configured = server_path.exists();
-        let base = std::fs::read_to_string(server_path)
-            .ok()
-            .and_then(|v| protocol::server(&v).ok())
-            .unwrap_or_else(|| "http://localhost:8883".into());
         let jobs = crate::queue::load(&data)?;
         let download_jobs = crate::download::load(&data)?;
         Ok(Arc::new(Self {
             device: crate::device::Device::load(&data)?,
             auth: Mutex::new(Auth {
                 session: None,
-                base,
+                base: "http://localhost:8883".into(),
                 generation: 0,
             }),
             http: reqwest::Client::builder()
@@ -119,7 +112,6 @@ impl Desktop {
             active: Mutex::new(Default::default()),
             download_active: Mutex::new(Default::default()),
             upload_pool: kx_tk_pool::TkPool::new(8),
-            base_configured,
         }))
     }
     pub async fn bootstrap(&self) -> Result<Bootstrap> {
@@ -132,9 +124,7 @@ impl Desktop {
         })
     }
     pub async fn bootstrap_with_default(&self, default_base: Option<String>) -> Result<Bootstrap> {
-        if !self.base_configured
-            && let Some(base) = default_base
-        {
+        if let Some(base) = default_base {
             let base = protocol::server(&base)?;
             let mut auth = self.auth.lock().await;
             auth.base = base;
@@ -311,14 +301,6 @@ impl Desktop {
     }
     pub async fn clear(&self, app: &impl SessionEvents) -> Result<()> {
         self.clear_locked(app, &mut *self.auth.lock().await).await
-    }
-    pub async fn configure(&self, app: &impl SessionEvents, base: String) -> Result<()> {
-        let base = protocol::server(&base)?;
-        let mut a = self.auth.lock().await;
-        self.clear_locked(app, &mut a).await?;
-        std::fs::write(self.data.join("server.txt"), &base)?;
-        a.base = base;
-        Ok(())
     }
     pub async fn identity(&self) -> Result<Session> {
         self.auth

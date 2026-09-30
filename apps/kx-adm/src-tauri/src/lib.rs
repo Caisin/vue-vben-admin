@@ -61,16 +61,6 @@ async fn desktop_bootstrap(state: Native<'_>, api_base: Option<String>) -> Reply
     state.bootstrap_with_default(api_base).await.map_err(error)
 }
 #[tauri::command]
-async fn desktop_configure(
-    app: tauri::AppHandle,
-    state: Native<'_>,
-    tiktok: State<'_, Arc<tiktok::TikTok>>,
-    api_base: String,
-) -> Reply<()> {
-    tiktok.pause();
-    state.configure(&app, api_base).await.map_err(error)
-}
-#[tauri::command]
 async fn desktop_import_session(
     app: tauri::AppHandle,
     state: Native<'_>,
@@ -570,7 +560,6 @@ pub fn run() {
             desktop_image_env_status,
             desktop_image_set_env,
             desktop_bootstrap,
-            desktop_configure,
             desktop_import_session,
             desktop_sync_session,
             desktop_restore_session,

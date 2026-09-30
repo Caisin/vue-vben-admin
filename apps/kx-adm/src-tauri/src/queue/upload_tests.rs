@@ -171,7 +171,7 @@ async fn exercise_upload(size: usize) -> Result<()> {
     std::fs::create_dir_all(&root)?;
     std::fs::write(root.join("第1集.mp4"), data)?;
     let d = Desktop::new(dir.clone())?;
-    d.configure(&Events, base.clone()).await?;
+    d.bootstrap_with_default(Some(base.clone())).await?;
     let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(
         &serde_json::json!({"uid":7,"exp":crate::session::now()+3600}),
     )?);

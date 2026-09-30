@@ -217,11 +217,6 @@ export async function clearDesktopSession() {
     await invoke('desktop_clear_session');
   }
 }
-export async function configureDesktop(apiBase: string) {
-  await invoke('desktop_configure', { apiBase });
-  removeDesktopSession();
-  window.location.reload();
-}
 export const desktopUploads = {
   list: () => invoke<UploadJob[]>('desktop_jobs'),
   scan: (

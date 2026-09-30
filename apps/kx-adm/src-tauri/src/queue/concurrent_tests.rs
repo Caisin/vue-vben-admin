@@ -82,7 +82,7 @@ async fn tk_pool_limits_parallel_episodes_keeps_successes_and_records_directory_
     }
     let d = Desktop::new(dir.clone())?;
     let events = Events::default();
-    d.configure(&events, base.clone()).await?;
+    d.bootstrap_with_default(Some(base.clone())).await?;
     let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(
         &json!({"uid":7,"exp":crate::session::now()+3600}),
     )?);

@@ -13,7 +13,6 @@ import { Button, message, Select } from 'antdv-next';
 
 import { DingTalkApi } from '#/api';
 import { desktop } from '#/desktop';
-import DesktopConnection from '#/desktop/connection.vue';
 import { useAuthStore } from '#/store';
 
 import {
@@ -146,7 +145,6 @@ onMounted(async () => {
 
 <template>
   <div v-bind="$attrs">
-    <DesktopConnection />
     <TotpLogin />
     <section v-if="desktop" class="space-y-4">
       <h1 class="text-2xl font-semibold">钉钉登录</h1>
