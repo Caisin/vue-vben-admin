@@ -26,8 +26,8 @@ tokio-util = { version = "0.7", features = ["io", "rt"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
 futures-util = "0.3"
 base64 = "0.22"
-kx-tk-pool = { version = "0.1.24", registry = "hekx" }
-kx-ed = { version = "0.1.24", registry = "hekx" }
+kx-tk-pool = { version = "0.1",path="../../../../crates/tk-pool" }
+kx-ed = { version = "0.1",path="../../../../crates/ed" }
 md5 = "0.8"
 mime_guess = "2"
 walkdir = "2"
