@@ -69,6 +69,11 @@ const loadingGrants = ref(false);
 const loadingRoles = ref(false);
 
 const id = ref();
+const editingSelf = computed(
+  () =>
+    id.value !== undefined &&
+    String(id.value) === String(userStore.userInfo?.userId),
+);
 const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
   async onConfirm() {
     try {
@@ -144,8 +149,16 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
         delegatedRoleMode.value ? Promise.resolve() : loadPermissionGrants(),
       ]);
       await formApi.updateSchema([
+        {
+          componentProps: { disabled: editingSelf.value },
+          fieldName: 'roles',
+        },
         { fieldName: 'permissions', hide: delegatedRoleMode.value },
-        { fieldName: 'homePermId', hide: delegatedRoleMode.value },
+        {
+          componentProps: { disabled: editingSelf.value },
+          fieldName: 'homePermId',
+          hide: delegatedRoleMode.value,
+        },
       ]);
       await formApi.updateSchema([
         {
@@ -232,6 +245,7 @@ async function updatePermissionIds(ids: string[]) {
           :loading="loadingGrants"
           :menus="permissionMenus"
           :permission-ids="selectedPermissionIds"
+          :readonly="editingSelf"
           @update:api-ids="selectedApiIds = $event"
           @update:permission-ids="updatePermissionIds"
         />
