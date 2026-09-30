@@ -4,6 +4,8 @@ import { requestClient } from '#/api/request';
 
 export interface DownloadGrant {
   can_download: boolean;
+  seq_from: number;
+  seq_until: number;
   id: number | string;
   res_id: number | string;
   res_name: string;
@@ -18,7 +20,12 @@ export interface DownloadGrant {
 }
 export type DownloadGrantWrite = Pick<
   DownloadGrant,
-  'can_download' | 'uid' | 'valid_from' | 'valid_until'
+  | 'can_download'
+  | 'seq_from'
+  | 'seq_until'
+  | 'uid'
+  | 'valid_from'
+  | 'valid_until'
 >;
 export interface DownloadBatchWrite {
   mode: 'code' | 'name';

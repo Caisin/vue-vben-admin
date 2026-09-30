@@ -16,6 +16,9 @@ export interface ResRecord {
   cover?: string;
   cover_url?: null | string;
   cover_error?: null | string;
+  can_download?: boolean;
+  download_seq_from?: number;
+  download_seq_until?: number;
   create_time?: number;
   ext_info?: Record<string, any>;
   heat_num?: number;

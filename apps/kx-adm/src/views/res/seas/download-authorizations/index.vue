@@ -19,9 +19,11 @@ import {
   DatePicker,
   Form,
   FormItem,
+  InputNumber,
   message,
   Modal,
   Select,
+  Space,
   Switch,
   Table,
 } from 'antdv-next';
@@ -61,6 +63,8 @@ const grantUids = ref<number[]>([]);
 const form = reactive<DownloadGrantWrite>({
   uid: 0,
   can_download: true,
+  seq_from: 0,
+  seq_until: 0,
   valid_from: 0,
   valid_until: 0,
 });
@@ -148,6 +152,8 @@ function create() {
   Object.assign(form, {
     uid: 0,
     can_download: true,
+    seq_from: 0,
+    seq_until: 0,
     valid_from: 0,
     valid_until: 0,
   });
@@ -166,6 +172,8 @@ function edit(row: DownloadGrant) {
   Object.assign(form, {
     uid: Number(row.uid),
     can_download: row.can_download,
+    seq_from: row.seq_from,
+    seq_until: row.seq_until,
     valid_from: row.valid_from,
     valid_until: row.valid_until,
   });
@@ -184,6 +192,14 @@ async function save() {
   }
   if (form.valid_until > 0 && form.valid_until <= form.valid_from) {
     saveError.value = '失效时间必须晚于生效时间';
+    return;
+  }
+  if (
+    form.seq_from < 0 ||
+    form.seq_until < 0 ||
+    (form.seq_from > 0 && form.seq_until > 0 && form.seq_until < form.seq_from)
+  ) {
+    saveError.value = '集数范围无效';
     return;
   }
   saving.value = true;
@@ -378,6 +394,24 @@ onMounted(async () => {
             placeholder="留空永久有效"
           />
         </FormItem>
+        <Space>
+          <FormItem label="起始集数">
+            <InputNumber
+              v-model:value="form.seq_from"
+              :min="0"
+              :precision="0"
+              placeholder="0=不限"
+            />
+          </FormItem>
+          <FormItem label="结束集数">
+            <InputNumber
+              v-model:value="form.seq_until"
+              :min="0"
+              :precision="0"
+              placeholder="0=不限"
+            />
+          </FormItem>
+        </Space>
         <FormItem label="允许下载">
           <Switch v-model:checked="form.can_download" />
         </FormItem>

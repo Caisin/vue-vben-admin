@@ -63,6 +63,15 @@ export function useGridFormSchema(): VbenFormSchema[] {
       fieldName: 'res_type',
       label: '类型',
     },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: [{ label: '有下载权限', value: true }],
+      },
+      fieldName: 'downloadable',
+      label: '下载权限',
+    },
   ];
 }
 

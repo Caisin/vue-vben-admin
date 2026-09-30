@@ -16,6 +16,7 @@ import {
   Form,
   FormItem,
   Input,
+  InputNumber,
   message,
   Modal,
   Select,
@@ -42,7 +43,14 @@ const form = reactive<DownloadBatchWrite>({
   mode: 'name',
   text: '',
   uids: [],
-  grant: { uid: 0, can_download: true, valid_from: 0, valid_until: 0 },
+  grant: {
+    uid: 0,
+    can_download: true,
+    seq_from: 0,
+    seq_until: 0,
+    valid_from: 0,
+    valid_until: 0,
+  },
 });
 const uids = ref<number[]>([]);
 const preview = ref<DownloadBatchView>();
@@ -91,6 +99,8 @@ watch(open, (value) => {
   form.grant = {
     uid: 0,
     can_download: true,
+    seq_from: 0,
+    seq_until: 0,
     valid_from: 0,
     valid_until: 0,
   };
@@ -105,6 +115,8 @@ watch(
     uids.value.join(','),
     form.grant.valid_from,
     form.grant.valid_until,
+    form.grant.seq_from,
+    form.grant.seq_until,
   ],
   () => {
     preview.value = undefined;
@@ -117,6 +129,16 @@ async function submit(apply: boolean) {
   submitError.value = '';
   if (uids.value.length === 0 || !form.text.trim()) {
     submitError.value = '请选择用户并输入剧名或作品编码';
+    return;
+  }
+  if (
+    form.grant.seq_from < 0 ||
+    form.grant.seq_until < 0 ||
+    (form.grant.seq_from > 0 &&
+      form.grant.seq_until > 0 &&
+      form.grant.seq_until < form.grant.seq_from)
+  ) {
+    submitError.value = '集数范围无效';
     return;
   }
   if (apply && (!preview.value || applied.value || !count.value)) return;
@@ -227,6 +249,22 @@ async function submit(apply: boolean) {
             show-time
             allow-clear
             placeholder="留空永久有效"
+          />
+        </FormItem>
+        <FormItem label="起始集数">
+          <InputNumber
+            v-model:value="form.grant.seq_from"
+            :min="0"
+            :precision="0"
+            placeholder="0=不限"
+          />
+        </FormItem>
+        <FormItem label="结束集数">
+          <InputNumber
+            v-model:value="form.grant.seq_until"
+            :min="0"
+            :precision="0"
+            placeholder="0=不限"
           />
         </FormItem>
       </Space>

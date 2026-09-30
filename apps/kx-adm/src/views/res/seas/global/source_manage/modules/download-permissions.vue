@@ -15,8 +15,10 @@ import {
   DatePicker,
   Form,
   FormItem,
+  InputNumber,
   message,
   Modal,
+  Space,
   Switch,
   Table,
 } from 'antdv-next';
@@ -43,6 +45,8 @@ const form = reactive({
   uids: [] as number[],
   valid_from: 0,
   valid_until: 0,
+  seq_from: 0,
+  seq_until: 0,
   can_download: true,
 });
 function resetForm() {
@@ -50,6 +54,8 @@ function resetForm() {
     uids: [],
     valid_from: 0,
     valid_until: 0,
+    seq_from: 0,
+    seq_until: 0,
     can_download: true,
   });
 }
@@ -135,6 +141,8 @@ async function save() {
     can_download: form.can_download,
     valid_from: form.valid_from,
     valid_until: form.valid_until,
+    seq_from: form.seq_from,
+    seq_until: form.seq_until,
   }));
   if (form.valid_until > 0 && form.valid_until <= form.valid_from) {
     message.error('失效时间必须晚于生效时间');
@@ -160,6 +168,8 @@ function edit(row: DownloadGrant) {
     uids: [Number(row.uid)],
     valid_from: Number(row.valid_from),
     valid_until: Number(row.valid_until),
+    seq_from: Number(row.seq_from),
+    seq_until: Number(row.seq_until),
     can_download: row.can_download,
   });
 }
@@ -235,6 +245,24 @@ async function remove(uid: number | string) {
           placeholder="留空永久有效"
         />
       </FormItem>
+      <Space>
+        <FormItem label="起始集数">
+          <InputNumber
+            v-model:value="form.seq_from"
+            :min="0"
+            :precision="0"
+            placeholder="0=不限"
+          />
+        </FormItem>
+        <FormItem label="结束集数">
+          <InputNumber
+            v-model:value="form.seq_until"
+            :min="0"
+            :precision="0"
+            placeholder="0=不限"
+          />
+        </FormItem>
+      </Space>
       <FormItem label="允许下载">
         <Switch v-model:checked="form.can_download" />
       </FormItem>

@@ -108,6 +108,14 @@ const visibleItems = computed(() =>
 const downloadFileIds = computed(() => [
   ...new Set(
     (detail.value?.items ?? [])
+      .filter(
+        (item) =>
+          props.resource?.can_download &&
+          (Number(props.resource.download_seq_from ?? 0) === 0 ||
+            Number(item.seq_no) >= Number(props.resource.download_seq_from)) &&
+          (Number(props.resource.download_seq_until ?? 0) === 0 ||
+            Number(item.seq_no) <= Number(props.resource.download_seq_until)),
+      )
       .map((item) => item.link.match(/^storage:file:(\d+)$/)?.[1])
       .filter((id): id is string => Boolean(id))
       .map(Number),
@@ -398,7 +406,17 @@ async function removeVersion() {
           addon-before="并发"
           :disabled="loading || busy || !detail"
         />
-        <Button :disabled="loading || busy || !detail" @click="startDownload">
+        <Button
+          :disabled="
+            loading || busy || !detail || !props.resource?.can_download
+          "
+          :title="
+            props.resource?.can_download
+              ? undefined
+              : '当前资源没有可用下载授权'
+          "
+          @click="startDownload"
+        >
           下载当前版本
         </Button>
         <Button :disabled="busy" @click="downloadHistoryOpen = true">

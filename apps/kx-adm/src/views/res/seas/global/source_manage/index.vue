@@ -204,6 +204,7 @@ const [Grid, gridApi] = useVbenVxeGrid<ResRecord>({
             resource_code: formValues.resource_code?.trim() || undefined,
             res_type: formValues.res_type,
             state: formValues.state,
+            downloadable: formValues.downloadable,
             created_from: formValues.createdRange?.[0]
               ? dayjs(formValues.createdRange[0]).startOf('day').unix()
               : undefined,

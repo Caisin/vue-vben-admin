@@ -121,7 +121,14 @@ async function mount(code: string) {
   const app = createApp({
     setup: () => () =>
       h(Versions, {
-        resource: { id: 2, res_name: '测试剧', res_type: 'drama' },
+        resource: {
+          id: 2,
+          res_name: '测试剧',
+          res_type: 'drama',
+          can_download: true,
+          download_seq_from: 0,
+          download_seq_until: 0,
+        },
         open: open.value,
       }),
   });
