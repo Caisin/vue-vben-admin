@@ -15,13 +15,6 @@ defineOptions({ name: 'App' });
 const { isDark } = usePreferences();
 const { tokens } = useAntdDesignTokens();
 
-const csp = computed(() => {
-  if (typeof document === 'undefined') return undefined;
-
-  const nonce = document.querySelector('style[nonce]')?.getAttribute('nonce');
-  return nonce ? { nonce } : undefined;
-});
-
 const tokenTheme = computed(() => {
   const algorithm = isDark.value
     ? [theme.darkAlgorithm]
@@ -50,7 +43,7 @@ watch(
 <template>
   <!-- layer: antd 组件样式注入 @layer antd，让 Tailwind 工具类可以覆盖组件样式 -->
   <StyleProvider layer>
-    <ConfigProvider :csp="csp" :locale="antdLocale" :theme="tokenTheme">
+    <ConfigProvider :locale="antdLocale" :theme="tokenTheme">
       <App class="kx-admin-shell">
         <RequestErrorNotifier />
         <RouterView />
