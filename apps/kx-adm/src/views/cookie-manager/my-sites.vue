@@ -3,6 +3,7 @@ import type { Site } from '#/api/cookie-manager';
 
 import { computed, onMounted, ref, watch } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
 import { useMediaQuery } from '@vueuse/core';
@@ -21,8 +22,16 @@ import { CookieApi, cookieStatus } from '#/api/cookie-manager';
 import { requestErrorMessage } from '#/request-errors';
 import { Times } from '#/times';
 
+import LoginModal from './modules/login-modal.vue';
 import SiteCard from './modules/site-card.vue';
 
+const { hasAccessByCodes } = useAccess();
+const active = ref<Site>();
+const logging = ref(false);
+function login(site: Site) {
+  active.value = site;
+  logging.value = true;
+}
 const isMobile = useMediaQuery('(max-width: 767px)');
 const current = ref(1);
 const size = ref(20);
@@ -100,7 +109,7 @@ onMounted(load);
       type="info"
       show-icon
       class="mb-4"
-      message="这里只展示管理员分配给你的账号。启用代理后可直接进入，网站登录由服务端完成；Cookie过期时联系管理员刷新。"
+      message="这里只展示管理员分配给你的账号。启用代理后可直接进入；支持后台登录的账号可通过验证码刷新Cookie，其它账号请联系管理员。"
     />
     <div class="mb-4 grid grid-cols-1 gap-2 sm:flex">
       <Input v-model:value="keyword" placeholder="搜索网站、账号或域名" />
@@ -126,6 +135,14 @@ onMounted(load);
           <p v-else class="col-span-2 text-sm text-muted-foreground">
             {{ site.proxy_enabled ? '等待代理服务配置' : '未启用代理' }}
           </p>
+          <Button
+            v-if="hasAccessByCodes(['cookie-manager:my-login'])"
+            class="col-span-2"
+            :disabled="!site.login_available"
+            @click="login(site)"
+          >
+            后台登录
+          </Button>
         </SiteCard>
         <Empty
           v-if="!loading && !visible.length"
@@ -157,6 +174,9 @@ onMounted(load);
         { title: 'Cookie状态', dataIndex: 'status' },
         { title: '最早到期', dataIndex: 'expires_at' },
         { title: '代理访问', dataIndex: 'proxy' },
+        ...(hasAccessByCodes(['cookie-manager:my-login'])
+          ? [{ title: '操作', dataIndex: 'action' }]
+          : []),
       ]"
       :pagination="{ current, pageSize: size, showSizeChanger: true }"
       @change="
@@ -183,6 +203,17 @@ onMounted(load);
             record.proxy_enabled ? '等待代理服务配置' : '未启用代理'
           }}</span>
         </template>
+        <Button
+          v-else-if="
+            column.dataIndex === 'action' &&
+            hasAccessByCodes(['cookie-manager:my-login'])
+          "
+          type="link"
+          :disabled="!record.login_available"
+          @click="login(record as Site)"
+        >
+          后台登录
+        </Button>
         <Tag
           v-else-if="column.dataIndex === 'status'"
           :color="cookieStatus[record.status]?.color"
@@ -198,5 +229,6 @@ onMounted(load);
         </template>
       </template>
     </Table>
+    <LoginModal v-model:open="logging" :site="active" @saved="load" />
   </Page>
 </template>

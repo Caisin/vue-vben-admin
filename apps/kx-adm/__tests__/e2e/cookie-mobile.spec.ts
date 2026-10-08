@@ -6,14 +6,16 @@ import { KxEd } from '@kx/admin-core';
 import { expect, test } from '@playwright/test';
 
 test.use({ headless: true, actionTimeout: 10_000 });
+test.setTimeout(60_000);
 
-async function fixture(page: Page, admin: boolean) {
+async function fixture(page: Page, admin: boolean, myLogin = true) {
   const state = {
     renamed: '',
     saved: false,
     submitted: false,
     failSave: true,
     grants: 0,
+    mySitesLoads: 0,
   };
   const site = (id: number) => ({
     id,
@@ -21,6 +23,7 @@ async function fixture(page: Page, admin: boolean) {
     account_label: `华东运营账号${id}`,
     origin: 'https://adxray-app.dataeye.com',
     credential_code: 'login-secret',
+    login_available: ![3, 4].includes(id),
     proxy_enabled: true,
     proxy_origin: null,
     proxy_url: 'https://long-subdomain-for-mobile.proxy.example.test/_kx/login',
@@ -76,11 +79,10 @@ async function fixture(page: Page, admin: boolean) {
           enabled: true,
           home_path: `/cookie-manager/${admin ? 'sites' : 'my-sites'}`,
         };
-      else if (path === '/auth/per/codes')
-        result = admin
-          ? ['cookie-manager:manage', 'cookie-manager:assign']
-          : [];
-      else if (path === '/auth/menu/current')
+      else if (path === '/auth/per/codes') {
+        result = myLogin ? ['cookie-manager:my-login'] : [];
+        if (admin) result = ['cookie-manager:manage', 'cookie-manager:assign'];
+      } else if (path === '/auth/menu/current')
         result = ['sites', 'my-sites'].map((name, i) => ({
           id: i + 1,
           pid: 0,
@@ -96,9 +98,14 @@ async function fixture(page: Page, admin: boolean) {
       else if (path === '/notify/inbox')
         result = { items: [], unread_count: 0 };
       else if (path === '/param/system-settings/public') result = {};
-      else if (path === '/cookie-manager/my-sites')
-        result = Array.from({ length: 21 }, (_, i) => site(i + 1));
-      else if (path === '/cookie-manager/sites')
+      else if (path === '/cookie-manager/my-sites') {
+        state.mySitesLoads++;
+        result = Array.from({ length: 21 }, (_, i) => ({
+          ...site(i + 1),
+          credential_code: null,
+          allowed_uids: [],
+        }));
+      } else if (path === '/cookie-manager/sites')
         result = { items: [site(1)], total: 21 };
       else if (path === '/cookie-manager/sites/1/name') {
         state.renamed = body().name;
@@ -154,6 +161,13 @@ async function fixture(page: Page, admin: boolean) {
     }),
   );
   await page.goto('/#/auth/login?exchange_code=fixture');
+  // 开发服务器首次转换页面依赖可能超过普通控件的5秒断言窗口。
+  await expect(
+    page.getByRole('heading', {
+      name: admin ? '网站账号与 Cookie' : '我的网站授权',
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 45_000 });
   return state;
 }
 
@@ -177,6 +191,56 @@ async function expectNoOverflow(page: Page) {
       await body.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
     ).toBe(true);
   }
+}
+
+for (const width of [390, 1280]) {
+  test(`我的授权 ${width}px：后台登录并刷新，隐藏凭证不影响登录`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const state = await fixture(page, false);
+    const rows = page.getByRole(width < 768 ? 'article' : 'row');
+    const first = rows.filter({ hasText: '华东运营账号1' }).first();
+    await expect(
+      first.getByRole('button', { name: '后台登录', exact: true }),
+    ).toBeEnabled();
+    await expect(
+      rows
+        .filter({ hasText: '华东运营账号3' })
+        .first()
+        .getByRole('button', { name: '后台登录', exact: true }),
+    ).toBeDisabled();
+    await expect(
+      rows
+        .filter({ hasText: '华东运营账号2' })
+        .first()
+        .getByRole('button', { name: '后台登录', exact: true }),
+    ).toBeEnabled();
+    const loads = state.mySitesLoads;
+    await first.getByRole('button', { name: '后台登录', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByAltText('网站登录验证码')).toBeVisible();
+    await dialog.getByPlaceholder('输入图片验证码').fill('1234');
+    await dialog
+      .getByRole('button', { name: '登录并保存Cookie', exact: true })
+      .click();
+    await expect(
+      dialog.getByText('登录成功，Cookie已保存', { exact: true }),
+    ).toBeVisible();
+    expect(state.submitted).toBe(true);
+    await expect.poll(() => state.mySitesLoads).toBeGreaterThan(loads);
+    if (width < 768) await expectNoOverflow(page);
+  });
+  test(`我的授权 ${width}px：没有按钮权限时隐藏后台登录`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await fixture(page, false, false);
+    await expect(
+      page.getByRole('heading', { name: '我的网站授权', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: '后台登录', exact: true }),
+    ).toHaveCount(0);
+  });
 }
 
 for (const width of [360, 390]) {

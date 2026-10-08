@@ -12,6 +12,7 @@ export interface CookieMeta {
   expires_at?: Id | null;
 }
 export interface Site {
+  login_available?: boolean;
   proxy_enabled: boolean;
   proxy_origin?: null | string;
   proxy_resources: Array<{ name: string; origin: string }>;
