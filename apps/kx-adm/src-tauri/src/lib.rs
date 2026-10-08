@@ -6,6 +6,7 @@ mod queue;
 mod scan;
 mod session;
 mod tiktok;
+mod updater;
 use session::{Bootstrap, Desktop, Session};
 use std::sync::Arc;
 use tauri::{Manager, State};
@@ -507,6 +508,8 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::DesktopUpdater::default())
         .setup(|app| {
             let desktop = Desktop::new(app.path().app_data_dir()?)?;
             app.manage(desktop.clone());
@@ -554,6 +557,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            updater::desktop_update_check,
+            updater::desktop_update_install,
             desktop_device_info,
             desktop_device_headers,
             desktop_dingtalk_device,

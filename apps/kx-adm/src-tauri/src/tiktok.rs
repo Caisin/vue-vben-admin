@@ -45,6 +45,12 @@ fn persist(data: &Path, selection: &Selection) -> Result<()> {
     Ok(())
 }
 impl TikTok {
+    pub(crate) fn update_guard(&self) -> Result<tokio::sync::MutexGuard<'_, ()>> {
+        self.gate
+            .try_lock()
+            .context("请等待 TikTok 预约任务停止后更新")
+    }
+
     pub fn new(data: PathBuf) -> Result<Arc<Self>> {
         std::fs::create_dir_all(&data)?;
         let path = data.join("tiktok-queue.json");

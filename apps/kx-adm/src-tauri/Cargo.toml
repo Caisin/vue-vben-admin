@@ -1,6 +1,6 @@
 [package]
 name = "kx-adm-desktop"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 publish = false
 
@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
 machine-uid = "0.6"
 ring = "0.17"
 tauri-plugin-single-instance = "2"

@@ -9,6 +9,7 @@ import { App, ConfigProvider, StyleProvider, theme } from 'antdv-next';
 import { antdLocale } from '#/locales';
 
 import RequestErrorNotifier from './components/request-error-notifier.vue';
+import DesktopUpdater from './desktop/updater.vue';
 
 defineOptions({ name: 'App' });
 
@@ -46,6 +47,7 @@ watch(
     <ConfigProvider :locale="antdLocale" :theme="tokenTheme">
       <App class="kx-admin-shell">
         <RequestErrorNotifier />
+        <DesktopUpdater />
         <RouterView />
       </App>
     </ConfigProvider>

@@ -1,6 +1,6 @@
 {
   "name": "@kx/adm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "homepage": "https://github.com/Caisin/vue-vben-admin",
   "bugs": "https://github.com/Caisin/vue-vben-admin/issues",
@@ -30,7 +30,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "dev:desktop": "cross-env VITE_TAURI=true pnpm vite --port 1420 --strictPort",
-    "build:desktop": "cross-env VITE_TAURI=true pnpm vite build --mode tauri"
+    "build:desktop": "cross-env VITE_TAURI=true pnpm vite build --mode tauri",
+    "desktop:release": "node scripts/desktop-release.mjs"
   },
   "imports": {
     "#/*": "./src/*"

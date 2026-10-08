@@ -12,7 +12,7 @@ use crate::{
     protocol,
     session::{Desktop, Session},
 };
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 use std::{
@@ -136,7 +136,10 @@ impl Desktop {
         expected_revision: Option<u64>,
     ) -> Result<()> {
         ensure!((1..=8).contains(&concurrency), "同时上传集数须为 1 至 8");
-        let mut active = self.active.lock().await;
+        let mut active = self
+            .active
+            .try_lock()
+            .context("正在安装更新或启动任务，请稍后重试")?;
         let (job, _) = self.owned_job(&id).await?;
         ensure!(
             expected_revision.is_none_or(|v| v == job.revision),

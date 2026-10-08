@@ -197,7 +197,10 @@ impl Desktop {
         id: String,
         overwrite: bool,
     ) -> Result<()> {
-        let mut active = self.download_active.lock().await;
+        let mut active = self
+            .download_active
+            .try_lock()
+            .context("正在安装更新或启动任务，请稍后重试")?;
         ensure!(!active.contains(&id), "任务仍在停止中，请稍后再继续");
         let s = self.identity().await?;
         {

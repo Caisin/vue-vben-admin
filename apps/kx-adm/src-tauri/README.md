@@ -82,3 +82,7 @@ S3 Endpoint 支持完整 HTTPS 地址或纯域名（自动补 HTTPS），AWS 默
 KX 登录信息保存在主窗口 localStorage（键 `kx-adm.desktop-session.v1`），包含服务地址和登录 token，不保存登录密码。原生端只持有内存副本，重启后从 localStorage 读取并向当前服务验证；过期 token 先走服务端刷新窗口，不能本地延长有效期。退出登录或切换服务地址清除缓存，后台轮换的新 token 自动写回。
 
 应用不再调用系统钥匙串，不会为读取旧凭据请求授权。旧版只存于钥匙串的会话不会自动迁移，升级后需重新登录一次；此后正常启动会恢复 KX localStorage 会话。TikTok Cookie 改由 KX 后端数据库加密保存，按所选账号加载到原生内存，不写入 KX token 缓存。Linux 不再要求 Secret Service。
+
+## 客户端自动更新
+
+0.1.1 起支持后台“系统管理 → 客户端版本”管理发行版本，客户端自动检查、提示下载并在空闲时签名安装。签名包生成、权限、HTTPS 服务要求和平台限制见 [发布与更新说明](UPDATES.md)。
