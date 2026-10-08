@@ -237,10 +237,10 @@ export function useColumns<T = SystemRole>(
       align: 'center',
       field: 'operation',
       fixed: 'right',
-      minWidth: 156,
+      minWidth: 120,
       slots: { default: 'action' },
       title: $t('system.role.operation'),
-      width: 156,
+      width: 120,
     },
   ];
 }

@@ -32,7 +32,6 @@ import { Times } from '#/times';
 import { useColumns, useGridFormSchema } from './data';
 import Detail from './modules/detail.vue';
 import Form from './modules/form.vue';
-import Users from './modules/users.vue';
 
 interface RoleSearchFormValues extends Record<string, unknown> {
   createTime?: [Dayjs, Dayjs];
@@ -49,7 +48,6 @@ type RoleSearchSubmitValues = ReturnType<typeof roleSearchCodec.encode>;
 const { hasAccessByCodes } = useAccess();
 const canManageRoles = computed(() => hasAccessByCodes(['roles:manage']));
 const canCopyRoles = computed(() => hasAccessByCodes(['roles:copy']));
-const canAssignUsers = computed(() => hasAccessByCodes(['roles:assign-users']));
 const copyOpen = ref(false);
 const copySubmitting = ref(false);
 const copySource = ref<SystemRole>();
@@ -62,11 +60,6 @@ const [FormDrawer, formDrawerApi] = useVbenDrawer({
 
 const [DetailDrawer, detailDrawerApi] = useVbenDrawer({
   connectedComponent: Detail,
-  destroyOnClose: true,
-});
-
-const [UsersDrawer, usersDrawerApi] = useVbenDrawer({
-  connectedComponent: Users,
   destroyOnClose: true,
 });
 
@@ -158,11 +151,6 @@ function onDetail(row: SystemRole) {
   detailDrawerApi.setData(row).open();
 }
 
-function onUsers(row: SystemRole) {
-  if (!canAssignUsers.value) return;
-  usersDrawerApi.setData(row).open();
-}
-
 function onDelete(row: SystemRole) {
   if (!canManageRoles.value) return;
   const hideLoading = message.loading({
@@ -226,7 +214,6 @@ function onCreate() {
   >
     <FormDrawer @success="onRefresh" />
     <DetailDrawer />
-    <UsersDrawer />
     <Grid class="management-grid" :table-title="$t('system.role.list')">
       <template #roleName="{ row }">
         <Button
@@ -262,16 +249,6 @@ function onCreate() {
               @click="onCopy(row)"
             >
               <IconifyIcon icon="lucide:copy" class="size-4" />
-            </Button>
-          </Tooltip>
-          <Tooltip v-if="canAssignUsers" title="授权用户">
-            <Button
-              aria-label="授权用户"
-              size="small"
-              type="text"
-              @click="onUsers(row)"
-            >
-              <IconifyIcon icon="lucide:users" class="size-4" />
             </Button>
           </Tooltip>
           <Popconfirm

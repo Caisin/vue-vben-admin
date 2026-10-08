@@ -4,7 +4,10 @@ export default defineConfig({
   overrides: [
     ...(oxfmtConfig.overrides ?? []),
     {
-      files: ['apps/kx-adm/src/views/vestige/**/*.vue'],
+      files: [
+        'apps/kx-adm/src/views/vestige/**/*.vue',
+        'apps/kx-adm/src/views/system/role-assignment/*.vue',
+      ],
       options: { htmlWhitespaceSensitivity: 'ignore' },
     },
   ],

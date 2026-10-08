@@ -24,7 +24,6 @@ vi.mock('@vben/icons', async () => {
 });
 vi.mock('./modules/form.vue', () => ({ default: { name: 'RoleForm' } }));
 vi.mock('./modules/detail.vue', () => ({ default: { name: 'RoleDetail' } }));
-vi.mock('./modules/users.vue', () => ({ default: { name: 'RoleUsers' } }));
 vi.mock('@vben/common-ui', async () => {
   const { defineComponent, h } = await import('vue');
   return {
@@ -125,7 +124,7 @@ async function mount(codes: string[]) {
 
 describe('角色列表行内操作', () => {
   it('名称打开角色权限编辑，操作列使用带无障碍名称的图标', async () => {
-    await mount(['roles:manage', 'roles:copy', 'roles:assign-users']);
+    await mount(['roles:manage', 'roles:copy']);
     document
       .querySelector<HTMLButtonElement>(
         'button[aria-label="编辑角色及权限：资源查看"]',
@@ -139,16 +138,13 @@ describe('角色列表行内操作', () => {
     expect(actions.map((button) => button.getAttribute('aria-label'))).toEqual([
       '查看详情',
       '复制角色',
-      '授权用户',
       '删除角色',
     ]);
     expect(actions.every((button) => button.textContent?.trim() === '')).toBe(
       true,
     );
     actions[0]?.click();
-    actions[2]?.click();
-    expect(state.opened).toEqual(['RoleForm', 'RoleDetail', 'RoleUsers']);
-    expect(state.selected.RoleUsers).toEqual(state.row);
+    expect(state.opened).toEqual(['RoleForm', 'RoleDetail']);
   });
 
   it('只读用户保留角色名称和详情，没有编辑或写操作入口', async () => {
