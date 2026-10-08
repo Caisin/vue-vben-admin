@@ -1,7 +1,7 @@
 import type { HomePageTreeOption } from '../home-page-options';
 
 import type { VbenFormSchema } from '#/adapter/form';
-import type { OnActionClickFn, VxeTableGridColumns } from '#/adapter/vxe-table';
+import type { VxeTableGridColumns } from '#/adapter/vxe-table';
 import type { SystemRole } from '#/api';
 import type { PermissionType } from '#/api/auth/admin';
 import type {
@@ -198,13 +198,13 @@ export function useGridFormSchema(): VbenFormSchema[] {
 }
 
 export function useColumns<T = SystemRole>(
-  onActionClick: OnActionClickFn<T>,
   onStatusChange?: (newStatus: any, row: T) => PromiseLike<boolean | undefined>,
   canManage: () => boolean = () => true,
 ): VxeTableGridColumns {
   return [
     {
       field: 'name',
+      slots: { default: 'roleName' },
       title: $t('system.role.roleName'),
       width: 200,
     },
@@ -235,25 +235,12 @@ export function useColumns<T = SystemRole>(
     },
     {
       align: 'center',
-      cellRender: {
-        attrs: {
-          nameField: 'name',
-          nameTitle: $t('system.role.name'),
-          onClick: onActionClick,
-        },
-        name: 'CellOperation',
-        options: [
-          { auth: 'roles:manage', code: 'edit' },
-          { code: 'detail' },
-          { auth: 'roles:copy', code: 'copy', text: '复制' },
-          { auth: 'roles:assign-users', code: 'users', text: '授权用户' },
-          { auth: 'roles:manage', code: 'delete' },
-        ],
-      },
       field: 'operation',
       fixed: 'right',
+      minWidth: 156,
+      slots: { default: 'action' },
       title: $t('system.role.operation'),
-      width: 180,
+      width: 156,
     },
   ];
 }

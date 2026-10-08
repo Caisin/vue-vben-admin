@@ -3,7 +3,7 @@ import type { ApiPermission } from '#/api/system/api-permission';
 import type { SystemMenu } from '#/api/system/menu';
 import type { SystemRole } from '#/api/system/role';
 
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, shallowRef } from 'vue';
 
 import { useVbenDrawer } from '@vben/common-ui';
 
@@ -20,7 +20,7 @@ import { useFormSchema } from '../data';
 const emits = defineEmits(['success']);
 
 const formData = ref<SystemRole>();
-const permissionMenus = ref<SystemMenu[]>([]);
+const permissionMenus = shallowRef<SystemMenu[]>([]);
 const apiPermissions = ref<ApiPermission[]>([]);
 const selectedPermissionIds = ref<string[]>([]);
 const selectedApiIds = ref<string[]>([]);

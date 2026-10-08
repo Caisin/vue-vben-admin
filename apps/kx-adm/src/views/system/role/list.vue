@@ -3,10 +3,7 @@ import type { Dayjs } from 'dayjs';
 
 import type { Recordable } from '@vben/types';
 
-import type {
-  OnActionClickParams,
-  VxeTableGridOptions,
-} from '#/adapter/vxe-table';
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { SystemRole } from '#/api';
 import type { StatusValue } from '#/api/system/shared';
 
@@ -14,7 +11,7 @@ import { computed, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
-import { Plus } from '@vben/icons';
+import { IconifyIcon, Plus } from '@vben/icons';
 
 import {
   Form as AntForm,
@@ -23,6 +20,8 @@ import {
   Input,
   message,
   Modal,
+  Popconfirm,
+  Tooltip,
 } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -49,6 +48,7 @@ type RoleSearchSubmitValues = ReturnType<typeof roleSearchCodec.encode>;
 
 const { hasAccessByCodes } = useAccess();
 const canManageRoles = computed(() => hasAccessByCodes(['roles:manage']));
+const canCopyRoles = computed(() => hasAccessByCodes(['roles:copy']));
 const canAssignUsers = computed(() => hasAccessByCodes(['roles:assign-users']));
 const copyOpen = ref(false);
 const copySubmitting = ref(false);
@@ -77,11 +77,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
     submitOnChange: true,
   },
   gridOptions: {
-    columns: useColumns(
-      onActionClick,
-      onStatusChange,
-      () => canManageRoles.value,
-    ),
+    columns: useColumns(onStatusChange, () => canManageRoles.value),
     height: 'auto',
     keepSource: true,
     proxyConfig: {
@@ -108,31 +104,6 @@ const [Grid, gridApi] = useVbenVxeGrid({
     },
   } as VxeTableGridOptions<SystemRole>,
 });
-
-function onActionClick(e: OnActionClickParams<SystemRole>) {
-  switch (e.code) {
-    case 'copy': {
-      onCopy(e.row);
-      break;
-    }
-    case 'delete': {
-      onDelete(e.row);
-      break;
-    }
-    case 'detail': {
-      onDetail(e.row);
-      break;
-    }
-    case 'edit': {
-      onEdit(e.row);
-      break;
-    }
-    case 'users': {
-      onUsers(e.row);
-      break;
-    }
-  }
-}
 
 /**
  * 将Antd的Modal.confirm封装为promise，方便在异步函数中调用。
@@ -179,6 +150,7 @@ async function onStatusChange(newStatus: number, row: SystemRole) {
 }
 
 function onEdit(row: SystemRole) {
+  if (!canManageRoles.value) return;
   formDrawerApi.setData(row).open();
 }
 
@@ -192,6 +164,7 @@ function onUsers(row: SystemRole) {
 }
 
 function onDelete(row: SystemRole) {
+  if (!canManageRoles.value) return;
   const hideLoading = message.loading({
     content: $t('ui.actionMessage.deleting', [row.name]),
     duration: 0,
@@ -211,6 +184,7 @@ function onDelete(row: SystemRole) {
 }
 
 function onCopy(row: SystemRole) {
+  if (!canCopyRoles.value) return;
   copySource.value = row;
   copyForm.id = `${row.id}_copy`;
   copyForm.name = `${row.name}副本`;
@@ -254,6 +228,65 @@ function onCreate() {
     <DetailDrawer />
     <UsersDrawer />
     <Grid class="management-grid" :table-title="$t('system.role.list')">
+      <template #roleName="{ row }">
+        <Button
+          v-if="canManageRoles"
+          :aria-label="`编辑角色及权限：${row.name}`"
+          class="max-w-full !p-0"
+          size="small"
+          title="点击编辑角色及权限"
+          type="link"
+          @click="onEdit(row)"
+        >
+          <span class="truncate">{{ row.name }}</span>
+        </Button>
+        <span v-else>{{ row.name }}</span>
+      </template>
+      <template #action="{ row }">
+        <div class="flex items-center justify-center gap-1">
+          <Tooltip title="查看详情">
+            <Button
+              aria-label="查看详情"
+              size="small"
+              type="text"
+              @click="onDetail(row)"
+            >
+              <IconifyIcon icon="lucide:eye" class="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip v-if="canCopyRoles" title="复制角色">
+            <Button
+              aria-label="复制角色"
+              size="small"
+              type="text"
+              @click="onCopy(row)"
+            >
+              <IconifyIcon icon="lucide:copy" class="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip v-if="canAssignUsers" title="授权用户">
+            <Button
+              aria-label="授权用户"
+              size="small"
+              type="text"
+              @click="onUsers(row)"
+            >
+              <IconifyIcon icon="lucide:users" class="size-4" />
+            </Button>
+          </Tooltip>
+          <Popconfirm
+            v-if="canManageRoles"
+            :title="$t('ui.actionMessage.deleteConfirm', [row.name])"
+            @confirm="onDelete(row)"
+          >
+            <Tooltip title="删除角色">
+              <Button aria-label="删除角色" danger size="small" type="text">
+                <IconifyIcon icon="lucide:trash-2" class="size-4" />
+              </Button>
+            </Tooltip>
+          </Popconfirm>
+        </div>
+      </template>
       <template #toolbar-tools>
         <Button v-if="canManageRoles" type="primary" @click="onCreate">
           <Plus class="size-5" />
