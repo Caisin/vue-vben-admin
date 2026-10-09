@@ -6,7 +6,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::Mutex;
 
 #[derive(Default)]
-pub struct DesktopUpdater(Mutex<Option<(String, Update)>>);
+pub struct DesktopUpdater(Mutex<Option<(crate::session::Session, Update)>>);
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateView {
@@ -36,23 +36,59 @@ fn endpoint(base: &str) -> Result<url::Url> {
         base.trim_end_matches('/')
     ))?)
 }
-async fn fetch(app: &AppHandle, base: &str) -> Result<Option<Update>> {
-    let mut result = app
+fn is_release_download(base: &str, download: &url::Url) -> Result<bool> {
+    let base = url::Url::parse(base)?;
+    let prefix = format!(
+        "{}/adm/client-update-files/",
+        base.path().trim_end_matches('/')
+    );
+    Ok(base.origin() == download.origin() && download.path().starts_with(&prefix))
+}
+async fn fetch(
+    app: &AppHandle,
+    desktop: &crate::session::Desktop,
+    identity: &crate::session::Session,
+) -> Result<Option<Update>> {
+    let mut session = desktop.identity().await?;
+    ensure!(
+        session.uid == identity.uid && session.api_base == identity.api_base,
+        "登录身份已变化，请重新检查更新"
+    );
+    if session.expires_at <= crate::session::now() + 60 {
+        session = desktop.refresh(app, Some(session.token.clone())).await?;
+    }
+    let mut builder = app
         .updater_builder()
-        .endpoints(vec![endpoint(base)?])?
+        .endpoints(vec![endpoint(&session.api_base)?])?
+        .header("authorization", format!("Bearer {}", session.token))?
+        .header("x-kx-client", "tauri")?
+        .header("x-kx-update-base", &session.api_base)?
         .timeout(Duration::from_secs(20))
-        // 不转发业务登录令牌；下载和检查均只允许 HTTPS，包括重定向。
-        .configure_client(|client| client.https_only(true))
-        .build()?
-        .check()
-        .await?;
+        // 检查禁止重定向，设备证明与令牌只发送给当前服务。
+        .configure_client(|client| {
+            client
+                .https_only(true)
+                .redirect(reqwest_updater::redirect::Policy::none())
+        });
+    for (name, value) in desktop.device.headers(&session.token) {
+        builder = builder.header(name, value)?;
+    }
+    let mut result = builder.build()?.check().await?;
     if let Some(update) = &mut result {
         ensure!(
             update.download_url.scheme() == "https",
             "更新包必须使用 HTTPS"
         );
+        if !is_release_download(&session.api_base, &update.download_url)? {
+            update.headers.clear();
+        }
         update.timeout = Some(Duration::from_secs(30 * 60));
     }
+    let current = desktop.identity().await?;
+    ensure!(
+        current.uid == identity.uid && current.api_base == identity.api_base,
+        "登录身份已变化，请重新检查更新"
+    );
     Ok(result)
 }
 #[tauri::command]
@@ -66,14 +102,14 @@ pub async fn desktop_update_check(
         crate::tiktok::local_caller(&window)?;
         let mut pending = state.0.try_lock().context("正在检查或安装更新")?;
         *pending = None;
-        let base = desktop.auth.lock().await.base.clone();
-        if let Some(update) = fetch(&app, &base).await? {
+        let identity = desktop.identity().await?;
+        if let Some(update) = fetch(&app, &desktop, &identity).await? {
             let view = UpdateView {
                 current_version: update.current_version.clone(),
                 version: update.version.clone(),
                 notes: update.body.clone().unwrap_or_default(),
             };
-            *pending = Some((base, update));
+            *pending = Some((identity, update));
             Ok(Some(view))
         } else {
             Ok(None)
@@ -94,10 +130,11 @@ pub async fn desktop_update_install(
     async {
         crate::tiktok::local_caller(&window)?;
         let pending = state.0.try_lock().context("正在检查或安装更新")?;
-        let (base, previous) = pending.as_ref().context("请先检查更新")?;
+        let (identity, previous) = pending.as_ref().context("请先检查更新")?;
         ensure!(version == previous.version, "版本已变化，请重新检查更新");
+        let session = desktop.identity().await?;
         ensure!(
-            desktop.auth.lock().await.base == *base,
+            session.uid == identity.uid && session.api_base == identity.api_base,
             "服务地址已变化，请重新检查更新"
         );
         // 与任务启动使用同一组原生锁；检查空闲后持续持锁，消除检查到重启之间的竞态。
@@ -114,7 +151,7 @@ pub async fn desktop_update_install(
             "请先暂停上传和下载，并等待在途文件结束后更新"
         );
         let _tiktok = tiktok.update_guard()?;
-        let update = fetch(&app, base)
+        let update = fetch(&app, &desktop, identity)
             .await?
             .context("此版本已撤回或没有可用更新，请重新检查")?;
         ensure!(
@@ -146,11 +183,12 @@ pub async fn desktop_update_install(
             )
             .await?;
         // 下载可能耗时，安装前再次核对撤回和服务切换。
+        let session = desktop.identity().await?;
         ensure!(
-            desktop.auth.lock().await.base == *base,
+            session.uid == identity.uid && session.api_base == identity.api_base,
             "服务地址已变化，已取消安装"
         );
-        let current = fetch(&app, base)
+        let current = fetch(&app, &desktop, identity)
             .await?
             .context("此版本已撤回，已取消安装")?;
         ensure!(
@@ -193,6 +231,24 @@ mod tests {
         ] {
             assert!(endpoint(base).is_err());
         }
+    }
+    #[test]
+    fn credentials_are_only_kept_for_same_origin_release_files() -> Result<()> {
+        let base = "https://example.com/api/";
+        assert!(is_release_download(
+            base,
+            &url::Url::parse("https://example.com/api/adm/client-update-files/1.0.0/7")?
+        )?);
+        for target in [
+            "https://example.com.evil.test/api/adm/client-update-files/1.0.0/7",
+            "https://cdn.example.com/pkg",
+            "https://example.com:8443/api/adm/client-update-files/1.0.0/7",
+            "https://example.com/storage/file/content/7",
+            "https://example.com/api/adm/client-update-files/../../other",
+        ] {
+            assert!(!is_release_download(base, &url::Url::parse(target)?)?);
+        }
+        Ok(())
     }
     #[derive(Clone)]
     struct Events;

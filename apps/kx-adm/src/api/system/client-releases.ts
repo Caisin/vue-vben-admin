@@ -1,6 +1,9 @@
+import type { StorageOptionView } from '#/api/storage';
+
 import { requestClient } from '#/api/request';
 
 export interface ReleaseArtifact {
+  file_id?: number | string;
   target: string;
   url: string;
   signature: string;
@@ -19,6 +22,8 @@ export interface ClientRelease extends ReleaseWrite {
 }
 const base = '/adm/client-releases';
 export const ClientReleaseApi = {
+  storageOptions: () =>
+    requestClient.get<StorageOptionView[]>(`${base}/storage-options`),
   page: (params: Record<string, unknown>) =>
     requestClient.get<{ items: ClientRelease[]; total: number }>(base, {
       params,

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+
+import { useAccessStore } from '@vben/stores';
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -17,6 +19,8 @@ interface UpdateProgress {
   downloaded: number;
   total: null | number;
 }
+const access = useAccessStore();
+const loggedIn = computed(() => !!access.accessToken);
 const open = ref(false);
 const checking = ref(false);
 const installing = ref(false);
@@ -36,21 +40,25 @@ let unlisten: (() => void) | undefined;
 let disposed = false;
 let dismissed = '';
 async function check(manual = false) {
-  if (checking.value || installing.value) return;
+  if (!loggedIn.value || checking.value || installing.value) return;
+  const token = access.accessToken;
   if (manual) open.value = true;
   checking.value = true;
   failure.value = '';
   update.value = null;
   try {
     const result = await invoke<null | UpdateView>('desktop_update_check');
-    if (disposed) return;
+    if (disposed || token !== access.accessToken) return;
     update.value = result;
     if (result && (manual || result.version !== dismissed)) open.value = true;
     if (!result && manual) message.success('当前已是最新版本');
   } catch (error) {
-    if (!disposed) failure.value = String(error);
+    if (!disposed && token === access.accessToken)
+      failure.value = String(error);
   } finally {
     checking.value = false;
+    if (!disposed && loggedIn.value && token !== access.accessToken)
+      void check();
   }
 }
 function close() {
@@ -58,7 +66,7 @@ function close() {
   open.value = false;
 }
 async function install() {
-  if (!update.value || installing.value) return;
+  if (!loggedIn.value || !update.value || installing.value) return;
   installing.value = true;
   failure.value = '';
   progress.value = { stage: 'downloading', downloaded: 0, total: null };
@@ -91,6 +99,13 @@ onMounted(async () => {
     60 * 60 * 1000,
   );
 });
+watch(loggedIn, (value) => {
+  update.value = null;
+  open.value = false;
+  failure.value = '';
+  dismissed = '';
+  if (value && desktop) void check();
+});
 onBeforeUnmount(() => {
   disposed = true;
   if (interval) clearInterval(interval);
@@ -98,7 +113,7 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <template v-if="desktop">
+  <template v-if="desktop && loggedIn">
     <Button
       class="fixed bottom-3 right-3 z-40 shadow"
       size="small"
@@ -143,7 +158,8 @@ onBeforeUnmount(() => {
           </p>
         </template>
         <Space v-else>
-          <Button @click="close">稍后提醒</Button><Button type="primary" :disabled="checking" @click="install">
+          <Button @click="close">稍后提醒</Button>
+          <Button type="primary" :disabled="checking" @click="install">
             下载并重启安装
           </Button>
         </Space>

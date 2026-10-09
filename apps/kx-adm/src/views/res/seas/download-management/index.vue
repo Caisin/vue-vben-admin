@@ -2,30 +2,23 @@
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { DownloadTask, DownloadTaskItem } from '#/api/res/downloads';
 
-import { onMounted, ref } from 'vue';
+import { ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
-import {
-  Button,
-  Card,
-  Form,
-  FormItem,
-  Modal,
-  Statistic,
-  Table,
-  Tag,
-} from 'antdv-next';
+import { Button, Form, FormItem, Modal, Table, Tag } from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { ResDownloadApi } from '#/api/res/downloads';
-import { formatFileSize } from '#/components/file-picker/internal/file-picker-options';
 import DownloadHistory from '#/desktop/download-history.vue';
 
+import DownloadDashboard from './download-dashboard.vue';
 import ResourceSelect from './resource-select.vue';
+import UserSelect from './user-select.vue';
 
 const detailOpen = ref(false);
 const historyOpen = ref(false);
+const userId = ref<number | string>();
 const resourceId = ref<number | string>();
 const resourceCode = ref<number | string>();
 const detailTask = ref<DownloadTask>();
@@ -33,7 +26,6 @@ const detailItems = ref<DownloadTaskItem[]>([]);
 const detailPage = ref(1);
 const detailTotal = ref(0);
 const detailLoading = ref(false);
-const stats = ref<Awaited<ReturnType<typeof ResDownloadApi.stats>>>();
 const detailColumns = [
   { title: '集数', dataIndex: 'seq_no', key: 'seq_no' },
   { title: '章节', dataIndex: 'item_name', key: 'item_name' },
@@ -64,9 +56,21 @@ const [Grid, gridApi] = useVbenVxeGrid<DownloadTask>({
   formOptions: {
     schema: [
       { component: 'Input', fieldName: 'version_keyword', label: '版本' },
-      { component: 'Input', fieldName: 'user_keyword', label: '下载人' },
       { component: 'Input', fieldName: 'ip', label: '下载 IP' },
-      { component: 'Input', fieldName: 'status', label: '状态' },
+      {
+        component: 'Select',
+        fieldName: 'status',
+        label: '状态',
+        componentProps: {
+          allowClear: true,
+          options: [
+            { label: '待下载', value: 'pending' },
+            { label: '下载中', value: 'downloading' },
+            { label: '已完成', value: 'completed' },
+            { label: '失败', value: 'failed' },
+          ],
+        },
+      },
     ],
     submitOnChange: true,
   },
@@ -95,7 +99,7 @@ const [Grid, gridApi] = useVbenVxeGrid<DownloadTask>({
       { field: 'status', title: '状态' },
       { field: 'action', title: '操作' },
     ],
-    height: 'auto',
+    height: 520,
     pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
     proxyConfig: {
       ajax: {
@@ -108,7 +112,7 @@ const [Grid, gridApi] = useVbenVxeGrid<DownloadTask>({
               ? String(resourceCode.value)
               : undefined,
             version_keyword: formValues.version_keyword?.trim() || undefined,
-            user_keyword: formValues.user_keyword?.trim() || undefined,
+            uid: userId.value ? Number(userId.value) : undefined,
             ip: formValues.ip?.trim() || undefined,
             status: formValues.status?.trim() || undefined,
           }),
@@ -117,31 +121,10 @@ const [Grid, gridApi] = useVbenVxeGrid<DownloadTask>({
     toolbarConfig: { refresh: true, search: true, zoom: true },
   } as VxeTableGridOptions<DownloadTask>,
 });
-onMounted(async () => {
-  stats.value = await ResDownloadApi.stats({ limit: 10 });
-});
 </script>
 
 <template>
-  <Page auto-content-height title="下载管理">
-    <div class="mb-4 grid grid-cols-4 gap-4">
-      <Card>
-        <Statistic title="下载任务数" :value="stats?.total_downloads ?? 0" />
-      </Card>
-      <Card>
-        <Statistic title="下载用户数" :value="stats?.unique_users ?? 0" />
-      </Card>
-      <Card>
-        <Statistic title="来源 IP 数" :value="stats?.unique_ips ?? 0" />
-      </Card>
-      <Card>
-        <Statistic
-          title="下载量"
-          :value="stats?.total_bytes ?? 0"
-          :formatter="() => formatFileSize(stats?.total_bytes ?? 0)"
-        />
-      </Card>
-    </div>
+  <Page title="下载管理">
     <Form layout="inline" class="mb-4">
       <FormItem label="剧名" html-for="download-resource-name">
         <ResourceSelect
@@ -157,8 +140,16 @@ onMounted(async () => {
           @update:value="gridApi.query()"
         />
       </FormItem>
+      <FormItem label="下载人" html-for="download-user">
+        <UserSelect v-model:value="userId" @update:value="gridApi.query()" />
+      </FormItem>
       <Button @click="historyOpen = true">我的下载记录</Button>
     </Form>
+    <DownloadDashboard
+      :uid="userId"
+      :res-id="resourceId"
+      :resource-code="resourceCode"
+    />
     <DownloadHistory v-model:open="historyOpen" />
     <Grid table-title="下载任务记录">
       <template #status="{ row }">
@@ -168,16 +159,6 @@ onMounted(async () => {
         <Button type="link" @click="showDetails(row)"> 查看章节 </Button>
       </template>
     </Grid>
-    <Card title="最近下载排行" class="mt-4">
-      <div
-        v-for="row in stats?.ranking ?? []"
-        :key="String(row.res_id)"
-        class="flex justify-between border-b py-2"
-      >
-        <span>{{ row.resource_name || `资源 ${row.res_id}` }}</span>
-        <strong>{{ row.download_count }} 次</strong>
-      </div>
-    </Card>
     <Modal
       v-model:open="detailOpen"
       :footer="null"

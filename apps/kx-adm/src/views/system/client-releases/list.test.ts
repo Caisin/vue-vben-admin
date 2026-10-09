@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   page: vi.fn(),
+  storageOptions: vi.fn(async () => [
+    { code: 'system', storage_name: '系统存储' },
+  ]),
+  upload: vi.fn(),
   create: vi.fn(),
   action: vi.fn(),
   remove: vi.fn(),
@@ -31,6 +35,9 @@ vi.mock('@vben/common-ui', async () => {
 vi.mock('#/api/system/client-releases', () => ({ ClientReleaseApi: state }));
 vi.mock('#/api/system/user', () => ({
   SystemUserApi: { options: vi.fn(async () => ({ items: [], total: 0 })) },
+}));
+vi.mock('#/api/request', () => ({
+  plaintextRequestClient: { upload: state.upload },
 }));
 vi.mock('#/times', () => ({ Times: { formatUnix: String } }));
 vi.mock('antdv-next', async () => {
@@ -198,6 +205,56 @@ describe('版本管理闭环', () => {
     expect(document.body.textContent).toContain('草稿');
     expect(state.page).toHaveBeenCalledTimes(2);
   });
+  it('只选单个发行包即可上传系统存储并保存草稿', async () => {
+    state.page.mockResolvedValue({ items: [], total: 0 });
+    state.create.mockResolvedValue({});
+    state.upload.mockResolvedValue([
+      { file: { file_id: 42 }, url: '/storage/file/content/42' },
+    ]);
+    await mount();
+    click('新建版本');
+    await flush();
+    const metadata = new TextEncoder().encode(
+      JSON.stringify({
+        version: '0.1.1',
+        notes: '说明',
+        name: 'app.app.tar.gz',
+        target: 'darwin-aarch64',
+        signature: 'signed',
+        size: 3,
+      }),
+    );
+    const header = new Uint8Array(12);
+    header.set(new TextEncoder().encode('KXUPDATE'));
+    new DataView(header.buffer).setUint32(8, metadata.length, true);
+    const file = new File(
+      [header, metadata, new Uint8Array([1, 2, 3])],
+      'release.kx-update',
+    );
+    const input = document.querySelector(
+      'input[aria-label="上传发行包"]',
+    ) as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      value: [file],
+      configurable: true,
+    });
+    input.dispatchEvent(new Event('change'));
+    await flush();
+    expect(state.upload).toHaveBeenCalledWith('/storage/file/upload/system', {
+      file: expect.any(File),
+    });
+    expect(document.body.textContent).toContain('已上传至系统存储');
+    expect(document.querySelector('input[accept=".sig"]')).toBeNull();
+    click('保存');
+    await flush();
+    expect(state.create).toHaveBeenCalledWith({
+      version: '0.1.1',
+      notes: '说明',
+      artifacts: [
+        { target: 'darwin-aarch64', signature: 'signed', url: '', file_id: 42 },
+      ],
+    });
+  });
   it('打开草稿、保存并刷新，然后发布与撤回', async () => {
     const current = { ...row };
     state.page.mockImplementation(async () => ({
@@ -215,7 +272,7 @@ describe('版本管理闭环', () => {
     click('0.1.1');
     await flush();
     expect(document.querySelector('aside')?.textContent).toContain(
-      '已载入签名',
+      'https://example.com/app.tar.gz',
     );
     click('保存');
     await flush();

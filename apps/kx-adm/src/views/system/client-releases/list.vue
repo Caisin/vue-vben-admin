@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { FileUploadView, StorageOptionView } from '#/api/storage';
 import type { ClientRelease, ReleaseWrite } from '#/api/system/client-releases';
 
 import { computed, onMounted, ref } from 'vue';
@@ -20,10 +21,12 @@ import {
   Tag,
 } from 'antdv-next';
 
+import { plaintextRequestClient } from '#/api/request';
 import { ClientReleaseApi } from '#/api/system/client-releases';
 import { Times } from '#/times';
 
 import {
+  parseReleaseBundle,
   parseReleaseManifest,
   platforms,
   validateRelease,
@@ -41,6 +44,9 @@ const status = ref<string>();
 const labels = { draft: '草稿', published: '已发布', withdrawn: '已撤回' };
 const open = ref(false);
 const saving = ref(false);
+const uploading = ref(false);
+const storageCode = ref<string>();
+const storages = ref<StorageOptionView[]>([]);
 const selected = ref<ClientRelease>();
 const form = ref<ReleaseWrite>({ version: '', notes: '', artifacts: [] });
 const readOnly = computed(
@@ -81,6 +87,15 @@ function search() {
   void load();
 }
 function edit(row?: ClientRelease) {
+  if (canEdit.value)
+    void ClientReleaseApi.storageOptions()
+      .then((items) => {
+        storages.value = items;
+        storageCode.value ??= items[0]?.code;
+      })
+      .catch((error) => {
+        formError.value = String(error);
+      });
   selected.value = row;
   form.value = row
     ? {
@@ -93,7 +108,7 @@ function edit(row?: ClientRelease) {
   open.value = true;
 }
 async function save() {
-  if (saving.value || readOnly.value) return;
+  if (saving.value || uploading.value || readOnly.value) return;
   formError.value = '';
   try {
     validateRelease(form.value);
@@ -133,18 +148,43 @@ function action(row: ClientRelease, action: 'delete' | 'publish' | 'withdraw') {
     },
   });
 }
-async function signature(event: Event, index: number) {
+async function uploadBundle(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
+  if (!file || uploading.value) return;
+  uploading.value = true;
+  formError.value = '';
   try {
-    if (!file) return;
-    if (file.size > 4096) throw new Error('签名文件不能超过 4 KB');
-    const artifact = form.value.artifacts[index];
-    const content = await file.text();
-    if (artifact) artifact.signature = content.trim();
+    if (form.value.artifacts.length >= 8)
+      throw new Error('最多上传 8 个平台更新包');
+    if (!storageCode.value) throw new Error('请选择系统存储');
+    const bundle = await parseReleaseBundle(file);
+    if (form.value.version && form.value.version !== bundle.release.version)
+      throw new Error('发行包版本与当前版本不一致');
+    const artifact = bundle.release.artifacts[0];
+    if (!artifact) throw new Error('发行包缺少平台');
+    if (form.value.artifacts.some((a) => a.target === artifact.target))
+      throw new Error('此平台已存在，请先移除后重新上传');
+    // 使用原始上传响应，避免本地 storage 为预览再次下载整个安装包。
+    const uploaded = await plaintextRequestClient.upload<FileUploadView[]>(
+      `/storage/file/upload/${encodeURIComponent(storageCode.value)}`,
+      { file: bundle.file },
+    );
+    const stored = uploaded[0];
+    if (!stored) throw new Error('上传未返回文件，请重试');
+    form.value.version = bundle.release.version;
+    form.value.notes ||= bundle.release.notes;
+    form.value.artifacts.push({
+      target: artifact.target,
+      signature: artifact.signature,
+      url: '',
+      file_id: stored.file.file_id,
+    });
+    message.success('更新包已上传到系统存储');
   } catch (error) {
     formError.value = String(error);
   } finally {
+    uploading.value = false;
     input.value = '';
   }
 }
@@ -189,7 +229,8 @@ onMounted(load);
         "
         @change="search"
       />
-      <Button @click="search">查询</Button><Button :loading="loading" @click="load">刷新</Button>
+      <Button @click="search">查询</Button>
+      <Button :loading="loading" @click="load">刷新</Button>
       <Button v-if="canEdit" type="primary" @click="edit()">新建版本</Button>
     </Space>
     <Alert
@@ -286,11 +327,11 @@ onMounted(load);
       :title="selected ? `客户端版本 ${selected.version}` : '新建客户端版本'"
       :width="760"
       :confirm-loading="saving"
-      :closable="!saving"
-      :mask-closable="!saving"
-      :keyboard="!saving"
-      :cancel-button-props="{ disabled: saving }"
-      :ok-button-props="{ disabled: !!readOnly }"
+      :closable="!saving && !uploading"
+      :mask-closable="!saving && !uploading"
+      :keyboard="!saving && !uploading"
+      :cancel-button-props="{ disabled: saving || uploading }"
+      :ok-button-props="{ disabled: !!readOnly || uploading }"
       ok-text="保存草稿"
       @ok="save"
     >
@@ -301,13 +342,41 @@ onMounted(load);
         :message="formError"
         show-icon
       />
-      <Form layout="vertical" :disabled="!!readOnly || saving">
-        <FormItem v-if="!readOnly" label="导入发行清单（可选）">
+      <Form layout="vertical" :disabled="!!readOnly || saving || uploading">
+        <FormItem v-if="!readOnly" label="系统存储" required>
+          <Select
+            v-model:value="storageCode"
+            :options="
+              storages.map((item) => ({
+                value: item.code,
+                label: item.storage_name,
+              }))
+            "
+            placeholder="请选择存储"
+          />
+        </FormItem>
+        <FormItem v-if="!readOnly" label="上传发行包" required>
+          <input
+            aria-label="上传发行包"
+            type="file"
+            accept=".kx-update"
+            :disabled="saving || uploading"
+            @change="uploadBundle"
+          />
+          <p>
+            {{
+              uploading
+                ? '正在上传，请勿关闭…'
+                : '选择单个发行包即可，无需单独上传校验文件。'
+            }}
+          </p>
+        </FormItem>
+        <FormItem v-if="!readOnly" label="导入旧版发行清单（可选）">
           <input
             aria-label="导入发行清单"
             type="file"
             accept=".json"
-            :disabled="saving"
+            :disabled="saving || uploading"
             @change="manifest"
           />
         </FormItem>
@@ -333,26 +402,9 @@ onMounted(load);
           <FormItem label="平台" required>
             <Select v-model:value="artifact.target" :options="platforms" />
           </FormItem>
-          <FormItem label="更新包地址" required>
-            <Input
-              v-model:value="artifact.url"
-              placeholder="https://…（macOS .app.tar.gz / Windows 安装程序 / Linux AppImage）"
-            />
-          </FormItem>
-          <FormItem label="签名文件" required>
-            <template v-if="!readOnly">
-              <input
-                :aria-label="`平台 ${index + 1} 签名文件`"
-                type="file"
-                accept=".sig"
-                :disabled="saving"
-                @change="signature($event, index)"
-              />
-            </template>
-            <span class="ml-2">{{
-              artifact.signature ? '已载入签名' : '请选择对应更新包的 .sig 文件'
-            }}</span>
-          </FormItem>
+          <p class="mb-3">
+            {{ artifact.file_id ? '已上传至系统存储' : artifact.url }}
+          </p>
           <Button
             v-if="!readOnly"
             danger
@@ -361,17 +413,9 @@ onMounted(load);
             移除此平台
           </Button>
         </div>
-        <Button
-          v-if="!readOnly && form.artifacts.length < 8"
-          class="mb-4"
-          @click="form.artifacts.push({ target: '', url: '', signature: '' })"
-        >
-          添加平台更新包
-        </Button>
       </Form>
       <p class="text-muted-foreground">
-        安装包需托管在稳定的 HTTPS
-        地址。发布后内容固定，发现问题请撤回并发布更高版本。
+        更新包存放于所选系统存储。发布后内容固定，发现问题请撤回并发布更高版本。
       </p>
     </Modal>
   </Page>

@@ -10,6 +10,7 @@ test('下载管理显示可读流量、远程剧名编码筛选和我的下载�
   test.setTimeout(60_000);
   const taskQueries: URL[] = [];
   const optionQueries: URL[] = [];
+  const statsQueries: URL[] = [];
   await page.route(
     '**/{auth,param,storage,notify,adm,api}/**',
     async (route) => {
@@ -49,15 +50,37 @@ test('下载管理显示可读流量、远程剧名编码筛选和我的下载�
             meta: {},
           },
         ];
-      else if (path === '/adm/res/download-stats')
+      else if (path === '/adm/res/download-stats') {
+        statsQueries.push(url);
         result = {
+          total_tasks: 4,
+          completed_tasks: 2,
+          failed_tasks: 1,
+          active_tasks: 1,
+          daily: [{ key: '1791475200', download_count: 2, bytes: 1024 }],
+          user_ranking: [
+            { key: '9', label: '下载测试用户', download_count: 2, bytes: 1024 },
+          ],
+          ip_ranking: [
+            {
+              key: '127.0.0.1',
+              label: '127.0.0.1',
+              download_count: 2,
+              bytes: 1024,
+            },
+          ],
+          client_ranking: [
+            { key: 'tauri', label: 'tauri', download_count: 2, bytes: 1024 },
+          ],
           total_bytes: 1_073_741_824,
           total_downloads: 2,
           unique_users: 1,
           unique_ips: 1,
           ranking: [],
         };
-      else if (path === '/adm/res/download-tasks/resources') {
+      } else if (path === '/adm/res/download-tasks/users') {
+        result = { items: [{ id: 9, name: '下载测试用户' }], total: 1 };
+      } else if (path === '/adm/res/download-tasks/resources') {
         optionQueries.push(url);
         const selected = {
           res_id: 51,
@@ -118,6 +141,30 @@ test('下载管理显示可读流量、远程剧名编码筛选和我的下载�
   await expect
     .poll(() => taskQueries.at(-1)?.searchParams.get('resource_code'))
     .toBe('SPECIAL');
+  const user = page.getByRole('combobox', { name: /下载人/ });
+  await user.fill('下载测试');
+  await page.getByTitle('下载测试用户 · #9', { exact: true }).click();
+  await expect
+    .poll(() => taskQueries.at(-1)?.searchParams.get('uid'))
+    .toBe('9');
+  await expect
+    .poll(() => statsQueries.at(-1)?.searchParams.get('uid'))
+    .toBe('9');
+  await expect(page.getByText('用户排行', { exact: true })).toBeVisible();
+  const period = page.getByRole('combobox', { name: '统计时间范围' });
+  await period.click();
+  await page.getByTitle('近 30 天', { exact: true }).click();
+  await expect
+    .poll(
+      () =>
+        Number(statsQueries.at(-1)?.searchParams.get('to')) -
+        Number(statsQueries.at(-1)?.searchParams.get('from')),
+    )
+    .toBeGreaterThan(29 * 86_400);
+  await page.screenshot({
+    path: '/tmp/kx-download-dashboard.png',
+    fullPage: true,
+  });
   await page.getByRole('button', { name: '我的下载记录', exact: true }).click();
   await expect(
     page.getByRole('dialog', { name: '下载中心', exact: true }),

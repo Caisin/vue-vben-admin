@@ -20,16 +20,18 @@ export function validateRelease(value: ReleaseWrite) {
     if (!platforms.some((p) => p.value === a.target) || targets.has(a.target))
       throw new Error('平台不能为空或重复');
     targets.add(a.target);
-    let url: URL;
-    try {
-      url = new URL(a.url);
-    } catch {
-      throw new Error('请输入有效的更新包地址');
+    if (!a.file_id) {
+      let url: URL;
+      try {
+        url = new URL(a.url);
+      } catch {
+        throw new Error('请输入有效的更新包地址');
+      }
+      if (url.protocol !== 'https:' || url.username || url.password || url.hash)
+        throw new Error('更新包需要无账号密码的 HTTPS 地址');
     }
-    if (url.protocol !== 'https:' || url.username || url.password || url.hash)
-      throw new Error('更新包需要无账号密码的 HTTPS 地址');
     if (!a.signature.trim())
-      throw new Error('请为每个更新包导入对应的签名文件');
+      throw new Error('发行包缺少签名，请重新生成发行包');
   }
 }
 /** 只接受发行脚本输出的结构，文件内容始终作为数据处理。 */
@@ -60,4 +62,53 @@ export function parseReleaseManifest(text: string): ReleaseWrite {
   };
   validateRelease(value);
   return value;
+}
+
+/** 只读取有界元信息，安装包用 Blob 切片上传，不将整个大文件复制到内存。 */
+export async function parseReleaseBundle(file: File) {
+  const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (
+    header.length !== 12 ||
+    new TextDecoder().decode(header.slice(0, 8)) !== 'KXUPDATE'
+  )
+    throw new Error('请选择发行脚本生成的 .kx-update 发行包');
+  const length = new DataView(header.buffer).getUint32(8, true);
+  if (!length || length > 65_536 || file.size <= length + 12)
+    throw new Error('发行包长度无效');
+  const data = JSON.parse(await file.slice(12, 12 + length).text());
+  if (
+    typeof data.name !== 'string' ||
+    /[\\/]/.test(data.name) ||
+    !data.name ||
+    data.size !== file.size - length - 12
+  )
+    throw new Error('发行包内容不完整');
+  const release = parseReleaseManifest(
+    JSON.stringify({
+      version: data.version,
+      notes: data.notes,
+      artifacts: [
+        {
+          target: data.target,
+          signature: data.signature,
+          url: 'https://bundle.invalid/package',
+        },
+      ],
+    }),
+  );
+  const artifact = release.artifacts[0];
+  if (!artifact) throw new Error('发行包缺少平台');
+  const target = artifact.target;
+  if (
+    (target.startsWith('darwin-') && !data.name.endsWith('.app.tar.gz')) ||
+    (target.startsWith('windows-') && !/\.(exe|msi)$/.test(data.name)) ||
+    (target.startsWith('linux-') && !data.name.endsWith('.AppImage'))
+  )
+    throw new Error('安装包格式与平台不匹配');
+  return {
+    release,
+    file: new File([file.slice(12 + length)], data.name, {
+      type: 'application/octet-stream',
+    }),
+  };
 }

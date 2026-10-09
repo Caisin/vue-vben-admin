@@ -78,7 +78,21 @@ export interface DownloadUserTreeNode {
   disabled: boolean;
   children: DownloadUserTreeNode[];
 }
+export interface DownloadDimensionRow {
+  key: string;
+  label: string;
+  download_count: number;
+  bytes: number;
+}
 export interface DownloadStats {
+  total_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  active_tasks: number;
+  daily: DownloadDimensionRow[];
+  user_ranking: DownloadDimensionRow[];
+  ip_ranking: DownloadDimensionRow[];
+  client_ranking: DownloadDimensionRow[];
   from: number;
   ranking: Array<{
     bytes: number;
@@ -185,6 +199,11 @@ export const ResDownloadApi = {
     },
   ) =>
     requestClient.get<Page<DownloadLog>>('/adm/res/download-logs', { params }),
+  taskUsers: (params: PageQuery & { keyword?: string }) =>
+    requestClient.get<Page<DownloadUserOption>>(
+      '/adm/res/download-tasks/users',
+      { params },
+    ),
   taskResources: (params: PageQuery & { keyword?: string }) =>
     requestClient.get<Page<DownloadResourceOption>>(
       '/adm/res/download-tasks/resources',
@@ -213,8 +232,14 @@ export const ResDownloadApi = {
       `/adm/res/download-tasks/${taskId}/items`,
       { params },
     ),
-  stats: (params?: { from?: number; limit?: number; to?: number }) =>
-    requestClient.get<DownloadStats>('/adm/res/download-stats', { params }),
+  stats: (params?: {
+    from?: number;
+    limit?: number;
+    to?: number;
+    uid?: number;
+    res_id?: number;
+    resource_code?: string;
+  }) => requestClient.get<DownloadStats>('/adm/res/download-stats', { params }),
   mine: (params?: PageQuery) =>
     requestClient.get<Page<DownloadLog>>('/api/res/downloads', { params }),
   mineTasks: (params?: PageQuery) =>
