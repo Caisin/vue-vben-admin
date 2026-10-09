@@ -13,7 +13,24 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   let failSave = false;
   let failTree = true;
   const user = { id: 7, name: '测试用户', tel: '', email: '' };
-  const match = { res_id: 3, res_name: '匹配剧', resource_code: 'DR-3' };
+  const match = {
+    res_id: 3,
+    res_name: '匹配剧',
+    resource_code: 'DR-3',
+    seq_num: 80,
+  };
+  const second = {
+    res_id: 4,
+    res_name: '同编码剧',
+    resource_code: 'DR-3',
+    seq_num: 60,
+  };
+  const third = {
+    res_id: 5,
+    res_name: '其他编码剧',
+    resource_code: 'DR-5',
+    seq_num: 100,
+  };
   await page.route('**/{auth,param,storage,notify,adm}/**', async (route) => {
     const request = route.request();
     if (!['fetch', 'xhr'].includes(request.resourceType()))
@@ -35,8 +52,8 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
         enabled: true,
         home_path: '/res/seas/download-authorizations',
       };
-    else if (path === '/auth/per/codes' || path === '/auth/dt/apps')
-      result = [];
+    else if (path === '/auth/per/codes') result = ['res:download:authorize'];
+    else if (path === '/auth/dt/apps') result = [];
     else if (path === '/auth/menu/current')
       result = [
         {
@@ -111,24 +128,41 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
           }),
         });
       if (apply) {
-        expect(body.grant.uid).toBe(7);
-        expect(body.uids).toEqual([7, 8]);
-        expect(body.expected_res_ids).toEqual([3]);
+        if (body.grant.can_download) {
+          expect(body.grant.uid).toBe(7);
+          expect(body.uids).toEqual([7, 8]);
+        }
+        expect(body.expected_res_ids).toEqual(
+          body.mode === 'name' ? [3] : [3, 4, 5],
+        );
+        expect(body.selected_res_ids).toEqual([3]);
         writes.push(body);
       }
-      const input = body.mode === 'name' ? '匹配剧' : 'dr-3';
-      expect(body.text).toContain(input);
+      const input = body.mode === 'name' ? '匹配剧' : 'DR-3';
+      expect(body.text).toContain(body.mode === 'name' ? '匹配剧' : 'dr-3');
       result = {
-        matched_res_ids: [3],
-        granted_count: apply ? 1 : 0,
-        granted_user_count: apply ? 2 : 0,
+        matched_res_ids: body.mode === 'name' ? [3] : [3, 4, 5],
+        granted_count: apply && body.grant.can_download ? 1 : 0,
+        granted_user_count: apply && body.grant.can_download ? 2 : 0,
+        revoked_count: apply && !body.grant.can_download ? 2 : 0,
         lines: [
+          ...(body.mode === 'code'
+            ? [
+                {
+                  line: 4,
+                  input: 'DR-5',
+                  status: 'matched',
+                  message: '匹配 1 部剧',
+                  matches: [third],
+                },
+              ]
+            : []),
           {
             line: 1,
             input,
             status: 'matched',
-            message: '匹配 1 部剧',
-            matches: [match],
+            message: body.mode === 'name' ? '匹配 1 部剧' : '匹配 2 部剧',
+            matches: body.mode === 'name' ? [match] : [match, second],
           },
           {
             line: 2,
@@ -198,6 +232,13 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   await page.getByRole('button', { name: '批量授权', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(
+    dialog.getByRole('textbox', { name: '作品编码列表' }),
+  ).toBeVisible();
+  await expect(dialog.getByPlaceholder('生效时间')).not.toHaveValue('');
+  await expect(dialog.getByPlaceholder('失效时间')).not.toHaveValue('');
+  await dialog.getByRole('combobox', { name: '匹配方式' }).click();
+  await page.getByTitle('每行一个剧名', { exact: true }).click();
+  await expect(
     dialog.getByRole('combobox', { name: '授权用户' }),
   ).toBeDisabled();
   failTree = false;
@@ -228,6 +269,12 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   const before = grantReads;
   await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].grant.valid_until - writes[0].grant.valid_from).toBe(
+    7 * 86_400,
+  );
+  expect(Math.abs(writes[0].grant.valid_from - Date.now() / 1000)).toBeLessThan(
+    120,
+  );
   await expect.poll(() => grantReads).toBeGreaterThan(before);
   await expect(
     dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }),
@@ -236,11 +283,22 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   await page.getByTitle('每行一个作品编码', { exact: true }).click();
   await dialog
     .getByRole('textbox', { name: '作品编码列表' })
-    .fill('dr-3\nmissing\ndr-3');
+    .fill('dr-3\nmissing\ndr-3\nDR-5');
   await expect(
     dialog.getByRole('button', { name: '确认向 2 人授权 0 部剧' }),
   ).toBeDisabled();
+  await dialog.getByPlaceholder('生效时间').click();
+  await page.getByText('未来 30 天', { exact: true }).click();
   await dialog.getByRole('button', { name: '预览匹配' }).click();
+  await expect(dialog).toContainText('80 集');
+  await expect(dialog).toContainText('60 集');
+  await expect(dialog).toContainText('100 集');
+  await dialog
+    .getByRole('button', { name: '移除剧目 同编码剧 #4', exact: true })
+    .click();
+  await dialog
+    .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
+    .click();
   failSave = true;
   await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect(
@@ -252,9 +310,21 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   expect(writes).toHaveLength(1);
   failSave = false;
   await dialog.getByRole('button', { name: '预览匹配' }).click();
+  await expect(
+    dialog.getByRole('button', { name: '确认向 2 人授权 3 部剧' }),
+  ).toBeEnabled();
+  await dialog
+    .getByRole('button', { name: '移除剧目 同编码剧 #4', exact: true })
+    .click();
+  await dialog
+    .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
+    .click();
   await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1].mode).toBe('code');
+  expect(writes[1].grant.valid_until - writes[1].grant.valid_from).toBe(
+    30 * 86_400,
+  );
   await dialog.getByRole('button', { name: /完\s*成/ }).click();
   const grantRow = page
     .getByRole('main')
@@ -317,8 +387,44 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
     [7, 8].map((uid) => ({
       uid,
       can_download: true,
+      seq_from: 0,
+      seq_until: 0,
       valid_from: 0,
       valid_until: 0,
     })),
   ]);
+  await page.getByRole('button', { name: '批量取消授权', exact: true }).click();
+  await expect(dialog.getByPlaceholder('生效时间')).toHaveCount(0);
+  await dialog
+    .getByRole('textbox', { name: '作品编码列表' })
+    .fill('dr-3\nDR-5');
+  await dialog.getByRole('button', { name: '预览匹配' }).click();
+  await dialog
+    .getByRole('button', { name: '移除 DR-3 全部剧目', exact: true })
+    .click();
+  await dialog
+    .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
+    .click();
+  await expect(
+    dialog.getByRole('button', { name: '确认取消 2 人的 0 部剧授权' }),
+  ).toBeDisabled();
+  await dialog.getByRole('button', { name: '预览匹配' }).click();
+  await dialog
+    .getByRole('button', { name: '移除剧目 同编码剧 #4', exact: true })
+    .click();
+  await dialog
+    .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
+    .click();
+  const beforeRevoke = grantReads;
+  await dialog
+    .getByRole('button', { name: '确认取消 2 人的 1 部剧授权' })
+    .click();
+  await expect.poll(() => writes.length).toBe(3);
+  expect(writes[2].grant.can_download).toBe(false);
+  expect(writes[2].uids).toEqual([9, 7]);
+  await expect(dialog).toContainText('已取消 2 条授权');
+  await expect.poll(() => grantReads).toBeGreaterThan(beforeRevoke);
+  await expect(
+    dialog.getByRole('button', { name: '确认取消 2 人的 1 部剧授权' }),
+  ).toBeDisabled();
 });

@@ -33,8 +33,10 @@ export interface DownloadBatchWrite {
   grant: DownloadGrantWrite;
   uids: number[];
   expected_res_ids?: Array<number | string>;
+  selected_res_ids?: Array<number | string>;
 }
 export interface DownloadBatchView {
+  revoked_count: number;
   granted_count: number;
   granted_user_count: number;
   matched_res_ids: Array<number | string>;
@@ -47,6 +49,7 @@ export interface DownloadBatchView {
       res_id: number | string;
       res_name: string;
       resource_code: string;
+      seq_num: number;
     }>;
   }>;
 }
@@ -89,6 +92,11 @@ export interface DownloadStats {
   total_downloads: number;
   unique_ips: number;
   unique_users: number;
+}
+export interface DownloadResourceOption {
+  res_id: number | string;
+  res_name: string;
+  resource_code: string;
 }
 export interface DownloadTask {
   client: string;
@@ -177,6 +185,11 @@ export const ResDownloadApi = {
     },
   ) =>
     requestClient.get<Page<DownloadLog>>('/adm/res/download-logs', { params }),
+  taskResources: (params: PageQuery & { keyword?: string }) =>
+    requestClient.get<Page<DownloadResourceOption>>(
+      '/adm/res/download-tasks/resources',
+      { params },
+    ),
   tasks: (
     params?: PageQuery & {
       from?: number;
@@ -187,6 +200,7 @@ export const ResDownloadApi = {
       to?: number;
       uid?: number;
       user_keyword?: string;
+      resource_code?: string;
       version_keyword?: string;
       version_id?: number;
     },

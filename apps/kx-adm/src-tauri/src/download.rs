@@ -68,9 +68,23 @@ impl DownloadJob {
     fn view(&self) -> Value {
         let mut value = serde_json::to_value(self).expect("download job serializes");
         value.as_object_mut().unwrap().remove("directory");
-        value["targetDirectory"] = json!(self.directory.to_string_lossy());
+        value["targetDirectory"] = json!(display_directory(&self.directory.to_string_lossy()));
         value
     }
+}
+
+/// 只转换展示路径；磁盘操作保留 Windows 扩展路径以支持长路径。
+pub(crate) fn display_directory(path: &str) -> String {
+    if let Some(share) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{share}");
+    }
+    if let Some(drive) = path.strip_prefix(r"\\?\") {
+        let bytes = drive.as_bytes();
+        if bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && &bytes[1..3] == b":\\" {
+            return drive.to_owned();
+        }
+    }
+    path.to_owned()
 }
 
 pub trait DownloadEvents: crate::session::SessionEvents + Clone + Send + Sync + 'static {
@@ -139,13 +153,14 @@ impl Desktop {
         ensure!((1..=8).contains(&concurrency), "下载并发数须为 1 至 8");
         let identity = self.identity().await?;
         ensure!(directory.is_dir(), "下载目录不存在");
+        let directory = directory.canonicalize().context("无法读取下载目录")?;
         let prepared = self
             .api(
                 app,
                 &identity,
                 reqwest::Method::POST,
                 "/api/res/downloads/prepare",
-                Some(&json!({"res_id": res_id, "version_id": version_id, "file_ids": file_ids})),
+                Some(&json!({"res_id": res_id, "version_id": version_id, "file_ids": file_ids, "include_cover": true})),
             )
             .await
             .map_err(|error| anyhow::anyhow!("服务端准备下载失败：{error}"))?;
@@ -167,12 +182,22 @@ impl Desktop {
             error: String::new(),
             files,
         };
-        let view = job.view();
-        let mut queue = self.download_queue.lock().await;
-        queue.push(job);
-        persist(&self.data, &queue)?;
-        app.download_updated(view.clone())?;
-        Ok(view)
+        let id = job.id.clone();
+        {
+            let mut queue = self.download_queue.lock().await;
+            let mut next = queue.clone();
+            next.push(job);
+            persist(&self.data, &next)?;
+            *queue = next;
+        }
+        self.resume_download((*app).clone(), id.clone(), false, None)
+            .await?;
+        let queue = self.download_queue.lock().await;
+        Ok(queue
+            .iter()
+            .find(|job| job.id == id)
+            .context("下载任务不存在")?
+            .view())
     }
 
     pub async fn pause_download(&self, app: &impl DownloadEvents, id: &str) -> Result<()> {
@@ -191,11 +216,40 @@ impl Desktop {
         Ok(())
     }
 
+    pub async fn set_download_concurrency(
+        &self,
+        app: &impl DownloadEvents,
+        id: &str,
+        concurrency: usize,
+    ) -> Result<Value> {
+        ensure!((1..=8).contains(&concurrency), "下载并发数须为 1 至 8");
+        let active = self
+            .download_active
+            .try_lock()
+            .context("正在安装更新或启动任务，请稍后重试")?;
+        ensure!(!active.contains(id), "请等待下载任务停止后再调整并发");
+        let identity = self.identity().await?;
+        let mut queue = self.download_queue.lock().await;
+        let mut next = queue.clone();
+        let job = next
+            .iter_mut()
+            .find(|j| j.id == id && j.uid == identity.uid && j.api_base == identity.api_base)
+            .context("下载任务不存在或属于其他账号")?;
+        ensure!(job.status != "下载中", "请暂停下载后再调整并发");
+        job.concurrency = concurrency;
+        let view = job.view();
+        persist(&self.data, &next)?;
+        *queue = next;
+        app.download_updated(view.clone())?;
+        Ok(view)
+    }
+
     pub async fn resume_download(
         self: &Arc<Self>,
         app: impl DownloadEvents,
         id: String,
         overwrite: bool,
+        directory: Option<PathBuf>,
     ) -> Result<()> {
         let mut active = self
             .download_active
@@ -205,22 +259,38 @@ impl Desktop {
         let s = self.identity().await?;
         {
             let mut queue = self.download_queue.lock().await;
-            let job = queue
+            // 先保存候选队列；目录或磁盘校验失败不改变当前任务。
+            let mut next = queue.clone();
+            let job = next
                 .iter_mut()
                 .find(|j| j.id == id && j.uid == s.uid && j.api_base == s.api_base)
                 .ok_or_else(|| anyhow::anyhow!("下载任务不存在或属于其他账号"))?;
             ensure!(job.status != "下载中", "下载任务正在执行");
+            let mut directory_changed = false;
+            if let Some(directory) = directory {
+                ensure!(
+                    directory.is_absolute() && directory.is_dir(),
+                    "请选择有效的本地下载目录"
+                );
+                let directory = directory.canonicalize().context("无法读取下载目录")?;
+                directory_changed = directory != job.directory;
+                job.directory = directory;
+            }
             job.status = "下载中".into();
             job.overwrite = overwrite;
             job.error.clear();
             for file in &mut job.files {
                 file.error.clear();
-                if overwrite {
+                if overwrite || directory_changed {
                     file.status = "待下载".into();
                     file.bytes = 0;
                 }
             }
-            persist(&self.data, &queue)?;
+            let view = job.view();
+            persist(&self.data, &next)?;
+            *queue = next;
+            // 启动事件只用于刷新界面，发送失败不能阻止已持久化任务执行。
+            let _ = app.download_updated(view);
         }
         active.insert(id.clone());
         drop(active);
@@ -258,6 +328,51 @@ impl Desktop {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("下载任务不存在"))?
         };
+        let cover = self
+            .api(
+                app,
+                &session,
+                reqwest::Method::POST,
+                &format!("/api/res/download-tasks/{}/cover", job.task_id),
+                None,
+            )
+            .await
+            .context("检查下载封面失败")?;
+        if !self.download_running(id, &session).await? {
+            return Ok(());
+        }
+        if let Some(cover) = cover_file(&cover)? {
+            let mut queue = self.download_queue.lock().await;
+            let mut next = queue.clone();
+            let current = next
+                .iter_mut()
+                .find(|j| j.id == id)
+                .context("下载任务不存在")?;
+            if current.status != "下载中" {
+                return Ok(());
+            }
+            if let Some(existing) = current.files.iter().find(|f| f.file_id == cover.file_id) {
+                ensure!(existing.file_name == cover.file_name, "封面与已有文件冲突");
+            } else {
+                ensure!(
+                    !current.files.iter().any(|f| f.file_name == cover.file_name),
+                    "封面文件已变化，请重新创建任务"
+                );
+                current.files.push(cover);
+                let view = current.view();
+                persist(&self.data, &next).context("保存封面下载清单失败")?;
+                *queue = next;
+                app.download_updated(view)?;
+            }
+        }
+        let job = self
+            .download_queue
+            .lock()
+            .await
+            .iter()
+            .find(|j| j.id == id)
+            .cloned()
+            .context("下载任务不存在")?;
         let pool = kx_tk_pool::TkPool::new(job.concurrency.clamp(1, 8));
         let futures = (0..job.files.len())
             .map(|index| {
@@ -513,7 +628,42 @@ fn download_layout(
             pending_receipt: None,
         });
     }
+    if let Some(cover) = cover_file(&prepared["cover"])? {
+        ensure!(
+            !files.iter().any(|f| f.file_id == cover.file_id),
+            "封面与视频不能使用同一文件"
+        );
+        files.push(cover);
+    }
     Ok((root.join(folder), files))
+}
+
+fn cover_file(cover: &Value) -> Result<Option<DownloadFile>> {
+    if cover.is_null() {
+        return Ok(None);
+    }
+    let name = cover["file_name"].as_str().unwrap_or_default();
+    ensure!(
+        [
+            "cover.jpg",
+            "cover.jpeg",
+            "cover.png",
+            "cover.webp",
+            "cover.gif"
+        ]
+        .contains(&name),
+        "下载封面名称无效"
+    );
+    Ok(Some(DownloadFile {
+        file_id: cover["file_id"]
+            .as_i64()
+            .filter(|id| *id > 0)
+            .context("下载封面文件编号无效")?,
+        file_name: name.to_owned(),
+        size: cover["size"].as_u64().context("下载封面大小无效")?,
+        status: "待下载".into(),
+        ..Default::default()
+    }))
 }
 
 fn path_component(value: &str) -> String {

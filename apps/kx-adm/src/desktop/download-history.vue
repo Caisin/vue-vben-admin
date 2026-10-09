@@ -5,7 +5,19 @@ import type { DownloadTask, DownloadTaskItem } from '#/api/res/downloads';
 
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
-import { Alert, Button, Modal, Progress, Table, Tag } from 'antdv-next';
+import {
+  Alert,
+  Button,
+  Form,
+  FormItem,
+  Input,
+  InputNumber,
+  Modal,
+  Progress,
+  Switch,
+  Table,
+  Tag,
+} from 'antdv-next';
 
 import { ResDownloadApi } from '#/api/res/downloads';
 import { uploadErrorMessage } from '#/components/file-picker/internal/upload-error';
@@ -23,6 +35,12 @@ const selectedTask = ref<DownloadTask>();
 const loading = ref(false);
 const errorText = ref('');
 const busyJob = ref('');
+const restartJob = ref<DownloadJob>();
+const restartOpen = ref(false);
+const restartDirectory = ref('');
+const restartOverwrite = ref(false);
+const restartError = ref('');
+const pickingDirectory = ref(false);
 const lastUpdatedAt = ref(0);
 const activeServerTasks = computed(
   () =>
@@ -37,6 +55,7 @@ const columns = [
   { title: '资源', key: 'resource', width: 150 },
   { title: '保存位置', key: 'directory', width: 250 },
   { title: '文件', key: 'file', width: 72 },
+  { title: '并发数', key: 'concurrency', width: 120 },
   { title: '下载进度', key: 'progress', width: 170 },
   { title: '状态', key: 'status', width: 90 },
   { title: '错误信息', key: 'error', width: 170 },
@@ -162,6 +181,13 @@ async function act(job: DownloadJob, action: () => Promise<unknown>) {
   }
 }
 
+async function setConcurrency(job: DownloadJob, value: null | number | string) {
+  const concurrency = Number(value);
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8)
+    return;
+  await act(job, () => desktopDownloads.setConcurrency(job.id, concurrency));
+}
+
 async function pause(job: DownloadJob) {
   await act(job, () => desktopDownloads.pause(job.id));
 }
@@ -170,15 +196,48 @@ async function resume(job: DownloadJob) {
   await act(job, () => desktopDownloads.resume(job.id));
 }
 
-function overwrite(job: DownloadJob) {
-  Modal.confirm({
-    title: '覆盖本地文件并重新下载？',
-    content: `将重新下载此任务的全部文件，覆盖目录“${job.targetDirectory}”中的对应文件。普通继续下载会保留已有文件。`,
-    okText: '覆盖重新下载',
-    cancelText: '取消',
-    okButtonProps: { danger: true },
-    onOk: () => act(job, () => desktopDownloads.resume(job.id, true)),
-  });
+function restart(job: DownloadJob) {
+  restartJob.value = job;
+  restartDirectory.value = job.targetDirectory;
+  restartOverwrite.value = false;
+  restartError.value = '';
+  restartOpen.value = true;
+}
+
+async function selectRestartDirectory() {
+  if (pickingDirectory.value || busyJob.value) return;
+  pickingDirectory.value = true;
+  restartError.value = '';
+  try {
+    const directory = await desktopDownloads.pickDirectory();
+    if (directory) restartDirectory.value = directory;
+  } catch (error) {
+    restartError.value = uploadErrorMessage(error, '选择下载目录失败');
+  } finally {
+    pickingDirectory.value = false;
+  }
+}
+
+async function submitRestart() {
+  const job = restartJob.value;
+  if (!job || busyJob.value || pickingDirectory.value) return;
+  busyJob.value = job.id;
+  restartError.value = '';
+  try {
+    await desktopDownloads.resume(
+      job.id,
+      restartOverwrite.value,
+      restartDirectory.value === job.targetDirectory
+        ? undefined
+        : restartDirectory.value,
+    );
+    restartOpen.value = false;
+    await refresh();
+  } catch (error) {
+    restartError.value = uploadErrorMessage(error, '重新下载失败');
+  } finally {
+    busyJob.value = '';
+  }
 }
 
 function date(value: number) {
@@ -277,7 +336,9 @@ watch(open, (value) => {
       <div class="download-history-section-header">
         <div>
           <h3>本机下载任务</h3>
-          <p>下载到当前电脑的文件，可暂停、继续或覆盖重下。</p>
+          <p>
+            下载到当前电脑的文件，可暂停、继续或选择目录重新下载；暂停后可调整每个任务的并发数（1–8）。
+          </p>
         </div>
         <Tag color="blue">{{ jobs.length }} 个任务</Tag>
       </div>
@@ -287,7 +348,7 @@ watch(open, (value) => {
         :columns="columns"
         :data-source="jobs"
         :pagination="false"
-        :scroll="{ x: 1092, y: 260 }"
+        :scroll="{ x: 1212, y: 260 }"
         row-key="id"
       >
         <template #bodyCell="{ column, record }">
@@ -302,6 +363,16 @@ watch(open, (value) => {
           >
             {{ record.targetDirectory }}
           </div>
+          <InputNumber
+            v-else-if="column.key === 'concurrency'"
+            :value="record.concurrency"
+            :min="1"
+            :max="8"
+            :precision="0"
+            :disabled="!!busyJob || record.status === '下载中'"
+            :aria-label="`任务 ${record.id} 下载并发数`"
+            @change="(value) => setConcurrency(record, value)"
+          />
           <div v-else-if="column.key === 'file'" class="file-count-cell">
             <strong>{{ record.files.length }}</strong>
             <span>个文件</span>
@@ -315,8 +386,9 @@ watch(open, (value) => {
               />
               <strong>{{ progress(record) }}%</strong>
             </div>
-            <span>{{ completedFiles(record) }} /
-              {{ record.files.length }} 个文件</span>
+            <span>
+              {{ completedFiles(record) }} / {{ record.files.length }} 个文件
+            </span>
           </div>
           <Tag
             v-else-if="column.key === 'status'"
@@ -355,9 +427,9 @@ watch(open, (value) => {
                 danger
                 size="small"
                 type="link"
-                @click="overwrite(record)"
+                @click="restart(record)"
               >
-                覆盖重下
+                重新下载
               </Button>
             </template>
           </div>
@@ -373,7 +445,9 @@ watch(open, (value) => {
               <span
                 v-if="column.key === 'error'"
                 class="whitespace-pre-wrap break-all text-destructive"
-                >{{ file.error || '—' }}</span>
+              >
+                {{ file.error || '—' }}
+              </span>
             </template>
           </Table>
         </template>
@@ -443,6 +517,58 @@ watch(open, (value) => {
         </template>
       </Table>
     </section>
+  </Modal>
+  <Modal
+    v-model:open="restartOpen"
+    title="重新下载"
+    :ok-text="restartOverwrite ? '覆盖重新下载' : '开始下载'"
+    cancel-text="取消"
+    :confirm-loading="!!busyJob"
+    :closable="!busyJob && !pickingDirectory"
+    :mask-closable="!busyJob && !pickingDirectory"
+    :keyboard="!busyJob && !pickingDirectory"
+    :cancel-button-props="{ disabled: !!busyJob || pickingDirectory }"
+    :ok-button-props="{ danger: restartOverwrite, disabled: pickingDirectory }"
+    @ok="submitRestart"
+  >
+    <Alert
+      v-if="restartError"
+      type="error"
+      :message="restartError"
+      class="mb-4"
+    />
+    <Form layout="vertical" :disabled="!!busyJob || pickingDirectory">
+      <FormItem label="本地保存目录" html-for="restart-download-directory">
+        <Input
+          id="restart-download-directory"
+          :value="restartDirectory"
+          readonly
+        />
+        <Button
+          class="mt-2"
+          :loading="pickingDirectory"
+          @click="selectRestartDirectory"
+        >
+          修改目录
+        </Button>
+      </FormItem>
+      <FormItem label="覆盖已有文件" html-for="restart-download-overwrite">
+        <Switch
+          id="restart-download-overwrite"
+          v-model:checked="restartOverwrite"
+        />
+      </FormItem>
+    </Form>
+    <Alert
+      :type="restartOverwrite ? 'warning' : 'info'"
+      :message="
+        restartOverwrite
+          ? '将覆盖所选目录中的同名文件'
+          : '保留所选目录中已有文件，仅下载缺失文件'
+      "
+      description="各集直接保存到上方目录；修改目录不会搬移或删除原目录的文件。"
+      show-icon
+    />
   </Modal>
   <Modal
     v-model:open="detailOpen"

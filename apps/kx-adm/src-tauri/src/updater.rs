@@ -232,7 +232,7 @@ mod tests {
         );
         assert!(
             desktop
-                .resume_download(Events, "missing".into(), false)
+                .resume_download(Events, "missing".into(), false, None)
                 .await
                 .unwrap_err()
                 .to_string()

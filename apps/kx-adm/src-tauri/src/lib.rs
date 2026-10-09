@@ -150,19 +150,30 @@ async fn desktop_download_pick_directory(app: tauri::AppHandle) -> Reply<Option<
     let Some(selected) = selected else {
         return Ok(None);
     };
-    Ok(Some(
-        selected
-            .into_path()
-            .map_err(|_| "目录路径无效".to_owned())?
-            .canonicalize()
-            .map_err(|_| "无法读取目录".to_owned())?
-            .to_string_lossy()
-            .into_owned(),
-    ))
+    let directory = selected
+        .into_path()
+        .map_err(|_| "目录路径无效".to_owned())?
+        .canonicalize()
+        .map_err(|_| "无法读取目录".to_owned())?;
+    Ok(Some(download::display_directory(
+        &directory.to_string_lossy(),
+    )))
 }
 #[tauri::command]
 async fn desktop_download_pause(app: tauri::AppHandle, state: Native<'_>, id: String) -> Reply<()> {
     state.pause_download(&app, &id).await.map_err(error)
+}
+#[tauri::command]
+async fn desktop_download_set_concurrency(
+    app: tauri::AppHandle,
+    state: Native<'_>,
+    id: String,
+    concurrency: usize,
+) -> Reply<serde_json::Value> {
+    state
+        .set_download_concurrency(&app, &id, concurrency)
+        .await
+        .map_err(error)
 }
 #[tauri::command]
 async fn desktop_download_resume(
@@ -170,9 +181,15 @@ async fn desktop_download_resume(
     state: Native<'_>,
     id: String,
     overwrite: Option<bool>,
+    directory: Option<String>,
 ) -> Reply<()> {
     state
-        .resume_download(app, id, overwrite.unwrap_or(false))
+        .resume_download(
+            app,
+            id,
+            overwrite.unwrap_or(false),
+            directory.map(std::path::PathBuf::from),
+        )
         .await
         .map_err(error)
 }
@@ -576,6 +593,7 @@ pub fn run() {
             desktop_download_pick_directory,
             desktop_download_pause,
             desktop_download_resume,
+            desktop_download_set_concurrency,
             desktop_scan,
             desktop_start,
             desktop_pause,

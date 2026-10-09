@@ -6,12 +6,28 @@ import { onMounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
-import { Button, Card, Modal, Statistic, Table, Tag } from 'antdv-next';
+import {
+  Button,
+  Card,
+  Form,
+  FormItem,
+  Modal,
+  Statistic,
+  Table,
+  Tag,
+} from 'antdv-next';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { ResDownloadApi } from '#/api/res/downloads';
+import { formatFileSize } from '#/components/file-picker/internal/file-picker-options';
+import DownloadHistory from '#/desktop/download-history.vue';
+
+import ResourceSelect from './resource-select.vue';
 
 const detailOpen = ref(false);
+const historyOpen = ref(false);
+const resourceId = ref<number | string>();
+const resourceCode = ref<number | string>();
 const detailTask = ref<DownloadTask>();
 const detailItems = ref<DownloadTaskItem[]>([]);
 const detailPage = ref(1);
@@ -44,10 +60,9 @@ async function showDetails(task: DownloadTask, page = 1) {
   }
 }
 
-const [Grid] = useVbenVxeGrid<DownloadTask>({
+const [Grid, gridApi] = useVbenVxeGrid<DownloadTask>({
   formOptions: {
     schema: [
-      { component: 'Input', fieldName: 'keyword', label: '剧名' },
       { component: 'Input', fieldName: 'version_keyword', label: '版本' },
       { component: 'Input', fieldName: 'user_keyword', label: '下载人' },
       { component: 'Input', fieldName: 'ip', label: '下载 IP' },
@@ -64,7 +79,7 @@ const [Grid] = useVbenVxeGrid<DownloadTask>({
       { field: 'ip', title: '下载 IP' },
       {
         field: 'downloaded_count',
-        title: '已下载集数',
+        title: '已下载文件',
         formatter: ({ row }) => `${row.downloaded_count}/${row.total_count}`,
       },
       {
@@ -88,7 +103,10 @@ const [Grid] = useVbenVxeGrid<DownloadTask>({
           ResDownloadApi.tasks({
             page: page.currentPage,
             size: page.pageSize,
-            keyword: formValues.keyword?.trim() || undefined,
+            res_id: resourceId.value ? Number(resourceId.value) : undefined,
+            resource_code: resourceCode.value
+              ? String(resourceCode.value)
+              : undefined,
             version_keyword: formValues.version_keyword?.trim() || undefined,
             user_keyword: formValues.user_keyword?.trim() || undefined,
             ip: formValues.ip?.trim() || undefined,
@@ -117,9 +135,31 @@ onMounted(async () => {
         <Statistic title="来源 IP 数" :value="stats?.unique_ips ?? 0" />
       </Card>
       <Card>
-        <Statistic title="下载字节数" :value="stats?.total_bytes ?? 0" />
+        <Statistic
+          title="下载量"
+          :value="stats?.total_bytes ?? 0"
+          :formatter="() => formatFileSize(stats?.total_bytes ?? 0)"
+        />
       </Card>
     </div>
+    <Form layout="inline" class="mb-4">
+      <FormItem label="剧名" html-for="download-resource-name">
+        <ResourceSelect
+          v-model:value="resourceId"
+          kind="name"
+          @update:value="gridApi.query()"
+        />
+      </FormItem>
+      <FormItem label="编码" html-for="download-resource-code">
+        <ResourceSelect
+          v-model:value="resourceCode"
+          kind="code"
+          @update:value="gridApi.query()"
+        />
+      </FormItem>
+      <Button @click="historyOpen = true">我的下载记录</Button>
+    </Form>
+    <DownloadHistory v-model:open="historyOpen" />
     <Grid table-title="下载任务记录">
       <template #status="{ row }">
         <Tag>{{ row.status }}</Tag>

@@ -53,7 +53,6 @@ const editorOpen = ref(false);
 const versionOpen = ref(false);
 const permissionsOpen = ref(false);
 const downloadHistoryOpen = ref(false);
-const downloadConcurrency = ref(4);
 const editingVersion = ref<ResourceVersion>();
 const itemId = ref<Id>();
 const versionForm = reactive({ name: '', lang: '', remark: '' });
@@ -199,7 +198,6 @@ async function startDownload() {
       Number(detail.value.version.id),
       fileIds,
       directory,
-      downloadConcurrency.value,
     );
     downloadHistoryOpen.value = true;
   } catch (error) {
@@ -364,13 +362,16 @@ async function removeVersion() {
       </div>
       <div class="resource-metrics">
         <div>
-          <strong>{{ versions.length }}</strong><span>内容版本</span>
+          <strong>{{ versions.length }}</strong>
+          <span>内容版本</span>
         </div>
         <div>
-          <strong>{{ detail?.items.length ?? 0 }}</strong><span>{{ drama ? '当前分集' : '当前章节' }}</span>
+          <strong>{{ detail?.items.length ?? 0 }}</strong>
+          <span>{{ drama ? '当前分集' : '当前章节' }}</span>
         </div>
         <div v-if="access.upload && !drama">
-          <strong>{{ textCount.toLocaleString() }}</strong><span>正文字符</span>
+          <strong>{{ textCount.toLocaleString() }}</strong>
+          <span>正文字符</span>
         </div>
       </div>
     </header>
@@ -398,14 +399,6 @@ async function removeVersion() {
         下载权限
       </Button>
       <template v-if="access.download && desktop && downloadFileIds.length">
-        <InputNumber
-          v-model:value="downloadConcurrency"
-          :min="1"
-          :max="8"
-          :precision="0"
-          addon-before="并发"
-          :disabled="loading || busy || !detail"
-        />
         <Button
           :disabled="
             loading || busy || !detail || !props.resource?.can_download
@@ -450,7 +443,8 @@ async function removeVersion() {
               @click="select(v)"
             >
               <div class="version-option-title">
-                <span class="version-mark">{{ index + 1 }}</span><strong>{{ v.name }}</strong>
+                <span class="version-mark">{{ index + 1 }}</span>
+                <strong>{{ v.name }}</strong>
                 <span v-if="v.lang" class="text-xs text-muted-foreground">{{
                   v.lang
                 }}</span>
@@ -475,7 +469,9 @@ async function removeVersion() {
                 }}<small
                   v-if="detail.version.lang"
                   class="ml-2 text-sm text-muted-foreground"
-                  >{{ detail.version.lang }}</small>
+                >
+                  {{ detail.version.lang }}
+                </small>
               </h3>
               <p>
                 {{ detail.items.length }} {{ drama ? '集' : '章' }} ·
@@ -537,7 +533,8 @@ async function removeVersion() {
             </Button>
           </div>
           <div class="chapter-heading">
-            <strong>{{ drama ? '分集清单' : '章节清单' }}</strong><Input
+            <strong>{{ drama ? '分集清单' : '章节清单' }}</strong>
+            <Input
               v-model:value="chapterSearch"
               placeholder="搜索序号、标题或备注"
               allow-clear
@@ -570,7 +567,8 @@ async function removeVersion() {
                   @click="reader?.show(record.id)"
                 >
                   {{ record.title }}
-</Button><span v-else>{{ record.title }}</span>
+                </Button>
+                <span v-else>{{ record.title }}</span>
               </template>
               <span v-else-if="column.key === 'characters'">{{
                 record.content.length.toLocaleString()

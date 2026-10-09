@@ -289,9 +289,14 @@ export const desktopDownloads = {
       directory,
       concurrency,
     }),
+  setConcurrency: (id: string, concurrency: number) =>
+    invoke<DownloadJob>('desktop_download_set_concurrency', {
+      id,
+      concurrency,
+    }),
   pause: (id: string) => invoke('desktop_download_pause', { id }),
-  resume: (id: string, overwrite = false) =>
-    invoke('desktop_download_resume', { id, overwrite }),
+  resume: (id: string, overwrite = false, directory?: string) =>
+    invoke('desktop_download_resume', { id, overwrite, directory }),
   listen: (onJob: (job: DownloadJob) => void) =>
     listen<DownloadJob>('desktop-download-updated', ({ payload }) =>
       onJob(payload),

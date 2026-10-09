@@ -48,6 +48,11 @@ const resources = ref<ResRecord[]>([]);
 const loading = ref(false);
 const editorOpen = ref(false);
 const batchOpen = ref(false);
+const batchRevoke = ref(false);
+function openBatch(revoke: boolean) {
+  batchRevoke.value = revoke;
+  batchOpen.value = true;
+}
 const editing = ref(false);
 const saving = ref(false);
 const saveError = ref('');
@@ -274,7 +279,10 @@ onMounted(async () => {
         </FormItem>
         <Button type="primary" :loading="loading" @click="query">查询</Button>
         <Button v-if="canManage" @click="create">新增授权</Button>
-        <Button v-if="canManage" @click="batchOpen = true">批量授权</Button>
+        <Button v-if="canManage" @click="openBatch(false)">批量授权</Button>
+        <Button v-if="canManage" danger @click="openBatch(true)">
+          批量取消授权
+        </Button>
       </Form>
     </div>
     <Table
@@ -327,6 +335,7 @@ onMounted(async () => {
     </Table>
     <BatchGrant
       v-model:open="batchOpen"
+      :revoke="batchRevoke"
       :initial-uids="filters.uids"
       :user-tree="userTree"
       :user-tree-loading="userTreeLoading"
