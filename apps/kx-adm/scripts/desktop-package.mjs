@@ -19,6 +19,7 @@ const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tauri = join(app, 'src-tauri');
 const release = join(app, 'scripts/desktop-release.mjs');
 const help = `用法：./build-desktop-release.sh [选项]
+Windows：build-desktop-release.cmd [选项]
 
   --version 0.1.2        同步版本号；省略则使用当前版本
   --notes "更新说明"      更新说明；默认使用“版本 <版本号>”

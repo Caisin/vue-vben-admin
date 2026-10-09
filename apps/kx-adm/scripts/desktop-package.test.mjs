@@ -25,15 +25,21 @@ afterEach(async () => {
   );
 });
 
-async function fixture(mode = 'success') {
+async function fixture(mode = 'success', host = 'aarch64-apple-darwin') {
   const root = await mkdtemp(join(tmpdir(), 'kx release test '));
   temporary.push(root);
   const scripts = join(root, 'app/scripts');
   const bin = join(root, 'bin');
   const target = join(root, 'custom target');
   const output = join(root, 'output');
-  const host = 'aarch64-apple-darwin';
-  const bundleDir = join(target, host, 'release/bundle/macos');
+  const windows = host.includes('windows');
+  const bundleDir = join(
+    target,
+    host,
+    'release/bundle',
+    windows ? 'nsis' : 'macos',
+  );
+  const artifactName = windows ? 'KX ADM_0.1.1_setup.exe' : 'KX ADM.app.tar.gz';
   await Promise.all([
     mkdir(scripts, { recursive: true }),
     mkdir(bin),
@@ -70,7 +76,7 @@ async function fixture(mode = 'success') {
     if (args[0] === 'build') {
       if (${JSON.stringify(mode)} === 'failed') process.exit(8);
       if (process.env.KX_TEST_EXPECTED_PASSWORD !== undefined && process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD !== process.env.KX_TEST_EXPECTED_PASSWORD) process.exit(9);
-      const file = ${JSON.stringify(join(bundleDir, 'KX ADM.app.tar.gz'))};
+      const file = ${JSON.stringify(join(bundleDir, artifactName))};
       await writeFile(file, 'installer');
       await writeFile(file + '.sig', 'signature');
       if (${JSON.stringify(mode)} === 'stale') {
@@ -87,6 +93,86 @@ async function fixture(mode = 'success') {
   delete env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD;
   return { root, entry, env, output, key, bundleDir };
 }
+
+it('兼容 Windows CRLF 文件的版本同步同时更新 Cargo.lock', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'kx windows version '));
+  temporary.push(root);
+  const scripts = join(root, 'scripts');
+  const tauri = join(root, 'src-tauri');
+  await Promise.all([mkdir(scripts), mkdir(tauri)]);
+  for (const name of ['desktop-release.mjs', 'verify-desktop-artifact.mjs'])
+    await copyFile(new URL(name, import.meta.url), join(scripts, name));
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({ version: '0.1.1' }),
+  );
+  await writeFile(
+    join(tauri, 'tauri.conf.json'),
+    JSON.stringify({ version: '0.1.1' }),
+  );
+  await writeFile(
+    join(tauri, 'Cargo.toml'),
+    '[package]\r\nname = "kx-adm-desktop"\r\nversion = "0.1.1"\r\n',
+  );
+  await writeFile(
+    join(tauri, 'Cargo.lock'),
+    '[[package]]\r\nname = "kx-adm-desktop"\r\nversion = "0.1.1"\r\n\r\n[[package]]\r\nname = "other"\r\nversion = "0.1.1"\r\n',
+  );
+  await exec(process.execPath, [
+    join(scripts, 'desktop-release.mjs'),
+    'version',
+    '0.1.2',
+  ]);
+  expect(
+    JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
+  ).toBe('0.1.2');
+  expect(
+    JSON.parse(await readFile(join(tauri, 'tauri.conf.json'), 'utf8')).version,
+  ).toBe('0.1.2');
+  expect(await readFile(join(tauri, 'Cargo.toml'), 'utf8')).toContain(
+    'version = "0.1.2"\r\n',
+  );
+  const lock = await readFile(join(tauri, 'Cargo.lock'), 'utf8');
+  expect(lock).toContain('name = "kx-adm-desktop"\r\nversion = "0.1.2"');
+  expect(lock).toContain('name = "other"\r\nversion = "0.1.1"');
+});
+
+it.skipIf(process.platform === 'win32').each([
+  ['x86_64', 'x86_64'],
+  ['aarch64', 'aarch64'],
+  ['i686', 'i686'],
+])(
+  '为 Windows %s 使用 NSIS 安装包和对应更新平台',
+  async (arch, updaterArch) => {
+    const host = `${arch}-pc-windows-msvc`;
+    const f = await fixture('success', host);
+    await exec(
+      process.execPath,
+      [f.entry, '--key', f.key, '--out-dir', f.output],
+      { env: f.env },
+    );
+    const artifact = JSON.parse(
+      await readFile(
+        join(f.output, `kx-adm-0.1.1-windows-${updaterArch}.kx-update`),
+        'utf8',
+      ),
+    );
+    expect(artifact.target).toBe(`windows-${updaterArch}`);
+    expect(artifact.file).toBe(join(f.bundleDir, 'KX ADM_0.1.1_setup.exe'));
+    const text = await readFile(join(f.root, 'calls.jsonl'), 'utf8');
+    const calls = text
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(calls.find((args) => args[0] === 'build')).toEqual([
+      'build',
+      '--target',
+      host,
+      '--bundles',
+      'nsis',
+    ]);
+  },
+);
 
 it.skipIf(process.platform === 'win32').each([
   {

@@ -58,7 +58,15 @@ rtk proxy ./build-desktop-release.sh --version 0.1.2 --notes "修复更新与下
 
 脚本自动同步版本、签名构建本机平台、定位 Cargo 实际产物目录，并验证签名后生成根目录 `dist/kx-adm/kx-adm-<版本>-<平台>.kx-update`；可通过 `--out-dir` 改输出目录。临时文件在同一输出目录清理，打包成功后才替换同名产物。构建失败或只有旧产物时直接报错，不生成可上传文件；版本同步后构建失败会保留新版本，修复后重新执行即可。
 
-macOS 使用 app 更新包、Windows 使用 NSIS、Linux 使用 AppImage。各平台在本机构建机执行；Windows 可在 Git Bash 执行根脚本，或用 `node web/apps/kx-adm/scripts/desktop-package.mjs` 加相同参数。需要预先安装 web 项目依赖、pnpm、Rust 与对应 Tauri 系统构建依赖。脚本不上传或发布版本。
+macOS 使用 app 更新包、Windows 使用 NSIS、Linux 使用 AppImage。各平台在本机构建机执行；Windows 在 CMD 或 PowerShell 中使用根目录的 `build-desktop-release.cmd`，无需 Git Bash。需要预先安装 web 项目依赖、pnpm、Rust 与对应 Tauri 系统构建依赖。脚本不上传或发布版本。
+
+Windows 示例（项目根目录执行，CMD 与 PowerShell 均适用）：
+
+```powershell
+.\build-desktop-release.cmd --version 0.1.2 --notes "修复更新与下载管理" --key "C:\keys\updater.key" --password "私钥密码"
+```
+
+Windows 构建机需要 Node.js、pnpm、Rust MSVC 工具链、Visual Studio Build Tools 的“使用 C++ 的桌面开发”与 Windows SDK；安装 web 依赖后再运行脚本。脚本根据 Rust host 自动选择 x64、ARM64 或 x86，构建 NSIS `.exe` 并生成 `dist\kx-adm\kx-adm-<版本>-windows-<架构>.kx-update`。版本同步兼容 Git 在 Windows 检出时使用的 CRLF 换行。
 
 ## 单文件发行包
 

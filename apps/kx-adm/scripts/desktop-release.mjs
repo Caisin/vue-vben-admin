@@ -49,7 +49,7 @@ if (command === 'version') {
   await writeFile(
     lockPath,
     lock.replace(
-      /(name = "kx-adm-desktop"\nversion = ")[^"]+"/,
+      /(name = "kx-adm-desktop"\r?\nversion = ")[^"]+"/,
       `$1${version}"`,
     ),
   );
