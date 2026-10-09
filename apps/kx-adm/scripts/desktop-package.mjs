@@ -23,11 +23,12 @@ const help = `用法：./build-desktop-release.sh [选项]
   --version 0.1.2        同步版本号；省略则使用当前版本
   --notes "更新说明"      更新说明；默认使用“版本 <版本号>”
   --key /path/key        原有 Tauri 更新签名私钥路径
+  --password "密码"      签名私钥密码；优先于密码环境变量，支持空字符串
   --out-dir /path        输出目录；默认项目根目录 dist/kx-adm
   --help                显示帮助
 
 密钥也可使用 TAURI_SIGNING_PRIVATE_KEY_PATH 或 TAURI_SIGNING_PRIVATE_KEY。
-加密私钥的密码使用 TAURI_SIGNING_PRIVATE_KEY_PASSWORD。
+省略 --password 时使用 TAURI_SIGNING_PRIVATE_KEY_PASSWORD。
 脚本仅构建本机平台，自动验证签名并生成 .kx-update，不上传或发布。
 需要已安装 pnpm、Rust、Tauri 系统依赖及 web 的项目依赖。`;
 
@@ -49,7 +50,7 @@ function run(command, args, env, capture = false) {
 
 async function main() {
   const args = process.argv.slice(2);
-  if (args.includes('--help')) {
+  if (args.length === 1 && args[0] === '--help') {
     console.warn(help);
     return;
   }
@@ -58,7 +59,9 @@ async function main() {
     const key = args[i];
     const value = args[i + 1];
     if (
-      !['--key', '--notes', '--out-dir', '--version'].includes(key) ||
+      !['--key', '--notes', '--out-dir', '--password', '--version'].includes(
+        key,
+      ) ||
       value === undefined ||
       key in options
     )
@@ -74,6 +77,9 @@ async function main() {
   const notes = options['--notes'] ?? `版本 ${version}`;
   if ([...notes].length > 10_000) throw new Error('更新说明不能超过 10000 字');
   const env = { ...process.env };
+  // 密码仅通过环境交给签名构建，不拼入子进程命令或写入发行包。
+  if (options['--password'] !== undefined)
+    env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = options['--password'];
   const keyPath = options['--key'] ?? env.TAURI_SIGNING_PRIVATE_KEY_PATH;
   if (keyPath) {
     env.TAURI_SIGNING_PRIVATE_KEY_PATH = resolve(keyPath);

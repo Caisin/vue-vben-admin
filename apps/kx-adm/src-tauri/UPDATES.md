@@ -51,10 +51,10 @@ macOS 通用包可给两个架构填写同一份包/签名。Linux 使用 AppIma
 项目根目录提供可直接执行的 `build-desktop-release.sh`：
 
 ```sh
-rtk proxy ./build-desktop-release.sh --version 0.1.2 --notes "修复更新与下载管理" --key /secure/path/updater.key
+rtk proxy ./build-desktop-release.sh --version 0.1.2 --notes "修复更新与下载管理" --key /secure/path/updater.key --password '私钥密码'
 ```
 
-如果已配置 `TAURI_SIGNING_PRIVATE_KEY_PATH` 或 `TAURI_SIGNING_PRIVATE_KEY`，可以省略 `--key`。加密私钥的密码仍使用 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。省略 `--version` 使用项目当前版本，省略 `--notes` 使用默认版本说明。
+如果已配置 `TAURI_SIGNING_PRIVATE_KEY_PATH` 或 `TAURI_SIGNING_PRIVATE_KEY`，可以省略 `--key`。`--password` 优先于 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`；省略参数则沿用环境变量，显式 `--password ''` 传入空密码。脚本通过环境将密码传给构建子进程，不写入发行包。省略 `--version` 使用项目当前版本，省略 `--notes` 使用默认版本说明。
 
 脚本自动同步版本、签名构建本机平台、定位 Cargo 实际产物目录，并验证签名后生成根目录 `dist/kx-adm/kx-adm-<版本>-<平台>.kx-update`；可通过 `--out-dir` 改输出目录。临时文件在同一输出目录清理，打包成功后才替换同名产物。构建失败或只有旧产物时直接报错，不生成可上传文件；版本同步后构建失败会保留新版本，修复后重新执行即可。
 

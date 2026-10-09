@@ -69,6 +69,7 @@ async function fixture(mode = 'success') {
     await appendFile(${JSON.stringify(join(root, 'calls.jsonl'))}, JSON.stringify(args) + '\\n');
     if (args[0] === 'build') {
       if (${JSON.stringify(mode)} === 'failed') process.exit(8);
+      if (process.env.KX_TEST_EXPECTED_PASSWORD !== undefined && process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD !== process.env.KX_TEST_EXPECTED_PASSWORD) process.exit(9);
       const file = ${JSON.stringify(join(bundleDir, 'KX ADM.app.tar.gz'))};
       await writeFile(file, 'installer');
       await writeFile(file + '.sig', 'signature');
@@ -83,8 +84,43 @@ async function fixture(mode = 'success') {
   const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}` };
   delete env.TAURI_SIGNING_PRIVATE_KEY;
   delete env.TAURI_SIGNING_PRIVATE_KEY_PATH;
+  delete env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD;
   return { root, entry, env, output, key, bundleDir };
 }
+
+it.skipIf(process.platform === 'win32').each([
+  {
+    password: 'fixture $value with spaces & "quotes"',
+    inherited: 'old-password',
+  },
+  { password: '', inherited: 'old-password' },
+  { password: '--help', inherited: 'old-password' },
+  { password: undefined, inherited: 'fixture-environment-password' },
+])(
+  '签名密码通过环境传递，参数覆盖环境且支持空密码：$password',
+  async ({ password, inherited }) => {
+    const f = await fixture();
+    const expected = password ?? inherited;
+    const args = [f.entry, '--key', f.key, '--out-dir', f.output];
+    if (password !== undefined) args.push('--password', password);
+    const result = await exec(process.execPath, args, {
+      env: {
+        ...f.env,
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: inherited,
+        KX_TEST_EXPECTED_PASSWORD: expected,
+      },
+    });
+    expect(await readdir(f.output)).toEqual([
+      'kx-adm-0.1.1-darwin-aarch64.kx-update',
+    ]);
+    const calls = await readFile(join(f.root, 'calls.jsonl'), 'utf8');
+    expect(calls).not.toContain('--password');
+    const exposed = [result.stdout + result.stderr, calls].some(
+      (text) => expected.length > 0 && text.includes(expected),
+    );
+    expect(exposed).toBe(false);
+  },
+);
 
 it.skipIf(process.platform === 'win32')(
   '从任意目录构建，自动识别自定义 Cargo 目录和含空格包路径',
