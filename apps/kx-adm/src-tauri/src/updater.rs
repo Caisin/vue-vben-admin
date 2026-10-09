@@ -137,6 +137,10 @@ pub async fn desktop_update_install(
             session.uid == identity.uid && session.api_base == identity.api_base,
             "服务地址已变化，请重新检查更新"
         );
+        let _release_upload = desktop
+            .release_upload
+            .try_lock()
+            .context("发行包正在上传，请完成后更新")?;
         // 与任务启动使用同一组原生锁；检查空闲后持续持锁，消除检查到重启之间的竞态。
         let uploads = desktop
             .active

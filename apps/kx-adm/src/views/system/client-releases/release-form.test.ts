@@ -1,38 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  parseReleaseBundle,
-  parseReleaseManifest,
-  validateRelease,
-} from './release-form';
+import { parseReleaseBundle, validateRelease } from './release-form';
+const validArtifact = {
+  target: 'darwin-aarch64',
+  url: 'https://example.com/app.tar.gz',
+  signature: 'signed',
+};
 const valid = {
   version: '0.1.1',
   notes: '更新说明',
-  artifacts: [
-    {
-      target: 'darwin-aarch64',
-      url: 'https://example.com/app.tar.gz',
-      signature: 'signed',
-    },
-  ],
+  artifacts: [validArtifact],
 };
-describe('发行清单导入', () => {
-  it('保留平台包与签名', () => {
-    expect(parseReleaseManifest(JSON.stringify(valid))).toEqual(valid);
-  });
-  it('拒绝缺字段、重复平台、HTTP、预发布版本和缺失签名', () => {
+describe('发行草稿校验', () => {
+  it('拒绝重复平台、HTTP、预发布版本和缺失签名', () => {
     for (const value of [
-      null,
-      {},
       { ...valid, version: '1.0.0-beta' },
       { ...valid, artifacts: [...valid.artifacts, ...valid.artifacts] },
       {
         ...valid,
-        artifacts: [{ ...valid.artifacts[0], url: 'http://example.com' }],
+        artifacts: [{ ...validArtifact, url: 'http://example.com' }],
       },
-      { ...valid, artifacts: [{ ...valid.artifacts[0], signature: '' }] },
+      { ...valid, artifacts: [{ ...validArtifact, signature: '' }] },
     ])
-      expect(() => parseReleaseManifest(JSON.stringify(value))).toThrow(Error);
+      expect(() => validateRelease(value)).toThrow(Error);
     expect(() => validateRelease({ ...valid, artifacts: [] })).toThrow(Error);
   });
 });
@@ -62,10 +52,19 @@ describe('单文件发行包', () => {
       new Uint8Array([1, 2, 3]),
     );
   });
+  it('上传前拒绝超过 512 MiB 的安装包', async () => {
+    const file = bundle();
+    Object.defineProperty(file, 'size', { value: 513 * 1024 * 1024 });
+    await expect(parseReleaseBundle(file)).rejects.toThrow(
+      '更新安装包不能超过 512 MiB',
+    );
+  });
   it('拒绝损坏长度、无签名、平台错配和目录路径', async () => {
     for (const value of [
       { size: 4 },
       { signature: '' },
+      { signature: null },
+      { version: '1.0.0-beta' },
       { target: 'windows-x86_64' },
       { name: '../app.app.tar.gz' },
     ])

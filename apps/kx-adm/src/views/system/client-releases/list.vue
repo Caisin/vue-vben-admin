@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FileUploadView, StorageOptionView } from '#/api/storage';
 import type { ClientRelease, ReleaseWrite } from '#/api/system/client-releases';
+import type { ReleaseUploadProgress } from '#/desktop/release-upload';
 
 import { computed, onMounted, ref } from 'vue';
 
@@ -15,6 +16,7 @@ import {
   Input,
   message,
   Modal,
+  Progress,
   Select,
   Space,
   Table,
@@ -23,14 +25,11 @@ import {
 
 import { plaintextRequestClient } from '#/api/request';
 import { ClientReleaseApi } from '#/api/system/client-releases';
+import { desktop } from '#/desktop';
+import { uploadDesktopRelease } from '#/desktop/release-upload';
 import { Times } from '#/times';
 
-import {
-  parseReleaseBundle,
-  parseReleaseManifest,
-  platforms,
-  validateRelease,
-} from './release-form';
+import { parseReleaseBundle, platforms, validateRelease } from './release-form';
 
 const { hasAccessByCodes } = useAccess();
 const canEdit = computed(() => hasAccessByCodes(['client-releases:edit']));
@@ -45,8 +44,23 @@ const labels = { draft: '草稿', published: '已发布', withdrawn: '已撤回'
 const open = ref(false);
 const saving = ref(false);
 const uploading = ref(false);
+const uploadProgress = ref<ReleaseUploadProgress>();
+const uploadStages: Record<string, string> = {
+  hashing: '计算校验值',
+  preparing: '准备直传',
+  uploading: '上传对象存储',
+  registering: '登记文件',
+  completed: '上传完成',
+};
 const storageCode = ref<string>();
 const storages = ref<StorageOptionView[]>([]);
+const uploadStorages = computed(() =>
+  desktop
+    ? storages.value.filter((item) =>
+        ['ali', 'cos', 's3', 'tos'].includes(item.storage_type),
+      )
+    : storages.value,
+);
 const selected = ref<ClientRelease>();
 const form = ref<ReleaseWrite>({ version: '', notes: '', artifacts: [] });
 const readOnly = computed(
@@ -91,7 +105,7 @@ function edit(row?: ClientRelease) {
     void ClientReleaseApi.storageOptions()
       .then((items) => {
         storages.value = items;
-        storageCode.value ??= items[0]?.code;
+        storageCode.value ??= uploadStorages.value[0]?.code;
       })
       .catch((error) => {
         formError.value = String(error);
@@ -169,6 +183,7 @@ async function uploadBundle(event: Event) {
     const uploaded = await plaintextRequestClient.upload<FileUploadView[]>(
       `/storage/file/upload/${encodeURIComponent(storageCode.value)}`,
       { file: bundle.file },
+      { timeout: 30 * 60 * 1000 },
     );
     const stored = uploaded[0];
     if (!stored) throw new Error('上传未返回文件，请重试');
@@ -188,21 +203,35 @@ async function uploadBundle(event: Event) {
     input.value = '';
   }
 }
-async function manifest(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
+async function uploadNative() {
+  if (uploading.value || saving.value || readOnly.value) return;
+  formError.value = '';
+  uploadProgress.value = undefined;
+  uploading.value = true;
   try {
-    if (!file) return;
-    if (file.size > 100_000) throw new Error('发行清单不能超过 100 KB');
-    const parsed = parseReleaseManifest(await file.text());
-    if (selected.value && selected.value.version !== parsed.version)
-      throw new Error('清单版本与当前草稿不一致');
-    form.value = parsed;
-    formError.value = '';
+    if (
+      !storageCode.value ||
+      !uploadStorages.value.some((item) => item.code === storageCode.value)
+    )
+      throw new Error('请选择支持客户端直传的对象存储');
+    if (form.value.artifacts.length >= 8)
+      throw new Error('最多上传 8 个平台更新包');
+    const release = await uploadDesktopRelease(
+      storageCode.value,
+      form.value,
+      (progress) => {
+        uploadProgress.value = progress;
+      },
+    );
+    if (!release) return;
+    form.value.version = release.version;
+    form.value.notes ||= release.notes;
+    form.value.artifacts.push(...release.artifacts);
+    message.success('发行包已直接上传到对象存储');
   } catch (error) {
     formError.value = String(error);
   } finally {
-    input.value = '';
+    uploading.value = false;
   }
 }
 onMounted(load);
@@ -347,7 +376,7 @@ onMounted(load);
           <Select
             v-model:value="storageCode"
             :options="
-              storages.map((item) => ({
+              uploadStorages.map((item) => ({
                 value: item.code,
                 label: item.storage_name,
               }))
@@ -356,7 +385,32 @@ onMounted(load);
           />
         </FormItem>
         <FormItem v-if="!readOnly" label="上传发行包" required>
+          <Button
+            v-if="desktop"
+            :loading="uploading"
+            :disabled="saving || uploading"
+            @click="uploadNative"
+          >
+            选择发行包并直传
+          </Button>
+          <Progress
+            v-if="desktop && uploadProgress"
+            :percent="
+              uploadProgress.total
+                ? Math.min(
+                    100,
+                    Math.floor(
+                      (uploadProgress.bytes / uploadProgress.total) * 100,
+                    ),
+                  )
+                : 0
+            "
+          />
+          <p v-if="desktop && uploadProgress">
+            {{ uploadStages[uploadProgress.stage] ?? uploadProgress.stage }}
+          </p>
           <input
+            v-if="!desktop"
             aria-label="上传发行包"
             type="file"
             accept=".kx-update"
@@ -365,20 +419,13 @@ onMounted(load);
           />
           <p>
             {{
-              uploading
-                ? '正在上传，请勿关闭…'
-                : '选择单个发行包即可，无需单独上传校验文件。'
+              desktop
+                ? '客户端流式直传对象存储，不经过后台文件上传接口。'
+                : uploading
+                  ? '正在上传，请勿关闭…'
+                  : '选择单个 .kx-update 发行包（安装包不超过 512 MiB），无需单独上传校验文件。'
             }}
           </p>
-        </FormItem>
-        <FormItem v-if="!readOnly" label="导入旧版发行清单（可选）">
-          <input
-            aria-label="导入发行清单"
-            type="file"
-            accept=".json"
-            :disabled="saving || uploading"
-            @change="manifest"
-          />
         </FormItem>
         <FormItem label="版本号" required>
           <Input

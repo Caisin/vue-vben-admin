@@ -2,6 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import {
   access,
+  copyFile,
   mkdir,
   mkdtemp,
   readdir,
@@ -31,6 +32,7 @@ Windows：build-desktop-release.cmd [选项]
 密钥也可使用 TAURI_SIGNING_PRIVATE_KEY_PATH 或 TAURI_SIGNING_PRIVATE_KEY。
 省略 --password 时使用 TAURI_SIGNING_PRIVATE_KEY_PASSWORD。
 脚本仅构建本机平台，自动验证签名并生成 .kx-update，不上传或发布。
+输出目录同时保留 macOS 的 .dmg 或 Windows 的 .exe 安装包。
 需要已安装 pnpm、Rust、Tauri 系统依赖及 web 的项目依赖。`;
 
 function run(command, args, env, capture = false) {
@@ -47,6 +49,32 @@ function run(command, args, env, capture = false) {
     );
   }
   return result.stdout ?? '';
+}
+
+async function currentArtifact(
+  directory,
+  suffix,
+  started,
+  requireSignature = false,
+) {
+  const candidates = [];
+  for (const name of await readdir(directory)) {
+    if (!name.endsWith(suffix)) continue;
+    const path = join(directory, name);
+    const info = await stat(path);
+    if (!info.isFile() || info.size === 0 || info.mtimeMs < started - 1000)
+      continue;
+    if (requireSignature) {
+      const signature = await stat(`${path}.sig`).catch(() => undefined);
+      if (!signature?.isFile() || signature.mtimeMs < started - 1000) continue;
+    }
+    candidates.push(path);
+  }
+  if (candidates.length !== 1)
+    throw new Error(
+      `本次构建应生成一个${requireSignature ? '带签名的' : ''} ${suffix} 包，实际找到 ${candidates.length} 个：${directory}`,
+    );
+  return candidates[0];
 }
 
 async function main() {
@@ -100,7 +128,7 @@ async function main() {
   if (host.includes('apple-darwin')) platform = 'darwin';
   else if (host.includes('windows')) platform = 'windows';
   const target = `${platform}-${arch}`;
-  const bundle = { darwin: 'app', windows: 'nsis', linux: 'appimage' }[
+  const bundle = { darwin: 'app,dmg', windows: 'nsis', linux: 'appimage' }[
     platform
   ];
   const suffix = { darwin: '.app.tar.gz', windows: '.exe', linux: '.AppImage' }[
@@ -115,11 +143,9 @@ async function main() {
       true,
     ),
   );
+  const bundleRoot = join(metadata.target_directory, host, 'release', 'bundle');
   const bundleDir = join(
-    metadata.target_directory,
-    host,
-    'release',
-    'bundle',
+    bundleRoot,
     { darwin: 'macos', windows: 'nsis', linux: 'appimage' }[platform],
   );
   const outDir = resolve(
@@ -138,26 +164,17 @@ async function main() {
     [release, 'build', '--target', host, '--bundles', bundle],
     env,
   );
-  const candidates = [];
-  for (const name of await readdir(bundleDir)) {
-    if (!name.endsWith(suffix)) continue;
-    const path = join(bundleDir, name);
-    const info = await stat(path);
-    const signature = await stat(`${path}.sig`).catch(() => undefined);
-    // 不误选输出目录中的旧版本；允许文件系统一秒的时间精度误差。
-    if (
-      info.isFile() &&
-      info.size > 0 &&
-      info.mtimeMs >= started - 1000 &&
-      signature?.isFile() &&
-      signature.mtimeMs >= started - 1000
-    )
-      candidates.push(path);
+  // 不误选旧产物；更新包与安装包均要求来自本次构建。
+  const artifact = await currentArtifact(bundleDir, suffix, started, true);
+  let installer;
+  let installerOutput;
+  if (platform === 'darwin') {
+    installer = await currentArtifact(join(bundleRoot, 'dmg'), '.dmg', started);
+    installerOutput = join(outDir, `kx-adm-${version}-${target}.dmg`);
+  } else if (platform === 'windows') {
+    installer = artifact;
+    installerOutput = join(outDir, `kx-adm-${version}-${target}.exe`);
   }
-  if (candidates.length !== 1)
-    throw new Error(
-      `本次构建应生成一个带签名的 ${suffix} 包，实际找到 ${candidates.length} 个：${bundleDir}`,
-    );
   const temporary = await mkdtemp(join(outDir, '.kx-desktop-release-'));
   try {
     const notesFile = join(temporary, 'notes.txt');
@@ -165,15 +182,21 @@ async function main() {
     await writeFile(notesFile, notes);
     run(
       process.execPath,
-      [release, 'bundle', staged, notesFile, target, candidates[0]],
+      [release, 'bundle', staged, notesFile, target, artifact],
       env,
     );
-    // bundle 校验成功后才替换输出，失败不会留下一个看似可上传的半成品。
+    // 保留 Cargo 原产物；复制完成后再替换安装包，最后落盘更新包。
+    if (installer && installerOutput) {
+      const stagedInstaller = join(temporary, 'installer');
+      await copyFile(installer, stagedInstaller);
+      await rename(stagedInstaller, installerOutput);
+    }
     await rename(staged, output);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
   console.warn(`完成。后台上传此文件：\n${output}`);
+  if (installerOutput) console.warn(`独立安装包：\n${installerOutput}`);
 }
 
 await main().catch((error) => {

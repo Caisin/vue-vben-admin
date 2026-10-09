@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   page: vi.fn(),
   storageOptions: vi.fn(async () => [
-    { code: 'system', storage_name: '系统存储' },
+    { code: 'system', storage_name: '系统存储', storage_type: 's3' },
   ]),
   upload: vi.fn(),
   create: vi.fn(),
@@ -17,6 +17,16 @@ const state = vi.hoisted(() => ({
   confirm: vi.fn(),
   success: vi.fn(),
   canManage: true,
+  native: false,
+  nativeUpload: vi.fn(),
+}));
+vi.mock('#/desktop', () => ({
+  get desktop() {
+    return state.native;
+  },
+}));
+vi.mock('#/desktop/release-upload', () => ({
+  uploadDesktopRelease: state.nativeUpload,
 }));
 vi.mock('@vben/access', () => ({
   useAccess: () => ({ hasAccessByCodes: () => state.canManage }),
@@ -115,6 +125,7 @@ vi.mock('antdv-next', async () => {
     Modal: Object.assign(Dialog, { confirm: state.confirm }),
     Select: Wrap,
     Space: Wrap,
+    Progress: Wrap,
     Table,
     Tag: Wrap,
     message: { success: state.success },
@@ -126,6 +137,7 @@ afterEach(() => {
   document.body.innerHTML = '';
   vi.clearAllMocks();
   state.canManage = true;
+  state.native = false;
 });
 async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -162,48 +174,42 @@ describe('版本管理闭环', () => {
     revision: 1,
     published_at: null,
   };
-  it('新建并导入发行清单，保存后列表显示草稿', async () => {
-    let created = false;
-    state.page.mockImplementation(async () => ({
-      items: created ? [{ ...row }] : [],
-      total: created ? 1 : 0,
-    }));
-    state.create.mockImplementation(async () => {
-      created = true;
+  it('桌面选择原生直传，不经过 multipart 上传并可保存草稿', async () => {
+    state.native = true;
+    state.page.mockResolvedValue({ items: [], total: 0 });
+    state.create.mockResolvedValue({});
+    state.nativeUpload.mockResolvedValue({
+      version: '0.1.2',
+      notes: '直传',
+      artifacts: [
+        {
+          target: 'windows-x86_64',
+          signature: 'signed',
+          url: '',
+          file_id: '42',
+        },
+      ],
     });
     await mount();
     click('新建版本');
     await flush();
-    const input = document.querySelector(
-      'input[aria-label="导入发行清单"]',
-    ) as HTMLInputElement;
-    Object.defineProperty(input, 'files', {
-      configurable: true,
-      value: [
-        {
-          size: 100,
-          text: async () =>
-            JSON.stringify({
-              version: row.version,
-              notes: row.notes,
-              artifacts: row.artifacts,
-            }),
-        },
-      ],
-    });
-    input.dispatchEvent(new Event('change'));
+    expect(document.querySelector('input[aria-label="上传发行包"]')).toBeNull();
+    click('选择发行包并直传');
     await flush();
+    expect(state.nativeUpload).toHaveBeenCalledWith(
+      'system',
+      expect.any(Object),
+      expect.any(Function),
+    );
+    expect(state.upload).not.toHaveBeenCalled();
     click('保存');
     await flush();
-    expect(state.create).toHaveBeenCalledWith({
-      version: row.version,
-      notes: row.notes,
-      artifacts: row.artifacts,
-    });
-    expect(document.querySelector('aside')).toBeNull();
-    expect(document.body.textContent).toContain('0.1.1');
-    expect(document.body.textContent).toContain('草稿');
-    expect(state.page).toHaveBeenCalledTimes(2);
+    expect(state.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        version: '0.1.2',
+        artifacts: [expect.objectContaining({ file_id: '42' })],
+      }),
+    );
   });
   it('只选单个发行包即可上传系统存储并保存草稿', async () => {
     state.page.mockResolvedValue({ items: [], total: 0 });
@@ -240,11 +246,16 @@ describe('版本管理闭环', () => {
     });
     input.dispatchEvent(new Event('change'));
     await flush();
-    expect(state.upload).toHaveBeenCalledWith('/storage/file/upload/system', {
-      file: expect.any(File),
-    });
+    expect(state.upload).toHaveBeenCalledWith(
+      '/storage/file/upload/system',
+      { file: expect.any(File) },
+      { timeout: 30 * 60 * 1000 },
+    );
     expect(document.body.textContent).toContain('已上传至系统存储');
     expect(document.querySelector('input[accept=".sig"]')).toBeNull();
+    expect(
+      document.querySelector('input[aria-label="导入发行清单"]'),
+    ).toBeNull();
     click('保存');
     await flush();
     expect(state.create).toHaveBeenCalledWith({

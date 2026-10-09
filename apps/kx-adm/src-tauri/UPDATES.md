@@ -8,10 +8,12 @@ KX ADM 使用 Tauri updater 更新整个客户端，包含网页资源和 Rust �
 
 1. 创建版本草稿，填写正式版本号和更新说明。
 2. 选择系统 storage，上传发行脚本生成的单个 `.kx-update` 文件。页面自动读取版本、说明、平台和签名，将原始安装包上传 storage，无需单独上传校验文件。多个平台分别上传同版本发行包。
-3. 验证安装包后点击“发布”；旧版 HTTPS 发行清单仍可导入。
+3. 验证安装包后点击“发布”。
 4. 有问题的版本点击“撤回”。已安装的客户端不会降级，修复时发布更高版本。
 
 已发布、已撤回版本的内容不可修改。草稿支持编辑和删除，并校验修订号防止覆盖其他人的修改。新上传的安装包由系统 storage 托管，发行记录持久保存文件 ID；客户端通过登录保护的发行下载接口读取，不保存临时签名地址。此接口仅允许读取已发布版本引用的文件，支持本地和对象存储。历史外部 HTTPS 地址继续支持。
+
+上传入口只接收 `.kx-update`，不提供 JSON 发行清单导入或生成命令。桌面端点击“选择发行包并直传”，使用原生文件选择器和流式上传，直接写入 S3 兼容对象存储；没有 512 MiB 应用限额，实际大小遵循对象存储单次 PUT 的限制。后端只签发地址、校验对象并登记 file_id，业务令牌不发给存储。安装更新与上传互斥，退出或切换账号取消后续传输/登记；客户端重启或失败后重新选择文件重试。需部署原生客户端及后端并执行 `adm:m000097_client_release_direct_upload`。网页端仍支持 multipart 上传，安装包最大 512 MiB、超时 30 分钟；storage 的 multipart 文件上传路由预留 1 MiB 协议开销，超限返回 413 与明确提示。反向代理的请求体限额与超时需要覆盖这次上传，修改后端需重新部署 ADM。
 
 ## 客户端行为
 
@@ -58,7 +60,14 @@ rtk proxy ./build-desktop-release.sh --version 0.1.2 --notes "修复更新与下
 
 脚本自动同步版本、签名构建本机平台、定位 Cargo 实际产物目录，并验证签名后生成根目录 `dist/kx-adm/kx-adm-<版本>-<平台>.kx-update`；可通过 `--out-dir` 改输出目录。临时文件在同一输出目录清理，打包成功后才替换同名产物。构建失败或只有旧产物时直接报错，不生成可上传文件；版本同步后构建失败会保留新版本，修复后重新执行即可。
 
-macOS 使用 app 更新包、Windows 使用 NSIS、Linux 使用 AppImage。各平台在本机构建机执行；Windows 在 CMD 或 PowerShell 中使用根目录的 `build-desktop-release.cmd`，无需 Git Bash。需要预先安装 web 项目依赖、pnpm、Rust 与对应 Tauri 系统构建依赖。脚本不上传或发布版本。
+macOS 同时构建 app 更新包和 DMG、Windows 使用 NSIS、Linux 使用 AppImage。各平台在本机构建机执行；Windows 在 CMD 或 PowerShell 中使用根目录的 `build-desktop-release.cmd`，无需 Git Bash。需要预先安装 web 项目依赖、pnpm、Rust 与对应 Tauri 系统构建依赖。脚本不上传或发布版本。
+
+输出目录还会保留可直接分发的安装文件，与 `.kx-update` 使用相同的版本和平台前缀：
+
+- macOS：`kx-adm-<版本>-darwin-<架构>.dmg`。
+- Windows：`kx-adm-<版本>-windows-<架构>.exe`。
+
+这些文件从本次 Cargo 构建产物复制，原始文件继续留在 Cargo 输出目录；`--out-dir` 同时控制安装包和更新包的输出位置。安装包缺失或只有旧产物时会报错，避免混用版本。
 
 Windows 示例（项目根目录执行，CMD 与 PowerShell 均适用）：
 
@@ -77,16 +86,6 @@ rtk proxy pnpm --filter @kx/adm desktop:release bundle /tmp/release.kx-update /t
 ```
 
 脚本验证安装包和相邻签名后，把有界元信息和原始安装包合为一个 `.kx-update` 文件。后台选择此文件即可上传。签名私钥仍只在构建机；更新客户端保留固定公钥验签。后台升级需要 `adm:m000096_release_download_ux` 以补齐发行存储选项权限。
-
-## 旧版发行清单
-
-先将签名包上传到稳定 HTTPS 地址，准备更新说明文本文件；生成清单时读取相邻 `.sig`，使用内置公钥验证实际文件及签名，拒绝文件被修改或签名来自其它密钥。命令路径相对 `apps/kx-adm`，绝对路径也可用。
-
-```sh
-rtk proxy pnpm --filter @kx/adm desktop:release manifest /tmp/release.json /tmp/notes.txt darwin-aarch64 '/path/to/KX ADM.app.tar.gz' 'https://downloads.example.com/kx-adm/0.1.2/KX%20ADM.app.tar.gz'
-```
-
-可继续追加多组“平台、文件、地址”。将生成的清单导入后台草稿，再人工确认发布。脚本不会上传安装包或自动发布。
 
 ## 升级验收
 

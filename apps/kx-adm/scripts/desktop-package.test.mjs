@@ -40,11 +40,13 @@ async function fixture(mode = 'success', host = 'aarch64-apple-darwin') {
     windows ? 'nsis' : 'macos',
   );
   const artifactName = windows ? 'KX ADM_0.1.1_setup.exe' : 'KX ADM.app.tar.gz';
+  const dmgDir = join(target, host, 'release/bundle/dmg');
   await Promise.all([
     mkdir(scripts, { recursive: true }),
     mkdir(bin),
     mkdir(join(root, 'app/src-tauri'), { recursive: true }),
     mkdir(bundleDir, { recursive: true }),
+    mkdir(dmgDir, { recursive: true }),
   ]);
   const entry = join(scripts, 'desktop-package.mjs');
   await copyFile(new URL('desktop-package.mjs', import.meta.url), entry);
@@ -79,6 +81,11 @@ async function fixture(mode = 'success', host = 'aarch64-apple-darwin') {
       const file = ${JSON.stringify(join(bundleDir, artifactName))};
       await writeFile(file, 'installer');
       await writeFile(file + '.sig', 'signature');
+      const dmg = ${JSON.stringify(join(dmgDir, 'KX ADM_0.1.1.dmg'))};
+      if (!${windows} && ${JSON.stringify(mode)} !== 'missing-dmg') {
+        await writeFile(dmg, 'disk-image');
+        if (${JSON.stringify(mode)} === 'stale-dmg') await utimes(dmg, 1, 1);
+      }
       if (${JSON.stringify(mode)} === 'stale') {
         await utimes(file, 1, 1);
         await utimes(file + '.sig', 1, 1);
@@ -159,6 +166,13 @@ it.skipIf(process.platform === 'win32').each([
     );
     expect(artifact.target).toBe(`windows-${updaterArch}`);
     expect(artifact.file).toBe(join(f.bundleDir, 'KX ADM_0.1.1_setup.exe'));
+    expect(
+      await readFile(
+        join(f.output, `kx-adm-0.1.1-windows-${updaterArch}.exe`),
+        'utf8',
+      ),
+    ).toBe('installer');
+    expect(await readFile(artifact.file, 'utf8')).toBe('installer');
     const text = await readFile(join(f.root, 'calls.jsonl'), 'utf8');
     const calls = text
       .trim()
@@ -197,6 +211,7 @@ it.skipIf(process.platform === 'win32').each([
       },
     });
     expect(await readdir(f.output)).toEqual([
+      'kx-adm-0.1.1-darwin-aarch64.dmg',
       'kx-adm-0.1.1-darwin-aarch64.kx-update',
     ]);
     const calls = await readFile(join(f.root, 'calls.jsonl'), 'utf8');
@@ -234,8 +249,13 @@ it.skipIf(process.platform === 'win32')(
     expect(result.stderr).toContain(output);
     expect(result.stderr).not.toContain('fixture-key-not-a-real-secret');
     expect(await readdir(f.output)).toEqual([
+      'kx-adm-0.1.2-darwin-aarch64.dmg',
       'kx-adm-0.1.2-darwin-aarch64.kx-update',
     ]);
+    expect(
+      await readFile(join(f.output, 'kx-adm-0.1.2-darwin-aarch64.dmg'), 'utf8'),
+    ).toBe('disk-image');
+    expect(await readFile(value.file, 'utf8')).toBe('installer');
     const callText = await readFile(join(f.root, 'calls.jsonl'), 'utf8');
     const calls = callText
       .trim()
@@ -246,6 +266,13 @@ it.skipIf(process.platform === 'win32')(
       'check',
       'build',
       'bundle',
+    ]);
+    expect(calls.find((args) => args[0] === 'build')).toEqual([
+      'build',
+      '--target',
+      'aarch64-apple-darwin',
+      '--bundles',
+      'app,dmg',
     ]);
   },
 );
@@ -263,22 +290,20 @@ it.skipIf(process.platform === 'win32')(
   },
 );
 
-it.skipIf(process.platform === 'win32')(
-  '构建失败和只有旧产物时都不生成发行包',
-  async () => {
-    for (const mode of ['failed', 'stale']) {
-      const f = await fixture(mode);
-      await expect(
-        exec(
-          process.execPath,
-          [f.entry, '--key', f.key, '--out-dir', f.output],
-          { env: f.env },
-        ),
-      ).rejects.toThrow(/执行失败|实际找到 0 个/);
-      expect(await readdir(f.output)).toEqual([]);
-      expect(await readFile(join(f.root, 'calls.jsonl'), 'utf8')).not.toContain(
-        '"bundle",',
-      );
-    }
+it
+  .skipIf(process.platform === 'win32')
+  .each(['failed', 'stale', 'missing-dmg', 'stale-dmg'])(
+  '构建失败或安装包缺失、过期时不生成发行包：%s',
+  async (mode) => {
+    const f = await fixture(mode);
+    await expect(
+      exec(process.execPath, [f.entry, '--key', f.key, '--out-dir', f.output], {
+        env: f.env,
+      }),
+    ).rejects.toThrow(/执行失败|实际找到 0 个/);
+    expect(await readdir(f.output)).toEqual([]);
+    expect(await readFile(join(f.root, 'calls.jsonl'), 'utf8')).not.toContain(
+      '"bundle",',
+    );
   },
 );

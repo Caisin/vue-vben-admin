@@ -57,6 +57,7 @@ pub struct Auth {
     pub generation: u64,
 }
 pub struct Desktop {
+    pub release_upload: Mutex<()>,
     pub auth: Mutex<Auth>,
     pub device: crate::device::Device,
     pub http: reqwest::Client,
@@ -95,6 +96,7 @@ impl Desktop {
         let jobs = crate::queue::load(&data)?;
         let download_jobs = crate::download::load(&data)?;
         Ok(Arc::new(Self {
+            release_upload: Mutex::new(()),
             device: crate::device::Device::load(&data)?,
             auth: Mutex::new(Auth {
                 session: None,

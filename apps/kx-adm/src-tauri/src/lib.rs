@@ -3,6 +3,7 @@ mod download;
 mod image;
 mod protocol;
 mod queue;
+mod release_upload;
 mod scan;
 mod session;
 mod tiktok;
@@ -574,6 +575,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            release_upload::desktop_release_upload,
             updater::desktop_update_check,
             updater::desktop_update_install,
             desktop_device_info,

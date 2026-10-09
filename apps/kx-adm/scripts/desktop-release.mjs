@@ -111,57 +111,10 @@ if (command === 'version') {
       createWriteStream(output, { flags: 'a' }),
     );
     console.warn(`发行包已保存：${output}；在后台直接上传此文件。`);
-  } else if (command === 'manifest') {
-    // 参数每组三项：平台、实际包路径、上传后 HTTPS 地址。不会上传或发布。
-    const [output, notesFile, ...artifacts] = args;
-    if (!output || !notesFile || artifacts.length === 0 || artifacts.length % 3)
-      fail(
-        'manifest <输出.json> <说明.txt> <平台> <包路径> <HTTPS地址> [更多平台…]',
-      );
-    const targets = new Set();
-    const items = [];
-    for (let i = 0; i < artifacts.length; i += 3) {
-      const [target, file, url] = artifacts.slice(i, i + 3);
-      if (
-        !/^(darwin-(aarch64|x86_64)|windows-(x86_64|aarch64|i686)|linux-(x86_64|aarch64|armv7))$/.test(
-          target,
-        ) ||
-        targets.has(target)
-      )
-        fail('平台无效或重复');
-      targets.add(target);
-      const parsed = new URL(url);
-      if (
-        parsed.protocol !== 'https:' ||
-        parsed.username ||
-        parsed.password ||
-        parsed.hash
-      )
-        fail('下载地址需要无账号密码的 HTTPS');
-      const signatureText = await readFile(`${file}.sig`, 'utf8');
-      const signature = signatureText.trim();
-      const info = await stat(file);
-      if (!info.isFile() || info.size === 0) fail('更新包不存在或为空');
-      if (
-        (target.startsWith('darwin-') && !file.endsWith('.app.tar.gz')) ||
-        (target.startsWith('linux-') && !file.endsWith('.AppImage')) ||
-        (target.startsWith('windows-') && !/\.(exe|msi)$/.test(file))
-      )
-        fail('更新包格式与平台不匹配');
-      if (basename(parsed.pathname) !== encodeURIComponent(basename(file)))
-        console.warn(`请确认下载地址对应 ${basename(file)}`);
-      await verifyDesktopArtifact(file, signature, publicKey);
-      items.push({ target, url, signature });
-    }
-    await writeFile(
-      output,
-      `${JSON.stringify({ version: config.version, notes: await readFile(notesFile, 'utf8'), artifacts: items }, null, 2)}\n`,
-    );
-    console.warn(`发行清单已保存：${output}；上传包后可在后台导入并发布。`);
   } else if (command === 'check') {
     console.warn(`版本 ${config.version} 与公钥配置一致`);
   } else
     fail(
-      '命令：version <版本> | check | build [tauri 参数] | bundle <输出.kx-update> <说明> <平台> <包路径> | manifest <输出> <说明> <平台 包路径 HTTPS地址>…',
+      '命令：version <版本> | check | build [tauri 参数] | bundle <输出.kx-update> <说明> <平台> <包路径>',
     );
 }

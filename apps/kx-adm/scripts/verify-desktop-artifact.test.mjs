@@ -10,7 +10,7 @@ import { it } from 'vitest';
 
 import { verifyDesktopArtifact } from './verify-desktop-artifact.mjs';
 
-it('发行清单拒绝被替换的包、签名或公钥', async () => {
+it('发行包校验拒绝被替换的包、签名或公钥', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'kx-release-'));
   try {
     const file = join(dir, 'app.tar.gz');
