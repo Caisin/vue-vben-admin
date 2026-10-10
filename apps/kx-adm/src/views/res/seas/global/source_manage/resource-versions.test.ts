@@ -94,6 +94,9 @@ async function mount(code: string) {
     lang: 'zh',
     remark: '',
     revision: 1,
+    review_state: 'draft',
+    planned_episodes: 0,
+    published_at: 0,
     created_at: 1,
     updated_at: 1,
   };

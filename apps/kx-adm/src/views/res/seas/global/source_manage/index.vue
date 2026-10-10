@@ -54,6 +54,7 @@ import {
 import CreateResource from './modules/create-resource.vue';
 import ResourceCodeBinding from './modules/resource-code-binding.vue';
 import ResourceVersions from './modules/resource-versions.vue';
+import ReviewEntryActions from './modules/review-entry-actions.vue';
 
 const { hasAccessByCodes } = useAccess();
 const access = computed(() => resourceCapabilities(hasAccessByCodes));
@@ -701,6 +702,11 @@ async function reindexSearch() {
         {{ row.ad_cfg?.sleep_sec ?? '-' }}s
       </template>
       <template #operation="{ row }">
+        <ReviewEntryActions
+          :key="String(row.id)"
+          :resource="row"
+          :can-manage="access.manage"
+        />
         <VbenTableAction
           v-if="access.manage"
           :actions="[
@@ -844,6 +850,10 @@ async function reindexSearch() {
                   <Button size="small" type="link" @click="openVersions(item)">
                     版本与内容
                   </Button>
+                  <ReviewEntryActions
+                    :resource="item"
+                    :can-manage="access.manage"
+                  />
                 </Space>
               </Space>
             </template>

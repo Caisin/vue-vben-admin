@@ -41,6 +41,12 @@ const coreRoutes: RouteRecordRaw[] = [
     redirect: preferences.app.defaultHomePath,
     children: [
       {
+        component: () => import('#/views/res/seas/review/index.vue'),
+        meta: { hideInMenu: true, title: '我的作品审核' },
+        name: 'MyResourceReview',
+        path: '/resource-review',
+      },
+      {
         component: () => import('#/views/_core/user-overview/index.vue'),
         meta: {
           hideInMenu: true,

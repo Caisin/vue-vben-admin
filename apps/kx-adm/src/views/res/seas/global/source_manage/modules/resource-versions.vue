@@ -9,6 +9,7 @@ import type {
 } from '#/api/res/versions';
 
 import { computed, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 
@@ -41,6 +42,7 @@ import NovelImport from './novel-import.vue';
 import NovelReader from './novel-reader.vue';
 import VersionPreview from './version-preview.vue';
 const props = defineProps<{ resource?: ResRecord }>();
+const router = useRouter();
 const { hasAccessByCodes } = useAccess();
 const access = computed(() => resourceCapabilities(hasAccessByCodes));
 const open = defineModel<boolean>('open', { required: true });
@@ -241,7 +243,11 @@ async function saveVersion() {
   }
 }
 function editItem(item?: VersionItem) {
-  if (!detail.value) return;
+  if (
+    !detail.value ||
+    !['draft', 'reviewing'].includes(detail.value.version.review_state)
+  )
+    return;
   itemId.value = item?.id;
   Object.assign(itemForm, {
     expected_revision: detail.value.version.revision,
@@ -376,6 +382,21 @@ async function removeVersion() {
       </div>
     </header>
     <div class="workspace-actions">
+      <Button
+        v-if="drama && access.manage && resource"
+        type="primary"
+        @click="
+          router.push({
+            path: '/resource-review',
+            query: {
+              res: String(resource.id),
+              version: detail ? String(detail.version.id) : undefined,
+            },
+          })
+        "
+      >
+        作品审核
+      </Button>
       <NovelImport
         v-if="access.upload && textResource && resource"
         :key="String(resource.id)"
@@ -445,6 +466,14 @@ async function removeVersion() {
               <div class="version-option-title">
                 <span class="version-mark">{{ index + 1 }}</span>
                 <strong>{{ v.name }}</strong>
+                <span v-if="drama" class="text-xs text-muted-foreground">{{
+                  {
+                    draft: '制作中',
+                    reviewing: '已交片 · 审片修改',
+                    final: '定版成片',
+                    published: '已上架',
+                  }[v.review_state]
+                }}</span>
                 <span v-if="v.lang" class="text-xs text-muted-foreground">{{
                   v.lang
                 }}</span>
@@ -481,13 +510,20 @@ async function removeVersion() {
             <div class="flex flex-wrap gap-2">
               <Button
                 v-if="access.upload"
-                :disabled="busy || loading"
+                :disabled="
+                  busy ||
+                  loading ||
+                  !['draft', 'reviewing'].includes(detail.version.review_state)
+                "
                 @click="editVersion(detail.version)"
               >
                 修改版本信息
               </Button>
               <Popconfirm
-                v-if="access.manage"
+                v-if="
+                  access.manage &&
+                  ['draft', 'reviewing'].includes(detail.version.review_state)
+                "
                 :title="`删除版本「${detail.version.name}」及其 ${detail.items.length} 个章节？`"
                 @confirm="removeVersion"
               >
@@ -495,6 +531,20 @@ async function removeVersion() {
               </Popconfirm>
             </div>
           </header>
+          <Alert
+            v-if="
+              drama &&
+              !['draft', 'reviewing'].includes(detail.version.review_state)
+            "
+            type="info"
+            show-icon
+            class="mb-3"
+            :message="
+              detail.version.review_state === 'published'
+                ? '已上架版本已锁定，请复制版本或创建全新版本后修改。'
+                : '成片已定版，内容已固定。请复制版本或创建全新版本继续修改。'
+            "
+          />
           <div class="version-remark">
             <span>版本差异</span>
             <p>
@@ -506,7 +556,12 @@ async function removeVersion() {
           </div>
           <div class="content-actions">
             <DirectoryUpload
-              v-if="access.upload && drama && resource"
+              v-if="
+                access.upload &&
+                drama &&
+                resource &&
+                ['draft', 'reviewing'].includes(detail.version.review_state)
+              "
               :res="String(resource.id)"
               :version="String(detail.version.id)"
               :version-name="detail.version.name"
@@ -525,7 +580,10 @@ async function removeVersion() {
               :resource-name="resource.res_name || '资源'"
             />
             <Button
-              v-if="access.upload"
+              v-if="
+                access.upload &&
+                ['draft', 'reviewing'].includes(detail.version.review_state)
+              "
               :disabled="busy || loading"
               @click="editItem()"
             >
@@ -585,7 +643,10 @@ async function removeVersion() {
                   预览章节
                 </Button>
                 <Button
-                  v-if="access.upload"
+                  v-if="
+                    access.upload &&
+                    ['draft', 'reviewing'].includes(detail.version.review_state)
+                  "
                   type="link"
                   :disabled="busy || loading"
                   @click="editItem(record)"
@@ -593,7 +654,10 @@ async function removeVersion() {
                   编辑内容
                 </Button>
                 <Popconfirm
-                  v-if="access.manage"
+                  v-if="
+                    access.manage &&
+                    ['draft', 'reviewing'].includes(detail.version.review_state)
+                  "
                   :title="`删除章节「${record.title}」？`"
                   @confirm="removeItem(record)"
                 >

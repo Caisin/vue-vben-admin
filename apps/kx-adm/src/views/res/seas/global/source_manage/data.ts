@@ -154,7 +154,7 @@ export function useColumns(): VxeTableGridColumns<ResRecord> {
       showOverflow: false,
       slots: { default: 'operation' },
       title: '操作',
-      width: 120,
+      width: 180,
     },
   ];
 }

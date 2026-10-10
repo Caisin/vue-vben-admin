@@ -63,6 +63,11 @@ const canResolveLegacySystemImages = computed(() =>
 );
 const userMenus = computed(() => [
   {
+    handler: () => router.push('/resource-review'),
+    icon: UserRoundPen,
+    text: '我的作品审核',
+  },
+  {
     handler: () => router.push(USER_OVERVIEW_PATH),
     icon: UserRoundPen,
     text: '我的信息',

@@ -9,6 +9,9 @@ export interface ResourceVersion {
   lang: string;
   remark: string;
   revision: number;
+  review_state: 'draft' | 'final' | 'published' | 'reviewing';
+  planned_episodes: number;
+  published_at: number;
   created_at: number;
   updated_at: number;
 }
