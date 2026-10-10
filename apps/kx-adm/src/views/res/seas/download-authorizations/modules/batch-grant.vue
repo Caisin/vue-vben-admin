@@ -104,8 +104,8 @@ function remaining(line: DownloadBatchView['lines'][number]) {
   ).length;
 }
 const modes = [
-  { label: '每行一个剧名', value: 'name' },
-  { label: '每行一个作品编码', value: 'code' },
+  { label: '每行一个剧名关键字', value: 'name' },
+  { label: '每行一个作品编码关键字', value: 'code' },
 ];
 const columns = [
   { title: '行号', dataIndex: 'line', width: 65 },
@@ -246,7 +246,7 @@ async function submit(apply: boolean) {
       class="mb-4"
       type="info"
       show-icon
-      message="剧名完整匹配；同名剧不自动授权。作品编码匹配其关联的全部短剧。空行忽略，重复行去重。"
+      message="剧名或作品编码包含输入关键字即匹配；多条结果全部列出，确认后才授权。英文字母不区分大小写，空行忽略，重复剧目去重。"
       :description="
         revoke
           ? '每次最多 100 位用户、200 行、500 部剧，最多 5000 个组合。仅取消保留剧目的授权，无授权的组合自动跳过；移除仅排除本次操作。'
@@ -292,8 +292,8 @@ async function submit(apply: boolean) {
           :maxlength="81920"
           :placeholder="
             form.mode === 'name'
-              ? '每行输入一个完整剧名'
-              : '每行输入一个作品编码'
+              ? '每行输入一个剧名关键字'
+              : '每行输入一个作品编码关键字'
           "
         />
       </FormItem>
@@ -392,11 +392,10 @@ async function submit(apply: boolean) {
             size="small"
             :disabled="busy || applied"
             :aria-label="`移除 ${record.input} 全部剧目`"
+            :title="`移除 ${record.input} 匹配的全部剧目`"
             @click="removeLine(record)"
           >
-            {{
-              form.mode === 'code' ? '移除该编码全部剧目' : '移除该行全部剧目'
-            }}
+            移除
           </Button>
         </template>
       </template>

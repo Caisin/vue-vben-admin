@@ -217,7 +217,7 @@ onMounted(refreshRoles);
 <template>
   <Page
     title="角色分配"
-    description="给组织管理范围内的其他用户添加角色。只能操作管理员允许你分配的角色。"
+    description="给可授权组织范围内的其他用户添加角色。只能操作管理员允许你分配的角色。"
   >
     <div class="bg-card rounded-lg p-4">
       <div class="mb-4 flex flex-wrap items-center gap-3">
@@ -374,7 +374,7 @@ onMounted(refreshRoles);
         </template>
       </Table>
       <p class="text-muted-foreground mt-3 text-sm">
-        仅显示组织管理范围内已启用、尚未拥有此角色的用户，不包含自己。
+        仅显示可授权组织范围内已启用、尚未拥有此角色的用户，不包含自己。
       </p>
     </Modal>
   </Page>

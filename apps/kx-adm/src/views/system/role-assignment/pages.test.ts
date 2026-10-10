@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   api: {
     configUsers: vi.fn(),
     configRoles: vi.fn(),
+    configOrganizations: vi.fn(),
     saveConfig: vi.fn(),
     roles: vi.fn(),
     members: vi.fn(),
@@ -57,7 +58,44 @@ vi.mock('antdv-next', async () => {
         () =>
           h('button', slots.default?.()),
     }),
-    Checkbox: Wrap,
+    Checkbox: defineComponent({
+      props: ['checked', 'disabled'],
+      emits: ['update:checked'],
+      setup:
+        (p, { emit, slots }) =>
+        () =>
+          h('label', [
+            h('input', {
+              type: 'checkbox',
+              checked: p.checked,
+              disabled: p.disabled,
+              onChange: (event: Event) =>
+                emit(
+                  'update:checked',
+                  (event.target as HTMLInputElement).checked,
+                ),
+            }),
+            slots.default?.(),
+          ]),
+    }),
+    Tree: defineComponent({
+      props: ['checkedKeys'],
+      emits: ['check'],
+      setup:
+        (p, { emit }) =>
+        () =>
+          h(
+            'button',
+            {
+              'aria-label': '选择公司乙',
+              onClick: () =>
+                emit('check', {
+                  checked: [...(p.checkedKeys ?? []), 'company:b'],
+                }),
+            },
+            '公司乙',
+          ),
+    }),
     Empty: Wrap,
     Tag: Wrap,
     Tooltip: Wrap,
@@ -229,6 +267,10 @@ function click(selector: string) {
 }
 const upload = { role_id: 'upload', role_name: '资源上传', enabled: true };
 beforeEach(() => {
+  state.api.configOrganizations.mockResolvedValue([
+    { key: 'company:a', title: '公司甲', children: [] },
+    { key: 'company:b', title: '公司乙', children: [] },
+  ]);
   state.api.configUsers.mockResolvedValue({
     items: [{ id: 50, name: '张三', roles: [], enabled: true }],
     total: 1,
@@ -281,9 +323,60 @@ describe('角色分配配置和执行闭环', () => {
     expect(select.value).toBe('upload');
     click('[data-confirm]');
     await flush();
-    expect(state.api.saveConfig).toHaveBeenLastCalledWith(50, ['upload'], []);
+    expect(state.api.saveConfig).toHaveBeenLastCalledWith(50, ['upload'], [], {
+      mode: 'managed',
+      organization_keys: [],
+      revision: 0,
+    });
     expect(document.querySelector('[data-modal]')).toBeNull();
     expect(state.api.configUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('配置组织全选与指定组织，并保存加载时的修订号', async () => {
+    state.codes.add('roles:configure-distribution');
+    state.api.configUsers.mockResolvedValue({
+      items: [
+        {
+          id: 50,
+          name: '张三',
+          enabled: true,
+          roles: [],
+          scope: {
+            mode: 'selected',
+            organization_keys: ['company:a'],
+            revision: 4,
+          },
+        },
+      ],
+      total: 1,
+    });
+    await mount('config');
+    click('button[aria-label="配置可分配角色：张三"]');
+    await flush();
+    const checkbox = [...document.querySelectorAll('label')]
+      .find((label) => label.textContent?.trim() === '全选')
+      ?.querySelector('input');
+    expect(checkbox).toBeDefined();
+    checkbox?.click();
+    await flush();
+    click('[data-confirm]');
+    await flush();
+    expect(state.api.saveConfig).toHaveBeenLastCalledWith(50, [], [], {
+      mode: 'all',
+      organization_keys: [],
+      revision: 4,
+    });
+    click('button[aria-label="配置可分配角色：张三"]');
+    await flush();
+    click('button[aria-label="选择公司乙"]');
+    await flush();
+    click('[data-confirm]');
+    await flush();
+    expect(state.api.saveConfig).toHaveBeenLastCalledWith(50, [], [], {
+      mode: 'selected',
+      organization_keys: ['company:a', 'company:b'],
+      revision: 4,
+    });
   });
 
   it('分配者跨页选人，添加失败保留选择，重试成功后刷新成员', async () => {

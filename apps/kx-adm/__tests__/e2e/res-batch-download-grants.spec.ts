@@ -237,7 +237,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   await expect(dialog.getByPlaceholder('生效时间')).not.toHaveValue('');
   await expect(dialog.getByPlaceholder('失效时间')).not.toHaveValue('');
   await dialog.getByRole('combobox', { name: '匹配方式' }).click();
-  await page.getByTitle('每行一个剧名', { exact: true }).click();
+  await page.getByTitle('每行一个剧名关键字', { exact: true }).click();
   await expect(
     dialog.getByRole('combobox', { name: '授权用户' }),
   ).toBeDisabled();
@@ -280,7 +280,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
     dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }),
   ).toBeDisabled();
   await dialog.getByRole('combobox', { name: '匹配方式' }).click();
-  await page.getByTitle('每行一个作品编码', { exact: true }).click();
+  await page.getByTitle('每行一个作品编码关键字', { exact: true }).click();
   await dialog
     .getByRole('textbox', { name: '作品编码列表' })
     .fill('dr-3\nmissing\ndr-3\nDR-5');
@@ -299,6 +299,9 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   await dialog
     .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
     .click();
+  await expect(
+    dialog.getByRole('button', { name: '移除 DR-3 全部剧目', exact: true }),
+  ).toHaveText(/移\s*除/);
   failSave = true;
   await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect(

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type {
   AssignmentConfig,
+  AssignmentOrganization,
   AssignmentRole,
+  AssignmentScope,
 } from '#/api/system/role-assignment';
 
 import { computed, onMounted, ref } from 'vue';
@@ -18,6 +20,7 @@ import {
   Select,
   Table,
   Tag,
+  Tree,
 } from 'antdv-next';
 
 import { RoleAssignmentApi } from '#/api/system/role-assignment';
@@ -40,6 +43,12 @@ const total = ref(0);
 const editing = ref<AssignmentConfig>();
 const selected = ref<string[]>([]);
 const expected = ref<string[]>([]);
+const organizations = ref<AssignmentOrganization[]>([]);
+const scope = ref<AssignmentScope>({
+  mode: 'managed',
+  organization_keys: [],
+  revision: 0,
+});
 const open = ref(false);
 const saving = ref(false);
 let requestId = 0;
@@ -48,6 +57,7 @@ const columns = [
   { dataIndex: 'id', key: 'id', title: '用户 ID', width: 110 },
   { dataIndex: 'tel', key: 'tel', title: '电话', width: 150 },
   { key: 'roles', title: '可以分配的角色' },
+  { key: 'scope', title: '可授权组织范围', width: 200 },
   { key: 'enabled', title: '用户状态', width: 100 },
 ];
 
@@ -86,15 +96,26 @@ async function edit(user: AssignmentConfig) {
   editing.value = user;
   selected.value = user.roles.map((role) => role.role_id);
   expected.value = [...selected.value];
+  scope.value = {
+    ...(user.scope ?? { mode: 'managed', revision: 0 }),
+    organization_keys: [...(user.scope?.organization_keys ?? [])],
+  };
   open.value = true;
   rolesReady.value = false;
   roles.value = [];
   loadingRoles.value = true;
   try {
-    roles.value = await RoleAssignmentApi.configRoles();
+    const [roleOptions, organizationOptions] = await Promise.all([
+      RoleAssignmentApi.configRoles(),
+      RoleAssignmentApi.configOrganizations(),
+    ]);
+    roles.value = roleOptions;
+    organizations.value = organizationOptions;
     rolesReady.value = true;
   } catch (error) {
-    message.error(requestErrorMessage(error, '角色列表加载失败，请重新打开'));
+    message.error(
+      requestErrorMessage(error, '角色或组织范围加载失败，请重新打开'),
+    );
   } finally {
     loadingRoles.value = false;
   }
@@ -107,8 +128,9 @@ async function save() {
       editing.value.id,
       selected.value,
       expected.value,
+      scope.value,
     );
-    message.success('可分配角色已保存');
+    message.success('可分配角色和组织范围已保存');
     open.value = false;
     await load();
   } catch (error) {
@@ -117,13 +139,30 @@ async function save() {
     saving.value = false;
   }
 }
+function setScopeMode(value: unknown) {
+  if (value !== 'all' && value !== 'managed' && value !== 'selected') return;
+  scope.value.mode = value;
+  scope.value.organization_keys = [];
+}
+function checkOrganizations(value: unknown) {
+  const keys = Array.isArray(value)
+    ? value
+    : (value as { checked?: unknown })?.checked;
+  if (Array.isArray(keys)) scope.value.organization_keys = keys.map(String);
+}
+function scopeLabel(value?: AssignmentScope) {
+  if (value?.mode === 'all') return '全部组织及未分配用户';
+  if (value?.mode === 'selected')
+    return `指定组织（${value.organization_keys.length} 项）`;
+  return '沿用组织管理范围';
+}
 onMounted(load);
 </script>
 
 <template>
   <Page
     title="角色分配配置"
-    description="指定用户可以分配哪些角色。配置不会给该用户授予这些角色本身。"
+    description="指定用户可分配的角色和可授权组织范围。配置不会给该用户授予这些角色本身。"
   >
     <div class="bg-card rounded-lg p-4">
       <div class="mb-4 flex flex-wrap items-center gap-3">
@@ -185,6 +224,9 @@ onMounted(load);
               </span>
             </div>
           </template>
+          <span v-else-if="column.key === 'scope'">
+            {{ scopeLabel(record.scope) }}
+          </span>
           <Tag
             v-else-if="column.key === 'enabled'"
             :color="record.enabled ? 'success' : 'default'"
@@ -196,7 +238,8 @@ onMounted(load);
     </div>
     <Modal
       v-model:open="open"
-      :title="`配置可分配角色：${editing?.name ?? ''}`"
+      :title="`配置角色与组织范围：${editing?.name ?? ''}`"
+      :width="720"
       :confirm-loading="saving"
       :ok-button-props="{ disabled: loadingRoles || !rolesReady }"
       :cancel-button-props="{ disabled: saving }"
@@ -223,8 +266,54 @@ onMounted(load);
           option-filter-prop="label"
           placeholder="选择允许分配的角色；清空可撤销分配范围"
         />
+        <div class="mt-5">
+          <div class="mb-2 flex items-center justify-between">
+            <label for="assignment-scope-mode">可授权组织范围</label>
+            <Checkbox
+              :checked="scope.mode === 'all'"
+              :disabled="saving || loadingRoles"
+              @update:checked="
+                (checked) => setScopeMode(checked ? 'all' : 'selected')
+              "
+            >
+              全选
+            </Checkbox>
+          </div>
+          <Select
+            id="assignment-scope-mode"
+            :value="scope.mode"
+            class="w-full"
+            :disabled="saving || loadingRoles"
+            :options="[
+              { label: '沿用组织管理范围', value: 'managed' },
+              { label: '选择公司 / 部门', value: 'selected' },
+              { label: '全部组织及未分配用户', value: 'all' },
+            ]"
+            @update:value="setScopeMode"
+          />
+          <div
+            v-if="scope.mode === 'selected'"
+            class="mt-3 max-h-64 overflow-auto rounded border p-2"
+          >
+            <Tree
+              :tree-data="organizations"
+              :checked-keys="scope.organization_keys"
+              :disabled="saving || loadingRoles"
+              checkable
+              check-strictly
+              :selectable="false"
+              @check="checkOrganizations"
+            />
+            <p v-if="organizations.length === 0" class="text-muted-foreground">
+              暂无可选组织
+            </p>
+          </div>
+          <p class="text-muted-foreground mt-2 text-sm">
+            选择公司或部门包含其下级；全选包含新增组织和未分配组织用户。此范围仅用于角色分配，不授予其他模块的组织管理权。管理员始终可分配全部组织用户。
+          </p>
+        </div>
         <p class="text-muted-foreground mt-3 text-sm">
-          保存后，该用户刷新页面即可进入“角色分配”，给自己组织管理范围内的其他用户添加角色。清空不会移除已分配给其他人的角色。
+          保存后，该用户可在“角色分配”给所配置范围内的其他用户添加角色，始终排除本人。清空可分配角色不会移除其他用户已经获得的角色。
         </p>
       </div>
     </Modal>

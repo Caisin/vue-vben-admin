@@ -14,6 +14,17 @@ export interface AssignmentUser {
 }
 export interface AssignmentConfig extends AssignmentUser {
   roles: AssignmentRole[];
+  scope: AssignmentScope;
+}
+export interface AssignmentScope {
+  mode: 'all' | 'managed' | 'selected';
+  organization_keys: string[];
+  revision: number;
+}
+export interface AssignmentOrganization {
+  key: string;
+  title: string;
+  children: AssignmentOrganization[];
 }
 interface AssignmentPage<T> {
   items: T[];
@@ -36,14 +47,26 @@ export const RoleAssignmentApi = {
     ),
   configRoles: () =>
     requestClient.get<AssignmentRole[]>(`${base}/config/roles`),
+  configOrganizations: () =>
+    requestClient.get<AssignmentOrganization[]>(`${base}/config/organizations`),
   saveConfig: (
     uid: number | string,
     roleIds: string[],
     expectedRoleIds: string[],
+    scope?: AssignmentScope,
   ) =>
     requestClient.put(`${base}/config/${uid}`, {
       role_ids: roleIds,
       expected_role_ids: expectedRoleIds,
+      ...(scope
+        ? {
+            scope: {
+              mode: scope.mode,
+              organization_keys: scope.organization_keys,
+              expected_revision: scope.revision,
+            },
+          }
+        : {}),
     }),
   roles: () => requestClient.get<AssignmentRole[]>(`${base}/roles`),
   members: (role: string, params: AssignmentQuery) =>
