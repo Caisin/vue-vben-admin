@@ -468,7 +468,7 @@ onUnmounted(() => {
     <Alert
       v-if="!desktop"
       type="warning"
-      message="请使用 KX ADM 的 Tauri 桌面版打开此工作台。"
+      message="请使用 Qinjiu 的 Tauri 桌面版打开此工作台。"
     />
     <Alert v-if="errorText" type="error" :message="errorText" />
     <template v-if="desktop">

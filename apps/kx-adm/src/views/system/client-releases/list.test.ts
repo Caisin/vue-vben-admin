@@ -3,6 +3,8 @@ import { createApp, nextTick } from 'vue';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { releaseTgz } from '../../../../test-fixtures/release';
+
 const state = vi.hoisted(() => ({
   page: vi.fn(),
   storageOptions: vi.fn(async () => [
@@ -220,23 +222,7 @@ describe('版本管理闭环', () => {
     await mount();
     click('新建版本');
     await flush();
-    const metadata = new TextEncoder().encode(
-      JSON.stringify({
-        version: '0.1.1',
-        notes: '说明',
-        name: 'app.app.tar.gz',
-        target: 'darwin-aarch64',
-        signature: 'signed',
-        size: 3,
-      }),
-    );
-    const header = new Uint8Array(12);
-    header.set(new TextEncoder().encode('KXUPDATE'));
-    new DataView(header.buffer).setUint32(8, metadata.length, true);
-    const file = new File(
-      [header, metadata, new Uint8Array([1, 2, 3])],
-      'release.kx-update',
-    );
+    const file = new File([releaseTgz()], 'release.tgz');
     const input = document.querySelector(
       'input[aria-label="上传发行包"]',
     ) as HTMLInputElement;
@@ -245,6 +231,7 @@ describe('版本管理闭环', () => {
       configurable: true,
     });
     input.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(state.upload).toHaveBeenCalled());
     await flush();
     expect(state.upload).toHaveBeenCalledWith(
       '/storage/file/upload/system',

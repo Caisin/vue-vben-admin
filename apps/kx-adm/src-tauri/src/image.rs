@@ -109,13 +109,13 @@ fn config_contents(key: &str) -> String {
     #[cfg(target_os = "windows")]
     {
         return format!(
-            "# Managed by KX ADM.\n$env:{IMAGE_ENV_NAME} = {}\n",
+            "# Managed by Qinjiu.\n$env:{IMAGE_ENV_NAME} = {}\n",
             powershell_quote(key)
         );
     }
     #[cfg(not(target_os = "windows"))]
     format!(
-        "# Managed by KX ADM.\nexport {IMAGE_ENV_NAME}={}\n",
+        "# Managed by Qinjiu.\nexport {IMAGE_ENV_NAME}={}\n",
         shell_quote(key)
     )
 }

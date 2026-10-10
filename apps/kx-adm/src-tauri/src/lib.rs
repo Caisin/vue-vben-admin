@@ -540,7 +540,7 @@ pub fn run() {
                 }
             });
             let show =
-                tauri::menu::MenuItem::with_id(app, "show", "打开 KX ADM", true, None::<&str>)?;
+                tauri::menu::MenuItem::with_id(app, "show", "打开 Qinjiu", true, None::<&str>)?;
             let quit = tauri::menu::MenuItem::with_id(
                 app,
                 "quit",
@@ -551,7 +551,7 @@ pub fn run() {
             let menu = tauri::menu::Menu::with_items(app, &[&show, &quit])?;
             let mut tray = tauri::tray::TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("KX ADM · 目录上传后台运行")
+                .tooltip("Qinjiu · 目录上传后台运行")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
                         if let Some(w) = app.get_webview_window("main") {

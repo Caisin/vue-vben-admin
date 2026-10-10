@@ -32,6 +32,9 @@ base64 = "0.22"
 kx-tk-pool = { version = "0.1",path="../../../../crates/tk-pool" }
 kx-ed = { version = "0.1",path="../../../../crates/ed" }
 md5 = "0.8"
+flate2 = "1"
+tar = "0.4"
+tempfile = "3"
 mime_guess = "2"
 walkdir = "2"
 natord = "1"

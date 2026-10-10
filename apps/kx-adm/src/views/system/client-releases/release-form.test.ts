@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
+import { gunzipSync, gzipSync } from 'node:zlib';
+
 import { describe, expect, it } from 'vitest';
 
+import { releaseTgz } from '../../../../test-fixtures/release';
 import { parseReleaseBundle, validateRelease } from './release-form';
 const validArtifact = {
   target: 'darwin-aarch64',
@@ -29,22 +34,30 @@ describe('发行草稿校验', () => {
 
 describe('单文件发行包', () => {
   function bundle(override = {}, payload = new Uint8Array([1, 2, 3])) {
-    const metadata = new TextEncoder().encode(
-      JSON.stringify({
-        version: '0.1.1',
-        notes: '说明',
-        name: 'app.app.tar.gz',
-        target: 'darwin-aarch64',
-        signature: 'signed',
-        size: 3,
-        ...override,
-      }),
-    );
-    const header = new Uint8Array(12);
-    header.set(new TextEncoder().encode('KXUPDATE'));
-    new DataView(header.buffer).setUint32(8, metadata.length, true);
-    return new File([header, metadata, payload], 'release.kx-update');
+    return new File([releaseTgz(override, payload)], 'release.tgz');
   }
+  it('读取发行脚本生成的标准 TGZ fixture', async () => {
+    const bytes = readFileSync(
+      new NodeURL('../../../../test-fixtures/release.tgz', import.meta.url),
+    );
+    const result = await parseReleaseBundle(new File([bytes], 'release.tgz'));
+    expect(result.release.version).toBe('1.0.0');
+    expect(await result.file.text()).toBe('raw installer fixture');
+  });
+  it('拒绝损坏 gzip、额外条目、链接和路径', async () => {
+    const bytes = releaseTgz();
+    const truncated = bytes.subarray(0, -8);
+    await expect(
+      parseReleaseBundle(new File([truncated], 'bad.tgz')),
+    ).rejects.toThrow(Error);
+    for (const offset of [0, 156, 2048]) {
+      const tar = gunzipSync(bytes);
+      tar[offset] = 65;
+      await expect(
+        parseReleaseBundle(new File([gzipSync(tar)], 'bad.tgz')),
+      ).rejects.toThrow(Error);
+    }
+  });
   it('自动读取签名并保留安装包原始字节', async () => {
     const result = await parseReleaseBundle(bundle());
     expect(result.release.artifacts[0]?.signature).toBe('signed');
@@ -53,8 +66,11 @@ describe('单文件发行包', () => {
     );
   });
   it('上传前拒绝超过 512 MiB 的安装包', async () => {
-    const file = bundle();
-    Object.defineProperty(file, 'size', { value: 513 * 1024 * 1024 });
+    const size = 513 * 1024 * 1024;
+    const file = new File(
+      [releaseTgz({ size }, new Uint8Array([1]), size)],
+      'big.tgz',
+    );
     await expect(parseReleaseBundle(file)).rejects.toThrow(
       '更新安装包不能超过 512 MiB',
     );

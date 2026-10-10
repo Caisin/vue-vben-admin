@@ -1,12 +1,10 @@
-import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
-import { createReadStream, createWriteStream } from 'node:fs';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
-import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
+import { writeReleaseArchive } from './release-archive.mjs';
 import { verifyDesktopArtifact } from './verify-desktop-artifact.mjs';
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -78,7 +76,7 @@ if (command === 'version') {
   } else if (command === 'bundle') {
     const [output, notesFile, target, file] = args;
     if (!output || !notesFile || !target || !file)
-      fail('bundle <输出.kx-update> <说明.txt> <平台> <安装包路径>');
+      fail('bundle <输出.tgz> <说明.txt> <平台> <安装包路径>');
     if (resolve(output) === resolve(file)) fail('输出不能覆盖安装包');
     if (
       !/^(darwin-(aarch64|x86_64)|windows-(x86_64|aarch64|i686)|linux-(x86_64|aarch64|armv7))$/.test(
@@ -91,30 +89,23 @@ if (command === 'version') {
     const fileInfo = await stat(file);
     if (!fileInfo.isFile() || fileInfo.size === 0) fail('更新包不存在或为空');
     await verifyDesktopArtifact(file, signature, publicKey);
-    const metadata = Buffer.from(
-      JSON.stringify({
+    await writeReleaseArchive(
+      output,
+      {
         version: config.version,
         notes: await readFile(notesFile, 'utf8'),
         target,
         name: basename(file),
         signature,
         size: fileInfo.size,
-      }),
-    );
-    if (metadata.length > 65_536) fail('发行说明过长');
-    const header = Buffer.alloc(12);
-    header.write('KXUPDATE');
-    header.writeUInt32LE(metadata.length, 8);
-    await writeFile(output, Buffer.concat([header, metadata]));
-    await pipeline(
-      createReadStream(file),
-      createWriteStream(output, { flags: 'a' }),
+      },
+      file,
     );
     console.warn(`发行包已保存：${output}；在后台直接上传此文件。`);
   } else if (command === 'check') {
     console.warn(`版本 ${config.version} 与公钥配置一致`);
   } else
     fail(
-      '命令：version <版本> | check | build [tauri 参数] | bundle <输出.kx-update> <说明> <平台> <包路径>',
+      '命令：version <版本> | check | build [tauri 参数] | bundle <输出.tgz> <说明> <平台> <包路径>',
     );
 }

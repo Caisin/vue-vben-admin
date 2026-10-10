@@ -1,19 +1,21 @@
 # 客户端版本发布与更新
 
-KX ADM 使用 Tauri updater 更新整个客户端，包含网页资源和 Rust 原生能力。首个支持更新的版本为 0.1.1：用户需先手动安装此版本，以后可在客户端内升级。应用数据目录和设备标识保持原位置。
+Qinjiu 使用 Tauri updater 更新整个客户端，包含网页资源和 Rust 原生能力。首个支持更新的版本为 0.1.1：用户需先手动安装此版本，以后可在客户端内升级。应用数据目录和设备标识保持原位置。
+
+应用显示名、主程序名与导出安装包前缀统一为 `Qinjiu`；应用标识保留 `com.qinjiu.kx-adm`，继续使用现有数据目录和升级身份。内部 Cargo crate 和前端包仍沿用现有名称。
 
 ## 后台管理
 
 后端安装包含 `adm_client:m000001_client_releases` 和 `adm:m000090_client_releases`。正常执行 ADM 安装迁移后，在管理端刷新权限，进入“系统管理 → 客户端版本”。列表权限只允许查询；维护草稿、发布、撤回由独立按钮权限控制。
 
 1. 创建版本草稿，填写正式版本号和更新说明。
-2. 选择系统 storage，上传发行脚本生成的单个 `.kx-update` 文件。页面自动读取版本、说明、平台和签名，将原始安装包上传 storage，无需单独上传校验文件。多个平台分别上传同版本发行包。
+2. 选择系统 storage，上传发行脚本生成的单个 `.tgz` 文件。页面自动读取版本、说明、平台和签名，将原始安装包上传 storage，无需单独上传校验文件。多个平台分别上传同版本发行包。
 3. 验证安装包后点击“发布”。
 4. 有问题的版本点击“撤回”。已安装的客户端不会降级，修复时发布更高版本。
 
 已发布、已撤回版本的内容不可修改。草稿支持编辑和删除，并校验修订号防止覆盖其他人的修改。新上传的安装包由系统 storage 托管，发行记录持久保存文件 ID；客户端通过登录保护的发行下载接口读取，不保存临时签名地址。此接口仅允许读取已发布版本引用的文件，支持本地和对象存储。历史外部 HTTPS 地址继续支持。
 
-上传入口只接收 `.kx-update`，不提供 JSON 发行清单导入或生成命令。桌面端点击“选择发行包并直传”，使用原生文件选择器和流式上传，直接写入 S3 兼容对象存储；没有 512 MiB 应用限额，实际大小遵循对象存储单次 PUT 的限制。后端只签发地址、校验对象并登记 file_id，业务令牌不发给存储。安装更新与上传互斥，退出或切换账号取消后续传输/登记；客户端重启或失败后重新选择文件重试。需部署原生客户端及后端并执行 `adm:m000097_client_release_direct_upload`。网页端仍支持 multipart 上传，安装包最大 512 MiB、超时 30 分钟；storage 的 multipart 文件上传路由预留 1 MiB 协议开销，超限返回 413 与明确提示。反向代理的请求体限额与超时需要覆盖这次上传，修改后端需重新部署 ADM。
+上传入口只接收 `.tgz`，不提供 JSON 发行清单导入或生成命令。桌面端点击“选择发行包并直传”，使用原生文件选择器，将 TGZ 流式解压到自动清理的临时文件后直传 S3 兼容对象存储；没有 512 MiB 应用限额，实际大小遵循对象存储单次 PUT 的限制。后端只签发地址、校验对象并登记 file_id，业务令牌不发给存储。安装更新与上传互斥，退出或切换账号取消后续传输/登记；客户端重启或失败后重新选择文件重试。需部署原生客户端及后端并执行 `adm:m000097_client_release_direct_upload`。网页端仍支持 multipart 上传，安装包最大 512 MiB、超时 30 分钟；storage 的 multipart 文件上传路由预留 1 MiB 协议开销，超限返回 413 与明确提示。反向代理的请求体限额与超时需要覆盖这次上传，修改后端需重新部署 ADM。
 
 ## 客户端行为
 
@@ -58,14 +60,14 @@ rtk proxy ./build-desktop-release.sh --version 0.1.2 --notes "修复更新与下
 
 如果已配置 `TAURI_SIGNING_PRIVATE_KEY_PATH` 或 `TAURI_SIGNING_PRIVATE_KEY`，可以省略 `--key`。`--password` 优先于 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`；省略参数则沿用环境变量，显式 `--password ''` 传入空密码。脚本通过环境将密码传给构建子进程，不写入发行包。省略 `--version` 使用项目当前版本，省略 `--notes` 使用默认版本说明。
 
-脚本自动同步版本、签名构建本机平台、定位 Cargo 实际产物目录，并验证签名后生成根目录 `dist/kx-adm/kx-adm-<版本>-<平台>.kx-update`；可通过 `--out-dir` 改输出目录。临时文件在同一输出目录清理，打包成功后才替换同名产物。构建失败或只有旧产物时直接报错，不生成可上传文件；版本同步后构建失败会保留新版本，修复后重新执行即可。
+脚本自动同步版本、签名构建本机平台、定位 Cargo 实际产物目录，并验证签名后生成根目录 `dist/kx-adm/Qinjiu-<版本>-<平台>.tgz`；可通过 `--out-dir` 改输出目录。临时文件在同一输出目录清理，打包成功后才替换同名产物。构建失败或只有旧产物时直接报错，不生成可上传文件；版本同步后构建失败会保留新版本，修复后重新执行即可。
 
 macOS 同时构建 app 更新包和 DMG、Windows 使用 NSIS、Linux 使用 AppImage。各平台在本机构建机执行；Windows 在 CMD 或 PowerShell 中使用根目录的 `build-desktop-release.cmd`，无需 Git Bash。需要预先安装 web 项目依赖、pnpm、Rust 与对应 Tauri 系统构建依赖。脚本不上传或发布版本。
 
-输出目录还会保留可直接分发的安装文件，与 `.kx-update` 使用相同的版本和平台前缀：
+输出目录还会保留可直接分发的安装文件，与 `.tgz` 使用相同的版本和平台前缀：
 
-- macOS：`kx-adm-<版本>-darwin-<架构>.dmg`。
-- Windows：`kx-adm-<版本>-windows-<架构>.exe`。
+- macOS：`Qinjiu-<版本>-darwin-<架构>.dmg`。
+- Windows：`Qinjiu-<版本>-windows-<架构>.exe`。
 
 这些文件从本次 Cargo 构建产物复制，原始文件继续留在 Cargo 输出目录；`--out-dir` 同时控制安装包和更新包的输出位置。安装包缺失或只有旧产物时会报错，避免混用版本。
 
@@ -75,17 +77,19 @@ Windows 示例（项目根目录执行，CMD 与 PowerShell 均适用）：
 .\build-desktop-release.cmd --version 0.1.2 --notes "修复更新与下载管理" --key "C:\keys\updater.key" --password "私钥密码"
 ```
 
-Windows 构建机需要 Node.js、pnpm、Rust MSVC 工具链、Visual Studio Build Tools 的“使用 C++ 的桌面开发”与 Windows SDK；安装 web 依赖后再运行脚本。脚本根据 Rust host 自动选择 x64、ARM64 或 x86，构建 NSIS `.exe` 并生成 `dist\kx-adm\kx-adm-<版本>-windows-<架构>.kx-update`。版本同步兼容 Git 在 Windows 检出时使用的 CRLF 换行。
+Windows 构建机需要 Node.js、pnpm、Rust MSVC 工具链、Visual Studio Build Tools 的“使用 C++ 的桌面开发”与 Windows SDK；安装 web 依赖后再运行脚本。脚本根据 Rust host 自动选择 x64、ARM64 或 x86，构建 NSIS `.exe` 并生成 `dist\kx-adm\Qinjiu-<版本>-windows-<架构>.tgz`。版本同步兼容 Git 在 Windows 检出时使用的 CRLF 换行。
 
 ## 单文件发行包
 
 构建仍生成签名，但上传操作不再单独选择 `.sig`。在构建机执行：
 
 ```sh
-rtk proxy pnpm --filter @kx/adm desktop:release bundle /tmp/release.kx-update /tmp/notes.txt darwin-aarch64 '/path/to/KX ADM.app.tar.gz'
+rtk proxy pnpm --filter @kx/adm desktop:release bundle /tmp/release.tgz /tmp/notes.txt darwin-aarch64 '/path/to/Qinjiu.app.tar.gz'
 ```
 
-脚本验证安装包和相邻签名后，把有界元信息和原始安装包合为一个 `.kx-update` 文件。后台选择此文件即可上传。签名私钥仍只在构建机；更新客户端保留固定公钥验签。后台升级需要 `adm:m000096_release_download_ux` 以补齐发行存储选项权限。
+脚本验证安装包和相邻签名后，生成真正的 tar+gzip `.tgz` 归档，内含 `release.json` 和 `installer` 两个普通文件。`installer` 保留原始签名安装包字节，上传后仍由 Tauri 固定公钥验签。后台选择此文件即可上传。签名私钥仍只在构建机；更新客户端保留固定公钥验签。后台升级需要 `adm:m000096_release_download_ux` 以补齐发行存储选项权限。
+
+桌面端需要至少等于安装包未压缩大小的临时磁盘空间，上传成功、失败或取消后随文件句柄清理；网页端按解压后大小检查 512 MiB 上限。上传器拒绝损坏 gzip、非法路径/链接、额外归档条目和长度不符。旧 `.kx-update` 文件不能只改扩展名，应使用更新后的脚本重新生成 `.tgz`，并更新上传用的桌面客户端或网页。
 
 ## 升级验收
 

@@ -31,7 +31,7 @@ Windows：build-desktop-release.cmd [选项]
 
 密钥也可使用 TAURI_SIGNING_PRIVATE_KEY_PATH 或 TAURI_SIGNING_PRIVATE_KEY。
 省略 --password 时使用 TAURI_SIGNING_PRIVATE_KEY_PASSWORD。
-脚本仅构建本机平台，自动验证签名并生成 .kx-update，不上传或发布。
+脚本仅构建本机平台，自动验证签名并生成 .tgz，不上传或发布。
 输出目录同时保留 macOS 的 .dmg 或 Windows 的 .exe 安装包。
 需要已安装 pnpm、Rust、Tauri 系统依赖及 web 的项目依赖。`;
 
@@ -151,7 +151,7 @@ async function main() {
   const outDir = resolve(
     options['--out-dir'] ?? join(app, '../../..', 'dist/kx-adm'),
   );
-  const output = join(outDir, `kx-adm-${version}-${target}.kx-update`);
+  const output = join(outDir, `Qinjiu-${version}-${target}.tgz`);
   await mkdir(outDir, { recursive: true });
   // 预检通过后才修改项目版本，构建失败保留新版本供修复后重试。
   if (options['--version'])
@@ -170,15 +170,15 @@ async function main() {
   let installerOutput;
   if (platform === 'darwin') {
     installer = await currentArtifact(join(bundleRoot, 'dmg'), '.dmg', started);
-    installerOutput = join(outDir, `kx-adm-${version}-${target}.dmg`);
+    installerOutput = join(outDir, `Qinjiu-${version}-${target}.dmg`);
   } else if (platform === 'windows') {
     installer = artifact;
-    installerOutput = join(outDir, `kx-adm-${version}-${target}.exe`);
+    installerOutput = join(outDir, `Qinjiu-${version}-${target}.exe`);
   }
   const temporary = await mkdtemp(join(outDir, '.kx-desktop-release-'));
   try {
     const notesFile = join(temporary, 'notes.txt');
-    const staged = join(temporary, 'release.kx-update');
+    const staged = join(temporary, 'release.tgz');
     await writeFile(notesFile, notes);
     run(
       process.execPath,

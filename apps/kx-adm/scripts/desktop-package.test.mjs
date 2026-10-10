@@ -39,7 +39,7 @@ async function fixture(mode = 'success', host = 'aarch64-apple-darwin') {
     'release/bundle',
     windows ? 'nsis' : 'macos',
   );
-  const artifactName = windows ? 'KX ADM_0.1.1_setup.exe' : 'KX ADM.app.tar.gz';
+  const artifactName = windows ? 'Qinjiu_0.1.1_setup.exe' : 'Qinjiu.app.tar.gz';
   const dmgDir = join(target, host, 'release/bundle/dmg');
   await Promise.all([
     mkdir(scripts, { recursive: true }),
@@ -81,7 +81,7 @@ async function fixture(mode = 'success', host = 'aarch64-apple-darwin') {
       const file = ${JSON.stringify(join(bundleDir, artifactName))};
       await writeFile(file, 'installer');
       await writeFile(file + '.sig', 'signature');
-      const dmg = ${JSON.stringify(join(dmgDir, 'KX ADM_0.1.1.dmg'))};
+      const dmg = ${JSON.stringify(join(dmgDir, 'Qinjiu_0.1.1.dmg'))};
       if (!${windows} && ${JSON.stringify(mode)} !== 'missing-dmg') {
         await writeFile(dmg, 'disk-image');
         if (${JSON.stringify(mode)} === 'stale-dmg') await utimes(dmg, 1, 1);
@@ -107,7 +107,11 @@ it('兼容 Windows CRLF 文件的版本同步同时更新 Cargo.lock', async () 
   const scripts = join(root, 'scripts');
   const tauri = join(root, 'src-tauri');
   await Promise.all([mkdir(scripts), mkdir(tauri)]);
-  for (const name of ['desktop-release.mjs', 'verify-desktop-artifact.mjs'])
+  for (const name of [
+    'desktop-release.mjs',
+    'verify-desktop-artifact.mjs',
+    'release-archive.mjs',
+  ])
     await copyFile(new URL(name, import.meta.url), join(scripts, name));
   await writeFile(
     join(root, 'package.json'),
@@ -160,15 +164,15 @@ it.skipIf(process.platform === 'win32').each([
     );
     const artifact = JSON.parse(
       await readFile(
-        join(f.output, `kx-adm-0.1.1-windows-${updaterArch}.kx-update`),
+        join(f.output, `Qinjiu-0.1.1-windows-${updaterArch}.tgz`),
         'utf8',
       ),
     );
     expect(artifact.target).toBe(`windows-${updaterArch}`);
-    expect(artifact.file).toBe(join(f.bundleDir, 'KX ADM_0.1.1_setup.exe'));
+    expect(artifact.file).toBe(join(f.bundleDir, 'Qinjiu_0.1.1_setup.exe'));
     expect(
       await readFile(
-        join(f.output, `kx-adm-0.1.1-windows-${updaterArch}.exe`),
+        join(f.output, `Qinjiu-0.1.1-windows-${updaterArch}.exe`),
         'utf8',
       ),
     ).toBe('installer');
@@ -211,8 +215,8 @@ it.skipIf(process.platform === 'win32').each([
       },
     });
     expect(await readdir(f.output)).toEqual([
-      'kx-adm-0.1.1-darwin-aarch64.dmg',
-      'kx-adm-0.1.1-darwin-aarch64.kx-update',
+      'Qinjiu-0.1.1-darwin-aarch64.dmg',
+      'Qinjiu-0.1.1-darwin-aarch64.tgz',
     ]);
     const calls = await readFile(join(f.root, 'calls.jsonl'), 'utf8');
     expect(calls).not.toContain('--password');
@@ -242,18 +246,18 @@ it.skipIf(process.platform === 'win32')(
       ],
       { cwd: tmpdir(), env: f.env },
     );
-    const output = join(f.output, 'kx-adm-0.1.2-darwin-aarch64.kx-update');
+    const output = join(f.output, 'Qinjiu-0.1.2-darwin-aarch64.tgz');
     const value = JSON.parse(await readFile(output, 'utf8'));
     expect(value.notes).toBe('修复下载\n无需校验文件');
-    expect(value.file).toBe(join(f.bundleDir, 'KX ADM.app.tar.gz'));
+    expect(value.file).toBe(join(f.bundleDir, 'Qinjiu.app.tar.gz'));
     expect(result.stderr).toContain(output);
     expect(result.stderr).not.toContain('fixture-key-not-a-real-secret');
     expect(await readdir(f.output)).toEqual([
-      'kx-adm-0.1.2-darwin-aarch64.dmg',
-      'kx-adm-0.1.2-darwin-aarch64.kx-update',
+      'Qinjiu-0.1.2-darwin-aarch64.dmg',
+      'Qinjiu-0.1.2-darwin-aarch64.tgz',
     ]);
     expect(
-      await readFile(join(f.output, 'kx-adm-0.1.2-darwin-aarch64.dmg'), 'utf8'),
+      await readFile(join(f.output, 'Qinjiu-0.1.2-darwin-aarch64.dmg'), 'utf8'),
     ).toBe('disk-image');
     expect(await readFile(value.file, 'utf8')).toBe('installer');
     const callText = await readFile(join(f.root, 'calls.jsonl'), 'utf8');

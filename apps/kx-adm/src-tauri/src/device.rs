@@ -77,7 +77,7 @@ impl Device {
             device_id: self.id.clone(),
             name: std::env::var("COMPUTERNAME")
                 .or_else(|_| std::env::var("HOSTNAME"))
-                .unwrap_or_else(|_| "KX ADM".into()),
+                .unwrap_or_else(|_| "Qinjiu".into()),
             os: std::env::consts::OS.into(),
             app_version: env!("CARGO_PKG_VERSION").into(),
         }

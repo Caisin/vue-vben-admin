@@ -46,6 +46,7 @@ const saving = ref(false);
 const uploading = ref(false);
 const uploadProgress = ref<ReleaseUploadProgress>();
 const uploadStages: Record<string, string> = {
+  extracting: '解压发行包',
   hashing: '计算校验值',
   preparing: '准备直传',
   uploading: '上传对象存储',
@@ -413,7 +414,7 @@ onMounted(load);
             v-if="!desktop"
             aria-label="上传发行包"
             type="file"
-            accept=".kx-update"
+            accept=".tgz"
             :disabled="saving || uploading"
             @change="uploadBundle"
           />
@@ -423,7 +424,7 @@ onMounted(load);
                 ? '客户端流式直传对象存储，不经过后台文件上传接口。'
                 : uploading
                   ? '正在上传，请勿关闭…'
-                  : '选择单个 .kx-update 发行包（安装包不超过 512 MiB），无需单独上传校验文件。'
+                  : '选择单个 .tgz 发行包（安装包不超过 512 MiB），无需单独上传校验文件。'
             }}
           </p>
         </FormItem>

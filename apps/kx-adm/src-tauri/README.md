@@ -1,4 +1,4 @@
-# KX ADM 桌面端
+# Qinjiu 桌面端
 
 Tauri 2 桌面壳复用 kx-adm 页面，支持整剧目录后台扫描、上传、分集登记和令牌自动续期。此目录是独立 Rust workspace，通过 hekx registry 依赖 kx-ed，不使用父仓本地路径；Web 仍可独立构建。
 

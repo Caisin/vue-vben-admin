@@ -1,5 +1,6 @@
 use crate::session::{Desktop, Session, SessionEvents};
 
+mod bundle;
 #[cfg(test)]
 mod tests;
 use anyhow::{Context, Result, ensure};
@@ -27,7 +28,7 @@ struct Metadata {
 struct Bundle {
     file: tokio::fs::File,
     metadata: Metadata,
-    offset: u64,
+
     modified: std::time::SystemTime,
 }
 #[derive(Serialize)]
@@ -49,73 +50,6 @@ struct Progress {
     stage: String,
     bytes: u64,
     total: u64,
-}
-
-impl Bundle {
-    async fn open(path: &Path) -> Result<Self> {
-        let mut file = tokio::fs::File::open(path).await?;
-        let info = file.metadata().await?;
-        ensure!(info.is_file(), "请选择发行包文件");
-        let mut header = [0; 12];
-        file.read_exact(&mut header)
-            .await
-            .context("发行包头不完整")?;
-        ensure!(&header[..8] == b"KXUPDATE", "请选择 .kx-update 发行包");
-        let len = u32::from_le_bytes(header[8..].try_into().unwrap()) as usize;
-        ensure!((1..=65536).contains(&len), "发行包元信息大小无效");
-        let mut metadata = vec![0; len];
-        file.read_exact(&mut metadata).await?;
-        let metadata: Metadata = serde_json::from_slice(&metadata).context("发行包元信息无效")?;
-        let offset = 12 + len as u64;
-        ensure!(
-            metadata.size > 0
-                && metadata.size <= i64::MAX as u64
-                && metadata.size.checked_add(offset) == Some(info.len()),
-            "发行包长度不完整"
-        );
-        ensure!(
-            regex::Regex::new(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")?
-                .is_match(&metadata.version),
-            "发行包版本号无效"
-        );
-        ensure!(
-            metadata.notes.chars().count() <= 10000
-                && !metadata.signature.trim().is_empty()
-                && metadata.signature.len() <= 4096,
-            "发行说明或签名无效"
-        );
-        ensure!(
-            !metadata.name.is_empty()
-                && !metadata.name.contains(['/', '\\'])
-                && metadata.name.len() <= 255,
-            "安装包文件名无效"
-        );
-        let valid = match metadata.target.as_str() {
-            "darwin-aarch64" | "darwin-x86_64" => metadata.name.ends_with(".app.tar.gz"),
-            "windows-x86_64" | "windows-aarch64" | "windows-i686" => {
-                metadata.name.ends_with(".exe") || metadata.name.ends_with(".msi")
-            }
-            "linux-x86_64" | "linux-aarch64" | "linux-armv7" => {
-                metadata.name.ends_with(".AppImage")
-            }
-            _ => false,
-        };
-        ensure!(valid, "安装包格式与平台不匹配");
-        Ok(Self {
-            file,
-            metadata,
-            offset,
-            modified: info.modified()?,
-        })
-    }
-    async fn unchanged(&self) -> Result<()> {
-        let info = self.file.metadata().await?;
-        ensure!(
-            info.len() == self.offset + self.metadata.size && info.modified()? == self.modified,
-            "上传期间发行包发生变化，请重新选择"
-        );
-        Ok(())
-    }
 }
 
 async fn same_identity(desktop: &Desktop, identity: &Session) -> Result<()> {
@@ -163,7 +97,8 @@ where
     bundle.unchanged().await?;
     let md5 = format!("{:x}", hash.finalize());
     let path = Path::new(&bundle.metadata.name);
-    let mut body = json!({ "file_name": path.file_stem().context("安装包名无效")?.to_string_lossy(), "file_ext": path.extension().context("安装包扩展名无效")?.to_string_lossy(), "md5_hash": md5, "size": total, "group_id": null });
+    // Storage 接受完整文件名并自行去除最终扩展名；提前 file_stem 会把 .tar 当成扩展名。
+    let mut body = json!({ "file_name": bundle.metadata.name, "file_ext": path.extension().context("安装包扩展名无效")?.to_string_lossy(), "md5_hash": md5, "size": total, "group_id": null });
     let code: String = url::form_urlencoded::byte_serialize(code.as_bytes())
         .collect::<String>()
         .replace('+', "%20");
@@ -212,10 +147,7 @@ where
             );
             request = request.header(name, value.as_str().context("直传请求头无效")?);
         }
-        bundle
-            .file
-            .seek(std::io::SeekFrom::Start(bundle.offset))
-            .await?;
+        bundle.file.seek(std::io::SeekFrom::Start(0)).await?;
         let source = bundle.file.try_clone().await?;
         let owner = desktop.clone();
         let identity_copy = identity.clone();
@@ -312,12 +244,22 @@ pub async fn desktop_release_upload(
             .try_lock()
             .context("发行包正在上传或客户端正在更新")?;
         let identity = desktop.identity().await?;
-        let dialog = app.dialog().file().add_filter("发行包", &["kx-update"]);
+        let dialog = app.dialog().file().add_filter("发行包", &["tgz"]);
         let chosen =
             tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file()).await?;
         let Some(chosen) = chosen else {
             return Ok(None);
         };
+        let _ = app.emit_to(
+            "main",
+            "desktop-release-upload-progress",
+            Progress {
+                id: id.clone(),
+                stage: "extracting".into(),
+                bytes: 0,
+                total: 0,
+            },
+        );
         let bundle = Bundle::open(
             &chosen
                 .into_path()

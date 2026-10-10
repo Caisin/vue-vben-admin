@@ -14,22 +14,67 @@ impl SessionEvents for Events {
 }
 
 async fn package(path: &Path, size: u64, payload: &[u8]) -> Result<()> {
-    let metadata = serde_json::to_vec(
-        &json!({"version":"1.0.0", "notes":"发行说明", "target":"windows-x86_64", "name":"app.exe", "signature":"signed", "size":size}),
-    )?;
-    let mut file = tokio::fs::File::create(path).await?;
-    file.write_all(b"KXUPDATE").await?;
-    file.write_all(&(metadata.len() as u32).to_le_bytes())
-        .await?;
-    file.write_all(&metadata).await?;
-    file.write_all(payload).await?;
-    file.set_len(12 + metadata.len() as u64 + size).await?;
+    package_named(path, size, payload, "app.exe", "windows-x86_64").await
+}
+
+async fn package_named(
+    path: &Path,
+    size: u64,
+    payload: &[u8],
+    name: &'static str,
+    target: &'static str,
+) -> Result<()> {
+    let path = path.to_owned();
+    let payload = payload.to_vec();
+    tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+        let metadata = serde_json::to_vec(&json!({"version":"1.0.0", "notes":"发行说明", "target":target, "name":name, "signature":"signed", "size":size}))?;
+        let gzip = flate2::write::GzEncoder::new(std::fs::File::create(path)?, flate2::Compression::fast());
+        let mut archive = tar::Builder::new(gzip);
+        let mut header = tar::Header::new_ustar();
+        header.set_size(metadata.len() as u64); header.set_mode(0o600); header.set_cksum();
+        archive.append_data(&mut header, "release.json", metadata.as_slice())?;
+        header.set_size(size); header.set_cksum();
+        if payload.is_empty() {
+            archive.append_data(&mut header, "installer", std::io::Read::take(std::io::repeat(0), size))?;
+        } else {
+            archive.append_data(&mut header, "installer", payload.as_slice())?;
+        }
+        archive.into_inner()?.finish()?;
+        Ok(())
+    }).await??;
     Ok(())
 }
 
 #[tokio::test]
-async fn parses_large_release_without_reading_entire_payload() -> Result<()> {
-    let path = std::env::temp_dir().join(format!("kx-release-{}.kx-update", uuid::Uuid::new_v4()));
+async fn parses_script_generated_tgz_and_rejects_corruption() -> Result<()> {
+    use std::io::{Read, Write};
+    let path = std::env::temp_dir().join(format!("kx-tgz-{}.tgz", uuid::Uuid::new_v4()));
+    let bytes = include_bytes!("../../../test-fixtures/release.tgz");
+    std::fs::write(&path, bytes)?;
+    let mut bundle = Bundle::open(&path).await?;
+    let mut payload = Vec::new();
+    bundle.file.read_to_end(&mut payload).await?;
+    assert_eq!(payload, b"raw installer fixture");
+    drop(bundle);
+    std::fs::write(&path, &bytes[..bytes.len() - 8])?;
+    assert!(Bundle::open(&path).await.is_err());
+    let mut tar = Vec::new();
+    flate2::read::GzDecoder::new(bytes.as_slice()).read_to_end(&mut tar)?;
+    for offset in [0, 156, 2048] {
+        let mut altered = tar.clone();
+        altered[offset] = b'A';
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(&altered)?;
+        std::fs::write(&path, encoder.finish()?)?;
+        assert!(Bundle::open(&path).await.is_err());
+    }
+    std::fs::remove_file(path)?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn extracts_large_release_with_bounded_memory() -> Result<()> {
+    let path = std::env::temp_dir().join(format!("kx-release-{}.tgz", uuid::Uuid::new_v4()));
     package(&path, 513 * 1024 * 1024, &[]).await?;
     let bundle = Bundle::open(&path).await?;
     assert_eq!(bundle.metadata.size, 513 * 1024 * 1024);
@@ -40,20 +85,32 @@ async fn parses_large_release_without_reading_entire_payload() -> Result<()> {
 
 #[tokio::test]
 async fn direct_upload_streams_only_installer_and_registers_after_success() -> Result<()> {
-    transfer(false).await
+    transfer(false, "app.exe", "windows-x86_64").await
 }
 
 #[tokio::test]
 async fn logout_during_upload_prevents_registration() -> Result<()> {
-    transfer(true).await
+    transfer(true, "app.exe", "windows-x86_64").await
 }
 
-async fn transfer(logout: bool) -> Result<()> {
+#[tokio::test]
+async fn compound_and_versioned_filenames_are_preserved_in_prepare_and_complete() -> Result<()> {
+    for (name, target) in [
+        ("Qinjiu.app.tar.gz", "darwin-aarch64"),
+        ("Qinjiu_1.2.3_x64-setup.exe", "windows-x86_64"),
+        ("Qinjiu_1.2.3.AppImage", "linux-x86_64"),
+    ] {
+        transfer(false, name, target).await?;
+    }
+    Ok(())
+}
+
+async fn transfer(logout: bool, name: &'static str, target: &'static str) -> Result<()> {
     let dir = std::env::temp_dir().join(format!("kx-release-upload-{}", uuid::Uuid::new_v4()));
     let desktop = Desktop::new(dir.clone())?;
-    let path = dir.join("release.kx-update");
+    let path = dir.join("release.tgz");
     let payload = b"raw installer payload: not the release envelope";
-    package(&path, payload.len() as u64, payload).await?;
+    package_named(&path, payload.len() as u64, payload, name, target).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let identity = Session {
@@ -126,6 +183,11 @@ async fn transfer(logout: bool) -> Result<()> {
                 );
                 let input: serde_json::Value =
                     serde_json::from_slice(&kx_ed::KxEd::de(&bytes[end..end + len]).await?)?;
+                assert_eq!(input["file_name"], name);
+                assert_eq!(
+                    input["file_ext"],
+                    Path::new(name).extension().unwrap().to_str().unwrap()
+                );
                 assert_eq!(input["size"], payload.len());
                 assert_eq!(input["md5_hash"], format!("{:x}", md5::compute(payload)));
                 let result = if route.ends_with("/prepare") {

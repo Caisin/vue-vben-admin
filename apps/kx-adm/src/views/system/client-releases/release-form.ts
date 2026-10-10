@@ -1,5 +1,7 @@
 import type { ReleaseWrite } from '#/api/system/client-releases';
 
+import { readReleaseTgz } from './release-tgz';
+
 export const platforms = [
   { label: 'macOS · Apple Silicon', value: 'darwin-aarch64' },
   { label: 'macOS · Intel', value: 'darwin-x86_64' },
@@ -42,21 +44,13 @@ export function validateRelease(value: ReleaseWrite) {
   }
 }
 
-/** 只读取有界元信息，安装包用 Blob 切片上传，不将整个大文件复制到内存。 */
+/** 流式解压 TGZ，按安装包未压缩大小限制网页上传。 */
 export async function parseReleaseBundle(file: File) {
-  const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-  if (
-    header.length !== 12 ||
-    new TextDecoder().decode(header.slice(0, 8)) !== 'KXUPDATE'
-  )
-    throw new Error('请选择发行脚本生成的 .kx-update 发行包');
-  const length = new DataView(header.buffer).getUint32(8, true);
-  if (!length || length > 65_536 || file.size <= length + 12)
-    throw new Error('发行包长度无效');
-  const data = JSON.parse(await file.slice(12, 12 + length).text());
-  if (!data || typeof data !== 'object') throw new Error('发行包元信息无效');
-  if (file.size - length - 12 > MAX_RELEASE_FILE_BYTES)
-    throw new Error('更新安装包不能超过 512 MiB');
+  const { data: metadata, parts } = await readReleaseTgz(
+    file,
+    MAX_RELEASE_FILE_BYTES,
+  );
+  const data = metadata as Record<string, unknown>;
   if (
     typeof data.version !== 'string' ||
     typeof data.notes !== 'string' ||
@@ -64,8 +58,7 @@ export async function parseReleaseBundle(file: File) {
     typeof data.signature !== 'string' ||
     typeof data.name !== 'string' ||
     /[\\/]/.test(data.name) ||
-    !data.name ||
-    data.size !== file.size - length - 12
+    !data.name
   )
     throw new Error('发行包内容不完整');
   const release: ReleaseWrite = {
@@ -87,7 +80,7 @@ export async function parseReleaseBundle(file: File) {
     throw new Error('安装包格式与平台不匹配');
   return {
     release,
-    file: new File([file.slice(12 + length)], data.name, {
+    file: new File(parts as BlobPart[], data.name, {
       type: 'application/octet-stream',
     }),
   };
