@@ -172,6 +172,7 @@ describe('版本管理闭环', () => {
         signature: 'signed',
       },
     ],
+    target: 'darwin-aarch64',
     status: 'draft',
     revision: 1,
     published_at: null,
@@ -212,6 +213,48 @@ describe('版本管理闭环', () => {
         artifacts: [expect.objectContaining({ file_id: '42' })],
       }),
     );
+  });
+  it('macOS 已发布后新建同版本 Windows，保存只创建 Windows 草稿', async () => {
+    state.native = true;
+    const mac = { ...row, status: 'published', revision: 2 };
+    state.page.mockResolvedValue({ items: [mac], total: 1 });
+    state.create.mockResolvedValue({});
+    state.nativeUpload.mockResolvedValue({
+      version: row.version,
+      notes: 'Windows notes',
+      artifacts: [
+        {
+          target: 'windows-x86_64',
+          signature: 'signed',
+          url: '',
+          file_id: '42',
+        },
+      ],
+    });
+    await mount();
+    click('新增其它平台');
+    await flush();
+    click('选择发行包并直传');
+    await flush();
+    click('保存');
+    await flush();
+    expect(state.edit).not.toHaveBeenCalled();
+    expect(state.action).not.toHaveBeenCalled();
+    expect(state.create).toHaveBeenCalledWith({
+      version: row.version,
+      notes: row.notes,
+      artifacts: [
+        {
+          target: 'windows-x86_64',
+          signature: 'signed',
+          url: '',
+          file_id: '42',
+        },
+      ],
+    });
+    expect(mac.status).toBe('published');
+    expect(mac.revision).toBe(2);
+    expect(document.querySelector('aside')).toBeNull();
   });
   it('只选单个发行包即可上传系统存储并保存草稿', async () => {
     state.page.mockResolvedValue({ items: [], total: 0 });
@@ -308,6 +351,7 @@ describe('版本管理闭环', () => {
     const text = document.body.textContent;
     expect(text).not.toContain('新建版本');
     expect(text).not.toContain('删除草稿');
+    expect(text).not.toContain('新增其它平台');
     click('0.1.1');
     await flush();
     click('保存');

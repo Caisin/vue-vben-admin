@@ -23,6 +23,13 @@ describe('发行草稿校验', () => {
       { ...valid, artifacts: [...valid.artifacts, ...valid.artifacts] },
       {
         ...valid,
+        artifacts: [
+          ...valid.artifacts,
+          { ...validArtifact, target: 'windows-x86_64' },
+        ],
+      },
+      {
+        ...valid,
         artifacts: [{ ...validArtifact, url: 'http://example.com' }],
       },
       { ...valid, artifacts: [{ ...validArtifact, signature: '' }] },

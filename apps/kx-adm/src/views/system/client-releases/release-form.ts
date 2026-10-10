@@ -15,8 +15,8 @@ export const platforms = [
 function validateMetadata(value: ReleaseWrite) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value.version))
     throw new Error('请输入正式版本号，例如 1.2.3');
-  if (value.artifacts.length === 0 || value.artifacts.length > 8)
-    throw new Error('请添加 1 至 8 个平台更新包');
+  if (value.artifacts.length !== 1)
+    throw new Error('每条发行记录只能包含一个平台更新包');
   const targets = new Set<string>();
   for (const a of value.artifacts) {
     if (!platforms.some((p) => p.value === a.target) || targets.has(a.target))

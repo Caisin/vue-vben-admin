@@ -14,6 +14,7 @@ export interface ReleaseWrite {
   artifacts: ReleaseArtifact[];
 }
 export interface ClientRelease extends ReleaseWrite {
+  target: string;
   status: 'draft' | 'published' | 'withdrawn';
   revision: number;
   created_at: number;
@@ -30,17 +31,26 @@ export const ClientReleaseApi = {
     }),
   create: (data: ReleaseWrite) => requestClient.post<ClientRelease>(base, data),
   edit: (row: ClientRelease, data: ReleaseWrite) =>
-    requestClient.put(`${base}/${row.version}`, {
-      notes: data.notes,
-      artifacts: data.artifacts,
-      expected_revision: row.revision,
-    }),
+    requestClient.put(
+      `${base}/${encodeURIComponent(row.version)}/${encodeURIComponent(row.target)}`,
+      {
+        notes: data.notes,
+        artifacts: data.artifacts,
+        expected_revision: row.revision,
+      },
+    ),
   action: (row: ClientRelease, action: 'publish' | 'withdraw') =>
-    requestClient.post(`${base}/${row.version}/${action}`, {
-      expected_revision: row.revision,
-    }),
+    requestClient.post(
+      `${base}/${encodeURIComponent(row.version)}/${encodeURIComponent(row.target)}/${action}`,
+      {
+        expected_revision: row.revision,
+      },
+    ),
   remove: (row: ClientRelease) =>
-    requestClient.delete(`${base}/${row.version}`, {
-      data: { expected_revision: row.revision },
-    }),
+    requestClient.delete(
+      `${base}/${encodeURIComponent(row.version)}/${encodeURIComponent(row.target)}`,
+      {
+        data: { expected_revision: row.revision },
+      },
+    ),
 };
