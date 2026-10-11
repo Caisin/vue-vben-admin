@@ -28,6 +28,7 @@ import { reviewApi as api, noteLabels, reviewLabels } from '#/api/res/review';
 import { requestErrorMessage } from '#/request-errors';
 
 import NativeUpload from '../../../review/native-upload.vue';
+import ReviewChat from '../../../review/review-chat.vue';
 import EpisodeHistory from './episode-history.vue';
 import ReviewBatchUpload from './review-batch-upload.vue';
 import ReviewDingtalk from './review-dingtalk.vue';
@@ -59,6 +60,7 @@ defineExpose({ pause: () => player.value?.pause() });
 const search = ref('');
 const filter = ref('all');
 const noteFilter = ref('all');
+const reviewTab = ref<'chat' | 'episodes'>('episodes');
 const planned = ref(1);
 const url = ref('');
 const mediaError = ref('');
@@ -581,7 +583,42 @@ async function rebaseUpload() {
           class="mb-3"
           :message="`已进入审片修改周期：预览 → 提建议 → 剪辑替换 → 核对并完成建议，可反复调整。当前还有 ${pending.length} 条建议待完成，全部完成后由负责人确认定版。`"
         />
-        <div class="review-columns">
+        <nav class="review-tabs">
+          <Button
+            :type="reviewTab === 'episodes' ? 'primary' : 'default'"
+            @click="reviewTab = 'episodes'"
+          >
+            逐集审核
+</Button><Button
+            :type="reviewTab === 'chat' ? 'primary' : 'default'"
+            @click="reviewTab = 'chat'"
+          >
+            审片讨论
+          </Button>
+        </nav>
+        <ReviewChat
+          v-if="reviewTab === 'chat' && view && versionId"
+          :res="res"
+          :version="versionId"
+          :view="view"
+          :current-seq="seq"
+          :editable="Boolean(view.can_edit && editable)"
+          @refresh="refresh()"
+          @select="
+            (value) => {
+              seq = value;
+              reviewTab = 'episodes';
+            }
+          "
+          @update-file="
+            (value) => {
+              seq = value;
+              upload();
+              reviewTab = 'episodes';
+            }
+          "
+        />
+        <div v-else class="review-columns">
           <aside class="episode-panel" aria-label="分集列表">
             <div class="panel-heading">
               <strong>分集</strong><span>{{ count }} 集</span>
@@ -976,6 +1013,12 @@ async function rebaseUpload() {
   </section>
 </template>
 <style scoped>
+.review-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0;
+}
+
 .review-workbench {
   --review-border: hsl(var(--border));
 }

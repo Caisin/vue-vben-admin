@@ -19,6 +19,9 @@ export interface ReviewNote {
   body: string;
   position_ms: number;
   media_link: string;
+  reply_to?: Id;
+  mentions?: Id[];
+  attachments?: Id[];
   state: NoteState;
   resolution: string;
   resolved_by: Id;
@@ -109,6 +112,20 @@ export const reviewApi = {
       expected_revision,
       name,
     }),
+  addChat: (
+    res: Id,
+    version: Id,
+    data: {
+      expected_revision: number;
+      seq_no: number;
+      kind: string;
+      body: string;
+      position_ms: number;
+      reply_to?: number;
+      mentions?: number[];
+      attachments?: number[];
+    },
+  ) => requestClient.post(`${base(res, version)}/chat`, data),
   addNote: (
     res: Id,
     version: Id,
