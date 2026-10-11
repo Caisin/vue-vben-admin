@@ -705,7 +705,7 @@ async function reindexSearch() {
         <ReviewEntryActions
           :key="String(row.id)"
           :resource="row"
-          :can-manage="access.manage"
+          :can-manage="access.manage || hasAccessByCodes(['res:review:manage'])"
         />
         <VbenTableAction
           v-if="access.manage"
@@ -852,7 +852,9 @@ async function reindexSearch() {
                   </Button>
                   <ReviewEntryActions
                     :resource="item"
-                    :can-manage="access.manage"
+                    :can-manage="
+                      access.manage || hasAccessByCodes(['res:review:manage'])
+                    "
                   />
                 </Space>
               </Space>

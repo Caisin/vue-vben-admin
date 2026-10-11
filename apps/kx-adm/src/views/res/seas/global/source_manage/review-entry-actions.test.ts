@@ -2,6 +2,8 @@
 import { createApp, h, nextTick } from 'vue';
 
 import { afterEach, expect, it, vi } from 'vitest';
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: navigate }) }));
 const api = vi.hoisted(() => ({
   members: vi.fn(),
   member: vi.fn(),
@@ -160,17 +162,15 @@ it('列表直接管理协作者，无版本也可保存并立即看到结果', a
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(button('作品审核')).toBeTruthy();
 });
-it('审核按钮在当前列表打开正确作品，关闭后保留列表入口', async () => {
+it('审核按钮跳转独立工作台并带上作品定位', async () => {
   await mount();
   button('作品审核').click();
   await settle();
-  expect(document.querySelector('[data-testid="workbench"]')?.textContent).toBe(
-    '审核 42 测试作品',
-  );
-  button('关闭').click();
-  await settle();
+  expect(navigate).toHaveBeenCalledWith({
+    path: '/resource-review',
+    query: { res: '42' },
+  });
   expect(document.querySelector('[data-testid="workbench"]')).toBeNull();
-  expect(button('协作者')).toBeTruthy();
 });
 it('普通用户没有成员管理按钮，非短剧不显示审核入口', async () => {
   await mount(false);

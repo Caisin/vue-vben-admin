@@ -57,6 +57,7 @@ pub struct Auth {
     pub generation: u64,
 }
 pub struct Desktop {
+    pub delivery_cancel: std::sync::atomic::AtomicBool,
     pub release_upload: Mutex<()>,
     pub auth: Mutex<Auth>,
     pub device: crate::device::Device,
@@ -96,6 +97,7 @@ impl Desktop {
         let jobs = crate::queue::load(&data)?;
         let download_jobs = crate::download::load(&data)?;
         Ok(Arc::new(Self {
+            delivery_cancel: std::sync::atomic::AtomicBool::new(false),
             release_upload: Mutex::new(()),
             device: crate::device::Device::load(&data)?,
             auth: Mutex::new(Auth {

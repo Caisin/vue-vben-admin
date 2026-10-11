@@ -60,6 +60,8 @@ fn persist(data: &Path, jobs: &[Job]) -> Result<()> {
 }
 impl Desktop {
     pub(crate) async fn pause_all(&self) -> Result<()> {
+        self.delivery_cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         let mut jobs = self.queue.lock().await;
         for job in jobs.iter_mut() {
             if ["等待上传", "上传中", "登记分集"].contains(&job.status.as_str()) {

@@ -328,8 +328,10 @@ impl Desktop {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("下载任务不存在"))?
         };
-        let cover = self
-            .api(
+        let cover = if job.res_id < 0 {
+            Value::Null
+        } else {
+            self.api(
                 app,
                 &session,
                 reqwest::Method::POST,
@@ -337,7 +339,8 @@ impl Desktop {
                 None,
             )
             .await
-            .context("检查下载封面失败")?;
+            .context("检查下载封面失败")?
+        };
         if !self.download_running(id, &session).await? {
             return Ok(());
         }
@@ -603,14 +606,18 @@ fn download_layout(
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("下载响应缺少章节清单"))?;
     ensure!(!entries.is_empty(), "没有可下载的文件");
+    let delivery = entries
+        .first()
+        .and_then(|v| v["res_id"].as_i64())
+        .is_some_and(|id| id < 0);
     let mut sequences = std::collections::HashSet::new();
     let mut files = Vec::with_capacity(entries.len());
     for entry in entries {
         let seq = entry["seq_no"]
             .as_i64()
-            .filter(|seq| *seq > 0)
+            .filter(|seq| *seq > 0 || delivery)
             .ok_or_else(|| anyhow::anyhow!("下载章节序号无效"))?;
-        ensure!(sequences.insert(seq), "下载章节序号重复：{seq}");
+        ensure!(delivery || sequences.insert(seq), "下载章节序号重复：{seq}");
         let file_id = entry["file_id"]
             .as_i64()
             .filter(|id| *id > 0)
@@ -620,7 +627,15 @@ fn download_layout(
             .ok_or_else(|| anyhow::anyhow!("下载文件大小无效"))?;
         files.push(DownloadFile {
             file_id,
-            file_name: format!("{seq}.mp4"),
+            file_name: if delivery {
+                delivery_file_name(
+                    prepared["version_id"].as_i64().context("版本缺失")?,
+                    file_id,
+                    entry["file_name"].as_str().context("交付文件名缺失")?,
+                )
+            } else {
+                format!("{seq}.mp4")
+            },
             size,
             bytes: 0,
             status: "待下载".into(),
@@ -636,6 +651,29 @@ fn download_layout(
         files.push(cover);
     }
     Ok((root.join(folder), files))
+}
+
+fn delivery_file_name(version: i64, file: i64, name: &str) -> String {
+    let safe = path_component(name);
+    let (stem, extension) = safe
+        .rsplit_once('.')
+        .filter(|(_, ext)| ext.len() <= 12)
+        .unwrap_or((&safe, ""));
+    let mut stem = stem.to_owned();
+    let prefix = format!("v{version}-f{file}-");
+    while prefix.len() + stem.len() + extension.len() + 1 > 220 {
+        if stem.pop().is_none() {
+            break;
+        }
+    }
+    format!(
+        "{prefix}{stem}{}",
+        if extension.is_empty() {
+            String::new()
+        } else {
+            format!(".{extension}")
+        }
+    )
 }
 
 fn cover_file(cover: &Value) -> Result<Option<DownloadFile>> {
@@ -689,6 +727,25 @@ fn path_component(value: &str) -> String {
 
 #[cfg(test)]
 mod layout_tests {
+    #[test]
+    fn delivery_preserves_material_extensions_and_same_episode_different_modules()
+    -> anyhow::Result<()> {
+        let input = serde_json::json!({"resource_code":"aigc1","res_name":"交付剧","version_id":12,"files":[
+        {"res_id":-1,"file_id":1,"seq_no":0,"file_name":"poster-0-1-海报.png","size":12},
+        {"res_id":-1,"file_id":2,"seq_no":1,"file_name":"silent-1-2-无音乐.mp4","size":20},
+        {"res_id":-1,"file_id":3,"seq_no":1,"file_name":"prompt-1-3-提示词.txt","size":15}]});
+        let (_, files) = super::download_layout(std::path::Path::new("downloads"), &input)?;
+        assert!(files[0].file_name.ends_with(".png"));
+        assert!(files[1].file_name.ends_with(".mp4"));
+        assert!(files[2].file_name.ends_with(".txt"));
+        assert!(
+            files
+                .iter()
+                .all(|f| f.file_name.starts_with("v12-") && !f.file_name.contains('/'))
+        );
+        Ok(())
+    }
+
     use super::*;
 
     fn prepared() -> Value {

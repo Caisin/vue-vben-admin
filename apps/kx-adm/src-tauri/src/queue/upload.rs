@@ -153,6 +153,7 @@ impl Desktop {
             let mut request = client
                 .post(format!("{}{base}/upload", s.api_base))
                 .bearer_auth(&s.token)
+                .header("x-kx-client", "tauri")
                 .multipart(reqwest::multipart::Form::new().part("file", part));
             for (name, value) in self.device.headers(&s.token) {
                 request = request.header(name, value);

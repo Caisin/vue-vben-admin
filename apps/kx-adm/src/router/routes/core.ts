@@ -45,6 +45,7 @@ const coreRoutes: RouteRecordRaw[] = [
         meta: { hideInMenu: true, title: '我的作品审核' },
         name: 'MyResourceReview',
         path: '/resource-review',
+        alias: '/res/seas/review',
       },
       {
         component: () => import('#/views/_core/user-overview/index.vue'),

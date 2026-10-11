@@ -26,6 +26,9 @@ vi.mock('#/api/res/review', () => ({
 vi.mock('#/request-errors', () => ({
   requestErrorMessage: (e: Error) => e.message,
 }));
+vi.mock('./modules/episode-history.vue', () => ({
+  default: { template: '<button>历史版本</button>' },
+}));
 vi.mock('./modules/review-batch-upload.vue', () => ({
   default: { template: '<span />' },
 }));

@@ -16,6 +16,7 @@ export interface ResourceVersion {
   updated_at: number;
 }
 export interface VersionItem {
+  finalized_at?: number;
   id: Id;
   version_id: Id;
   seq_no: number;

@@ -27,11 +27,20 @@ import {
 import { reviewApi as api, noteLabels, reviewLabels } from '#/api/res/review';
 import { requestErrorMessage } from '#/request-errors';
 
+import NativeUpload from '../../../review/native-upload.vue';
+import EpisodeHistory from './episode-history.vue';
 import ReviewBatchUpload from './review-batch-upload.vue';
 import ReviewDingtalk from './review-dingtalk.vue';
 import ReviewGuide from './review-guide.vue';
 import ReviewMembers from './review-members.vue';
-const props = defineProps<{ res: Id; name: string; initialVersion?: Id }>();
+const props = defineProps<{
+  res: Id;
+  name: string;
+  initialVersion?: Id;
+  initialSeq?: number;
+  compact?: boolean;
+}>();
+const emit = defineEmits<{ changed: [] }>();
 const versions = ref<ResourceVersion[]>([]);
 const versionId = ref<Id>();
 const view = ref<ReviewView>();
@@ -39,7 +48,14 @@ const loading = ref(false);
 const busy = ref(false);
 const errorText = ref('');
 const success = ref('');
-const seq = ref(1);
+const seq = ref(props.initialSeq || 1);
+watch(
+  () => props.initialSeq,
+  (v) => {
+    if (v) seq.value = v;
+  },
+);
+defineExpose({ pause: () => player.value?.pause() });
 const search = ref('');
 const filter = ref('all');
 const noteFilter = ref('all');
@@ -165,6 +181,7 @@ async function refresh(preferred = versionId.value) {
     view.value = result;
     planned.value = Number(result.detail.version.planned_episodes) || 1;
     if (seq.value > count.value) seq.value = 1;
+    emit('changed');
   } catch (error) {
     if (ticket === generation && alive)
       errorText.value = requestErrorMessage(error, '读取审核信息失败，请重试');
@@ -197,7 +214,7 @@ watch(
 watch(
   () => props.res,
   () => {
-    seq.value = 1;
+    seq.value = props.initialSeq || 1;
     view.value = undefined;
     versionId.value = undefined;
     success.value = '';
@@ -311,6 +328,7 @@ function saveVersion() {
 const uploadOpen = ref(false);
 const uploadSeq = ref(1);
 const uploadTitle = ref('');
+const uploadReason = ref('');
 const uploadFile = ref<File>();
 const uploadProgress = ref(0);
 const uploadStage = ref('');
@@ -319,6 +337,7 @@ const uploadRevision = ref(0);
 function upload() {
   const target = version.value;
   if (!target) return;
+  uploadReason.value = '';
   uploadSeq.value = seq.value;
   uploadTitle.value = item.value?.title || `第 ${seq.value} 集`;
   uploadFile.value = undefined;
@@ -333,8 +352,14 @@ function chooseFile(event: Event) {
   savedFile.value = undefined;
 }
 async function saveUpload() {
-  if (!uploadFile.value || !versionId.value || busy.value) return;
-  if (uploadFile.value.size > 512 * 1024 * 1024) {
+  if (
+    (!uploadFile.value && !savedFile.value) ||
+    !versionId.value ||
+    busy.value ||
+    !uploadReason.value.trim()
+  )
+    return;
+  if (uploadFile.value && uploadFile.value.size > 512 * 1024 * 1024) {
     errorText.value =
       '单集文件最多 512 MB，请压缩后重试或使用版本管理中的桌面上传。';
     return;
@@ -343,7 +368,7 @@ async function saveUpload() {
   const target = versionId.value;
   const targetSeq = uploadSeq.value;
   await action(async () => {
-    if (!savedFile.value) {
+    if (!savedFile.value && file) {
       uploadStage.value = '正在上传视频';
       const files = await api.upload(props.res, target, file, (percent) => {
         uploadProgress.value = percent;
@@ -360,7 +385,7 @@ async function saveUpload() {
       link: `storage:file:${savedFile.value}`,
       content: '',
       duration: 0,
-      remark: '',
+      remark: uploadReason.value.trim(),
     });
     uploadOpen.value = false;
     seq.value = targetSeq;
@@ -373,7 +398,7 @@ async function rebaseUpload() {
 </script>
 <template>
   <section class="review-workbench" aria-label="作品审核工作台">
-    <header class="review-header">
+    <header v-if="!compact" class="review-header">
       <div>
         <span class="text-xs tracking-widest text-muted-foreground">作品审核</span>
         <h2>{{ name }}</h2>
@@ -431,7 +456,7 @@ async function rebaseUpload() {
     />
     <Spin :spinning="loading">
       <template v-if="view && version">
-        <div class="review-summary">
+        <div v-if="!compact" class="review-summary">
           <div>
             <Tag
               :color="
@@ -464,7 +489,7 @@ async function rebaseUpload() {
           </div>
           <div class="ml-auto flex flex-wrap gap-2">
             <ReviewBatchUpload
-              v-if="view.can_edit && editable"
+              v-if="Number(res) > 0 && view.can_edit && editable"
               :key="String(version.id)"
               :res="res"
               :version="version.id"
@@ -516,7 +541,11 @@ async function rebaseUpload() {
               </Button>
             </Popconfirm>
             <Popconfirm
-              v-if="view.can_manage && version.review_state === 'final'"
+              v-if="
+                Number(res) > 0 &&
+                view.can_manage &&
+                version.review_state === 'final'
+              "
               title="此成片已定版，确认标记为已上架？"
               @confirm="state('published')"
             >
@@ -539,7 +568,11 @@ async function rebaseUpload() {
           v-else-if="version.review_state === 'draft'"
           class="mb-3 text-sm text-muted-foreground"
         >
-          上传计划内的全部分集后即可交片；修改建议可以在交片后的审片周期中继续处理。
+          {{
+            Number(res) < 0
+              ? '交付清单中的所有必交材料齐全后才能交片。此处负责成片上传、逐集预览与意见处理。'
+              : '上传计划内的全部分集后即可交片；修改建议可以在交片后的审片周期中继续处理。'
+          }}
         </p>
         <Alert
           v-if="version.review_state === 'reviewing'"
@@ -584,7 +617,11 @@ async function rebaseUpload() {
                     row.uploaded
                       ? row.pending
                         ? `${row.pending} 条待处理`
-                        : '已上传'
+                        : view.detail.items.find(
+                              (i) => Number(i.seq_no) === row.no,
+                            )?.finalized_at
+                          ? '已定稿'
+                          : '已上传'
                       : '等待上传'
                   }}</small></span><span
                   v-if="row.pending"
@@ -597,8 +634,28 @@ async function rebaseUpload() {
           </aside>
           <main class="player-panel">
             <div class="panel-heading">
-              <strong>第 {{ seq }} 集 · {{ item?.title || '等待上传' }}</strong><Button
-                v-if="view.can_edit && editable"
+              <strong>第 {{ seq }} 集 · {{ item?.title || '等待上传' }}</strong>
+              <Tag v-if="item?.finalized_at" color="green">本集已定稿</Tag>
+              <EpisodeHistory
+                :key="`${version.id}/${seq}`"
+                :res="res"
+                :version="version.id"
+                :seq="seq"
+                :revision="version.revision"
+                :can-manage="view.can_manage"
+                :reviewing="version.review_state === 'reviewing'"
+                :finalized-at="Number(item?.finalized_at || 0)"
+                :has-video="Boolean(item?.link)"
+                :pending="
+                  pending.filter((n) => Number(n.seq_no) === seq).length
+                "
+                :editable="Boolean(view.can_edit && editable)"
+                :disabled="busy"
+                @opened="player?.pause()"
+                @restored="refresh()"
+              />
+              <Button
+                v-if="view.can_edit && editable && !item?.finalized_at"
                 :disabled="busy"
                 type="primary"
                 @click="upload()"
@@ -635,6 +692,12 @@ async function rebaseUpload() {
                 下一集
 </Button><Button :disabled="!item" @click="play()">刷新视频</Button>
             </div>
+            <Alert
+              v-if="item?.finalized_at"
+              type="info"
+              message="本集已定稿。可查看历史和发表评论；修改视频或建议前，请负责人重新打开修改。"
+              class="mt-3"
+            />
             <div v-if="editable && item" class="comment-composer">
               <div class="panel-heading">
                 <strong>留下审核意见</strong><Button size="small" @click="capture">
@@ -645,7 +708,11 @@ async function rebaseUpload() {
                 v-model:value="draft.kind"
                 class="mb-2 w-56"
                 :options="[
-                  { value: 'suggestion', label: '修改建议 · 需要处理' },
+                  {
+                    value: 'suggestion',
+                    label: '修改建议 · 需要处理',
+                    disabled: Boolean(item.finalized_at),
+                  },
                   { value: 'comment', label: '评论 · 交流记录' },
                 ]"
               />
@@ -660,7 +727,10 @@ async function rebaseUpload() {
                 <small class="text-muted-foreground">切换分集会保留未发送草稿</small><Button
                   type="primary"
                   :loading="busy"
-                  :disabled="!draft.body.trim()"
+                  :disabled="
+                    !draft.body.trim() ||
+                    (Boolean(item.finalized_at) && draft.kind === 'suggestion')
+                  "
                   @click="addNote"
                 >
                   {{
@@ -733,7 +803,12 @@ async function rebaseUpload() {
                   </p>
                 </details>
                 <div
-                  v-if="view.can_edit && editable && note.kind === 'suggestion'"
+                  v-if="
+                    view.can_edit &&
+                    editable &&
+                    !item?.finalized_at &&
+                    note.kind === 'suggestion'
+                  "
                   class="mt-3 flex flex-wrap gap-1"
                 >
                   <Button
@@ -835,7 +910,12 @@ async function rebaseUpload() {
       :closable="!busy"
       :mask-closable="!busy"
       :cancel-button-props="{ disabled: busy }"
-      :ok-button-props="{ disabled: !uploadFile || !uploadTitle.trim() }"
+      :ok-button-props="{
+        disabled:
+          (!uploadFile && !savedFile) ||
+          !uploadTitle.trim() ||
+          !uploadReason.trim(),
+      }"
       ok-text="上传并保存这一集"
       @ok="saveUpload"
     >
@@ -849,7 +929,24 @@ async function rebaseUpload() {
           :maxlength="200"
           :disabled="busy"
       /></label>
-      <label class="upload-field">选择视频<input
+      <label class="upload-field">本次修改说明<TextArea
+          v-model:value="uploadReason"
+          :rows="2"
+          :maxlength="4000"
+          :disabled="busy"
+          placeholder="说明本次上传或替换修改了什么，将保留在历史记录中"
+      /></label>
+      <NativeUpload
+        v-if="Number(res) < 0 && version && uploadOpen"
+        :scope="res"
+        :version="version.id"
+        kind="film"
+        :multiple="false"
+        :seq="uploadSeq"
+        @busy="busy = $event"
+        @uploaded="savedFile = $event[0]?.file_id"
+      />
+      <label v-else class="upload-field">选择视频<input
           type="file"
           accept=".mp4,.mov,.m4v,.webm,.avi,.mpeg,.mpg"
           :disabled="busy"

@@ -1,3 +1,4 @@
+mod delivery_upload;
 mod device;
 mod download;
 mod image;
@@ -578,6 +579,10 @@ pub fn run() {
             release_upload::desktop_release_upload,
             updater::desktop_update_check,
             updater::desktop_update_install,
+            delivery_upload::delivery_upload_pick,
+            delivery_upload::delivery_upload_run,
+            delivery_upload::delivery_upload_jobs,
+            delivery_upload::delivery_upload_pause,
             desktop_device_info,
             desktop_device_headers,
             desktop_dingtalk_device,

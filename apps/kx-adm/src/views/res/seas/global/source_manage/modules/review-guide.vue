@@ -16,7 +16,7 @@ const storageWarning = ref('');
 const storageKey = computed(() => {
   const uid = userStore.userInfo?.userId;
   return uid
-    ? `kx:resource-review:guide:v1:${encodeURIComponent(apiURL)}:${uid}`
+    ? `kx:resource-review:guide:v3:${encodeURIComponent(apiURL)}:${uid}`
     : undefined;
 });
 const role = computed(() => {
@@ -82,6 +82,8 @@ const steps = computed(() => [
       '“替换这一集”只更新当前集，不改其他集；批量补集不会覆盖已有视频。',
       '点“完成建议”并填写处理说明；仍需调整时可“重新打开”，处理记录保留。',
       '针对替换前视频的意见会单独标注，避免把旧时间点当成新视频的问题。',
+      '负责人可在本集建议全部完成后点击“本集定稿”。定稿后禁止直接替换；确需调整，负责人须填写原因“重新打开修改”。整版定版或上架后只能复制新版本。',
+      '点“历史版本 / 修改时间线”查看上传、替换、恢复、定稿等节点的操作人、时间和原因，可预览历史视频。未定稿集填写原因后可恢复旧片，恢复前的视频仍会保留。',
     ],
     tip: '上传成功不会自动完成所有建议。请逐条核对，避免漏改。',
   },
