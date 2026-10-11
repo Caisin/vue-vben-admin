@@ -32,6 +32,12 @@ vi.mock('./modules/review-batch-upload.vue', () => ({
 vi.mock('./modules/review-members.vue', () => ({
   default: { template: '<span>协作者</span>' },
 }));
+vi.mock('./modules/review-guide.vue', () => ({
+  default: { template: '<button>操作指引</button>' },
+}));
+vi.mock('./modules/review-dingtalk.vue', () => ({
+  default: { template: '<button>钉钉协作</button>' },
+}));
 vi.mock('antdv-next', async () => {
   const { defineComponent, h } = await import('vue');
   const Wrap = defineComponent({

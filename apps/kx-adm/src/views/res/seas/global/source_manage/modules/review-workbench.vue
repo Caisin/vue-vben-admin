@@ -28,6 +28,8 @@ import { reviewApi as api, noteLabels, reviewLabels } from '#/api/res/review';
 import { requestErrorMessage } from '#/request-errors';
 
 import ReviewBatchUpload from './review-batch-upload.vue';
+import ReviewDingtalk from './review-dingtalk.vue';
+import ReviewGuide from './review-guide.vue';
 import ReviewMembers from './review-members.vue';
 const props = defineProps<{ res: Id; name: string; initialVersion?: Id }>();
 const versions = ref<ResourceVersion[]>([]);
@@ -390,6 +392,16 @@ async function rebaseUpload() {
           :disabled="busy || loading"
           placeholder="选择版本"
           @update:value="refresh($event as Id)"
+        />
+        <ReviewGuide
+          :can-edit="view?.can_edit ?? false"
+          :can-manage="view?.can_manage ?? false"
+        />
+        <ReviewDingtalk
+          v-if="view"
+          :key="String(res)"
+          :res="res"
+          :name="name"
         />
         <ReviewMembers
           v-if="view"
