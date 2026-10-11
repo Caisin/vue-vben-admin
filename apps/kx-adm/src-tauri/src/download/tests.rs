@@ -324,6 +324,43 @@ async fn failed_overwrite_preserves_original_and_records_server_reason_on_task_a
 }
 
 #[tokio::test]
+async fn atomic_install_commits_complete_file_and_removes_staging() -> Result<()> {
+    let root = Dir::new()?;
+    let target = root.0.join("1.mp4");
+    let temp = root.0.join("download.part");
+    tokio::fs::write(&temp, b"complete video").await?;
+
+    assert!(local_files::install(&temp, &target, false).await?);
+    assert_eq!(tokio::fs::read(&target).await?, b"complete video");
+    assert!(!temp.exists());
+    Ok(())
+}
+
+#[tokio::test]
+async fn atomic_install_allows_only_one_concurrent_writer() -> Result<()> {
+    let root = Dir::new()?;
+    let target = root.0.join("1.mp4");
+    let first = root.0.join("first.part");
+    let second = root.0.join("second.part");
+    tokio::fs::write(&first, b"first complete video").await?;
+    tokio::fs::write(&second, b"second complete video").await?;
+
+    let (first_result, second_result) = tokio::join!(
+        local_files::install(&first, &target, false),
+        local_files::install(&second, &target, false),
+    );
+    let (first_won, second_won) = (first_result?, second_result?);
+    assert_ne!(first_won, second_won);
+    let expected = if first_won {
+        b"first complete video".as_slice()
+    } else {
+        b"second complete video".as_slice()
+    };
+    assert_eq!(tokio::fs::read(&target).await?, expected);
+    Ok(())
+}
+
+#[tokio::test]
 async fn atomic_install_keeps_file_created_after_initial_check() -> Result<()> {
     let root = Dir::new()?;
     let target = root.0.join("1.mp4");

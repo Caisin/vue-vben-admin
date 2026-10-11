@@ -35,8 +35,18 @@ pub(super) async fn install(temp: &Path, target: &Path, overwrite: bool) -> Resu
             .context("替换本地文件失败")?;
         return Ok(true);
     }
-    // 同目录 hard-link 的创建是原子的，不存在先检查再 rename 的覆盖窗口。
-    match tokio::fs::hard_link(temp, target).await {
+    // Windows 的 FAT/exFAT 和部分共享盘不支持 hard-link。persist_noclobber 在
+    // Windows 使用不带替换标志的 MoveFileExW，同目录提交仍可原子保护已有目标。
+    let temp = temp.to_owned();
+    let destination = target.to_owned();
+    let result = tokio::task::spawn_blocking(move || {
+        tempfile::TempPath::try_from_path(temp)?
+            .persist_noclobber(destination)
+            .map_err(|error| error.error)
+    })
+    .await
+    .context("保存本地文件任务失败")?;
+    match result {
         Ok(()) => Ok(true),
         Err(error) if error.kind() == ErrorKind::AlreadyExists => {
             existing_file(target).await?;
