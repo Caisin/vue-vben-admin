@@ -581,6 +581,7 @@ pub fn run() {
             updater::desktop_update_install,
             delivery_upload::delivery_upload_pick,
             delivery_upload::delivery_upload_run,
+            delivery_upload::delivery_upload_update,
             delivery_upload::delivery_upload_jobs,
             delivery_upload::delivery_upload_pause,
             desktop_device_info,

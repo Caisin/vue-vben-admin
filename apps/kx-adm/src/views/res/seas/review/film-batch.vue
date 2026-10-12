@@ -162,7 +162,7 @@ onBeforeUnmount(() => {
   >
     <Alert
       type="info"
-      message="客户端多选视频上传后，核对集数再提交后台登记；已有分集不覆盖，替换请进入逐集审片。支持选择目录（含子目录）或多选文件，上传后核对集数并登记。"
+      message="扫描目录后先移除不需要的文件、设置并发，再确认本地上传。上传成功后核对集数并提交登记；已有分集不覆盖，替换请进入逐集审片。"
     />
     <p v-if="loading">正在检查目标版本…</p>
     <NativeUpload
@@ -175,6 +175,7 @@ onBeforeUnmount(() => {
       :seq="target"
       @busy="busy = $event"
       @uploaded="uploaded"
+      @cleared="entries = []"
     />
     <Table
       :data-source="entries"
@@ -184,6 +185,7 @@ onBeforeUnmount(() => {
         { title: '文件', dataIndex: 'file_name' },
         { title: '集数', key: 'seq' },
         { title: '标题', key: 'title' },
+        { title: '操作', key: 'action', width: 80 },
       ]"
     >
       <template #bodyCell="{ column, record }">
@@ -195,6 +197,15 @@ onBeforeUnmount(() => {
           :precision="0"
           :disabled="busy"
         />
+        <Button
+          v-if="column.key === 'action'"
+          type="link"
+          danger
+          :disabled="busy"
+          @click="entries = entries.filter((e) => e.file_id !== record.file_id)"
+        >
+          不提交此文件
+        </Button>
         <Input
           v-else-if="column.key === 'title'"
           v-model:value="record.title"

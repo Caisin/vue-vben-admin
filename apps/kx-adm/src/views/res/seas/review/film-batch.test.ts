@@ -1,4 +1,4 @@
-/* eslint-disable vue/one-component-per-file -- 真实弹窗配合表格占位，验证原生上传与版本绑定。 */
+/* eslint-disable vue/one-component-per-file, vue/require-prop-types -- 真实弹窗配合表格占位，验证原生上传与版本绑定。 */
 import { createApp, nextTick } from 'vue';
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
 const native = vi.hoisted(() => ({
   pick: vi.fn(),
   run: vi.fn(),
+  update: vi.fn(),
   listen: vi.fn(),
   jobs: vi.fn(),
   pause: vi.fn(),
@@ -44,7 +45,23 @@ vi.mock('antdv-next', async () => {
     Alert,
     Input: Wrap,
     InputNumber: Wrap,
-    Table: Wrap,
+    Table: defineComponent({
+      props: ['dataSource', 'columns'],
+      setup:
+        (p, { slots }) =>
+        () =>
+          h(
+            'div',
+            p.dataSource.map((record: unknown) =>
+              h(
+                'div',
+                p.columns.map((column: unknown) =>
+                  slots.bodyCell?.({ column, record }),
+                ),
+              ),
+            ),
+          ),
+    }),
     Tag: Wrap,
     Progress: Wrap,
     Select: Wrap,
@@ -112,6 +129,7 @@ it('点指定版本入口后直接选择目录，上传和登记都绑定该版�
     ],
   };
   native.pick.mockResolvedValue(job);
+  native.update.mockResolvedValue({ ...job, revision: 1, concurrency: 3 });
   native.run.mockResolvedValue({
     ...job,
     status: '上传完成',
@@ -126,6 +144,12 @@ it('点指定版本入口后直接选择目录，上传和登记都绑定该版�
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
     '无音乐版 · 目录上传',
   );
+  expect(native.run).not.toHaveBeenCalled();
+  const start = [...document.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === '确认清单并上传',
+  );
+  start?.click();
+  await settle();
   const submit = [...document.querySelectorAll('button')].find(
     (b) => b.textContent?.trim() === '提交分集登记',
   );
@@ -164,4 +188,49 @@ it('取消目录选择后不上传、不登记，可再次从入口选择', asyn
   expect(api.submitImport).not.toHaveBeenCalled();
   await component.openDirectory(3);
   await vi.waitFor(() => expect(native.pick).toHaveBeenCalledTimes(2));
+});
+
+it('上传后的登记清单也能排除文件，提交只包含保留分集', async () => {
+  const file = (n: number) => ({
+    name: `${n}.mp4`,
+    size: 10,
+    bytes: 0,
+    file_id: null,
+    status: '待上传',
+    error: '',
+  });
+  const job = {
+    id: 'two',
+    scope: -9,
+    version: 3,
+    kind: 'film',
+    seq: 2,
+    status: '待确认',
+    files: [file(2), file(3)],
+    concurrency: 3,
+    revision: 0,
+  };
+  native.pick.mockResolvedValue(job);
+  native.update.mockResolvedValue({ ...job, revision: 1 });
+  native.run.mockResolvedValue({
+    ...job,
+    revision: 2,
+    files: job.files.map((f, i) => ({ ...f, file_id: i + 21 })),
+  });
+  const component = await mount();
+  await component.openDirectory(3);
+  await settle();
+  const button = (label: string) =>
+    [...document.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === label,
+    );
+  button('确认清单并上传')?.click();
+  await settle();
+  button('不提交此文件')?.click();
+  await settle();
+  button('提交分集登记')?.click();
+  await settle();
+  expect(api.submitImport).toHaveBeenCalledWith(-9, 3, [
+    { seq_no: 3, title: '第3集', file_id: 22, file_name: '3.mp4' },
+  ]);
 });

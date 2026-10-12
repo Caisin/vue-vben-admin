@@ -7,6 +7,8 @@ export interface DeliveryUploadJob {
   kind: string;
   seq: number;
   status: string;
+  concurrency: number;
+  revision: number;
   files: {
     name: string;
     relative_path?: string;
@@ -34,7 +36,20 @@ export const nativeDelivery = {
       multiple,
       directory,
     }),
-  run: (id: string) => invoke<DeliveryUploadJob>('delivery_upload_run', { id }),
+  update: (
+    id: string,
+    expectedRevision: number,
+    indices: number[],
+    concurrency: number,
+  ) =>
+    invoke<DeliveryUploadJob>('delivery_upload_update', {
+      id,
+      expectedRevision,
+      indices,
+      concurrency,
+    }),
+  run: (id: string, expectedRevision: number) =>
+    invoke<DeliveryUploadJob>('delivery_upload_run', { id, expectedRevision }),
   jobs: () => invoke<DeliveryUploadJob[]>('delivery_upload_jobs'),
   pause: () => invoke('delivery_upload_pause'),
   listen: (fn: (job: DeliveryUploadJob) => void) =>

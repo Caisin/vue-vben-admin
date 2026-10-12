@@ -145,6 +145,10 @@ async function submit() {
       :disabled="busy"
       @busy="busy = $event"
       @uploaded="uploaded"
+      @cleared="
+        entries = [];
+        completed = 0;
+      "
     />
     <Table
       :data-source="entries"
@@ -153,9 +157,19 @@ async function submit() {
       :columns="[
         { title: '相对文件名', dataIndex: 'name' },
         { title: '对应集数', key: 'seq' },
+        { title: '操作', key: 'action' },
       ]"
     >
       <template #bodyCell="{ column, record }">
+        <Button
+          v-if="column.key === 'action'"
+          type="link"
+          danger
+          :disabled="busy || completed > 0"
+          @click="entries = entries.filter((f) => f.file_id !== record.file_id)"
+        >
+          不提交此文件
+        </Button>
         <InputNumber
           v-if="column.key === 'seq'"
           v-model:value="record.seq"

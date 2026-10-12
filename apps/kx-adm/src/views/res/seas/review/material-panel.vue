@@ -350,6 +350,9 @@ onBeforeUnmount(() => {
             :kind="selectedSlot.kind"
             :seq="selectedSlot.seq_no"
             @uploaded="uploaded"
+            @excluded="
+              (id) => (files = files.filter((f) => Number(f.file_id) !== id))
+            "
             @busy="busy = $event"
           />
         </div>

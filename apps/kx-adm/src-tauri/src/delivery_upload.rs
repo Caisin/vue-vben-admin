@@ -37,6 +37,13 @@ pub struct Job {
     pub seq: i64,
     pub files: Vec<File>,
     pub status: String,
+    #[serde(default = "default_concurrency")]
+    pub concurrency: usize,
+    #[serde(default)]
+    pub revision: u64,
+}
+fn default_concurrency() -> usize {
+    3
 }
 impl Job {
     pub fn view(&self) -> Value {
@@ -285,7 +292,9 @@ pub async fn delivery_upload_pick(
             kind,
             seq,
             files,
-            status: "待上传".into(),
+            status: "待确认".into(),
+            concurrency: default_concurrency(),
+            revision: 0,
         };
         store(&state, &job)?;
         Ok(Some(job.view()))
@@ -293,6 +302,75 @@ pub async fn delivery_upload_pick(
     .await
     .map_err(|e: anyhow::Error| e.to_string())
 }
+mod execution;
+
+fn configure_job(
+    job: &mut Job,
+    expected_revision: u64,
+    indices: &[usize],
+    concurrency: usize,
+) -> Result<()> {
+    ensure!(
+        job.revision == expected_revision,
+        "上传清单已变化，请刷新后重试"
+    );
+    ensure!((1..=8).contains(&concurrency), "同时上传文件数应为1至8");
+    ensure!(!indices.is_empty(), "请至少保留一个文件");
+    let selected = indices
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    ensure!(
+        selected.len() == indices.len() && selected.iter().all(|i| *i < job.files.len()),
+        "上传清单索引无效或重复"
+    );
+    let revision = job.revision.checked_add(1).context("上传清单修订无效")?;
+    job.files = job
+        .files
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| selected.contains(index))
+        .map(|(_, file)| file.clone())
+        .collect();
+    job.concurrency = concurrency;
+    job.revision = revision;
+    job.status = if job.files.iter().all(|f| f.file_id.is_some()) {
+        "上传完成，待提交材料"
+    } else {
+        "待确认"
+    }
+    .into();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delivery_upload_update(
+    window: WebviewWindow,
+    state: State<'_, Arc<Desktop>>,
+    id: String,
+    expected_revision: u64,
+    indices: Vec<usize>,
+    concurrency: usize,
+) -> Result<Value, String> {
+    async {
+        crate::tiktok::local_caller(&window)?;
+        let _guard = state
+            .release_upload
+            .try_lock()
+            .context("上传进行中，请暂停后编辑清单")?;
+        let owner = state.identity().await?;
+        let mut job = load(&state)?
+            .into_iter()
+            .find(|j| j.id == id && j.uid == owner.uid && j.api_base == owner.api_base)
+            .context("上传任务不存在或属于其他账号")?;
+        configure_job(&mut job, expected_revision, &indices, concurrency)?;
+        store(&state, &job)?;
+        Ok(job.view())
+    }
+    .await
+    .map_err(|e: anyhow::Error| crate::protocol::safe_message(&e.to_string()))
+}
+
 #[tauri::command]
 pub async fn delivery_upload_jobs(
     window: WebviewWindow,
@@ -334,6 +412,7 @@ pub async fn delivery_upload_run(
     window: WebviewWindow,
     state: State<'_, Arc<Desktop>>,
     id: String,
+    expected_revision: u64,
 ) -> Result<Value, String> {
     async {
         crate::tiktok::local_caller(&window)?;
@@ -349,6 +428,15 @@ pub async fn delivery_upload_run(
             .into_iter()
             .find(|j| j.id == id && j.uid == owner.uid && j.api_base == owner.api_base)
             .context("上传任务不存在或属于其他账号")?;
+        ensure!(
+            job.revision == expected_revision,
+            "上传清单已变化，请刷新后重试"
+        );
+        ensure!(
+            !job.files.is_empty() && (1..=8).contains(&job.concurrency),
+            "上传清单或并发设置无效"
+        );
+        job.revision = job.revision.checked_add(1).context("上传清单修订无效")?;
         job.status = "上传中".into();
         store(&state, &job)?;
         notify(&app, &job)?;
@@ -360,42 +448,29 @@ pub async fn delivery_upload_run(
             let ctx = state
                 .api(&app, &owner, reqwest::Method::GET, &base, None)
                 .await?;
-            for index in 0..job.files.len() {
-                checkpoint(&state, &owner).await?;
-                if job.files[index].file_id.is_some() {
-                    continue;
-                }
-                let file = job.files[index].clone();
-                let sent = transfer(
-                    &state,
-                    &app,
-                    &owner,
-                    &base,
-                    &file,
-                    ctx["local"] == true,
-                    |stage, bytes| {
-                        job.files[index].status = stage.into();
-                        job.files[index].bytes = bytes;
-                        let _ = notify(&app, &job);
-                    },
-                )
-                .await;
-                match sent {
-                    Ok(fid) => {
-                        job.files[index].file_id = Some(fid);
-                        job.files[index].status = "已上传".into();
-                        job.files[index].bytes = file.size;
-                        job.files[index].error.clear();
-                        store(&state, &job)?;
-                        notify(&app, &job)?;
+            execution::run_files(
+                &mut job,
+                |index, file, progress| {
+                    let state = &state;
+                    let app = &app;
+                    let owner = &owner;
+                    let base = &base;
+                    let local = ctx["local"] == true;
+                    async move {
+                        transfer(state, app, owner, base, &file, local, |stage, bytes| {
+                            let _ = progress.try_send((index, stage.to_owned(), bytes));
+                        })
+                        .await
                     }
-                    Err(e) => {
-                        job.files[index].status = "待重试".into();
-                        job.files[index].error = e.to_string();
-                        return Err(e);
+                },
+                |current, persist| {
+                    if persist {
+                        store(&state, current)?;
                     }
-                }
-            }
+                    notify(&app, current)
+                },
+            )
+            .await?;
             Ok::<_, anyhow::Error>(())
         }
         .await;
@@ -630,6 +705,8 @@ mod tests {
             seq: 0,
             files: vec![f],
             status: "已暂停".into(),
+            concurrency: default_concurrency(),
+            revision: 0,
         };
         store(&d, &j)?;
         assert_eq!(load(&d)?[0].files[0].file_id, Some(8));
