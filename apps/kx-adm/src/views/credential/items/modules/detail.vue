@@ -214,7 +214,7 @@ function closeAndEmit(
           </Descriptions>
           <Space class="mt-4" wrap>
             <Button
-              v-if="hasAccessByCodes(['credential:update'])"
+              v-if="hasAccessByCodes(['api:credential.item.update'])"
               @click="closeAndEmit('edit')"
             >
               编辑信息
@@ -225,11 +225,21 @@ function closeAndEmit(
             >
               更换类型与材料
             </Button>
-            <Button danger @click="closeAndEmit('reveal')"> 查看明文 </Button>
+            <Button
+              danger
+              @click="closeAndEmit('reveal')"
+              v-access:code="'credential:reveal'"
+            >
+              查看明文
+            </Button>
             <Button
               v-if="
                 credential.state !== 'retired' &&
-                hasAccessByCodes(['credential:status'])
+                hasAccessByCodes([
+                  credential.state === 'active'
+                    ? 'api:credential.item.disable'
+                    : 'api:credential.item.enable',
+                ])
               "
               @click="closeAndEmit('status')"
             >

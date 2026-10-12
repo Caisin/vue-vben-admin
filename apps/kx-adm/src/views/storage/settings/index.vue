@@ -217,8 +217,14 @@ onMounted(load);
           </FormItem>
         </div>
       </section>
-      <Button :loading="saving" type="primary" @click="save">
-        <IconifyIcon class="size-4" icon="lucide:save" />保存
+      <Button
+        :loading="saving"
+        type="primary"
+        @click="save"
+        v-access:code="'api:storage.binding.defaults.update'"
+      >
+        <IconifyIcon class="size-4" icon="lucide:save" />
+        保存
       </Button>
     </Form>
   </Page>

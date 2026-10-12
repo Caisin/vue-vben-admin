@@ -92,12 +92,24 @@ export function useColumns(
         attrs: { nameField: 'name', onClick: onActionClick },
         name: 'CellOperation',
         options: [
-          { auth: 'mall:product:write', code: 'skus', text: 'SKU' },
-          { auth: 'mall:product:publish', code: 'publish', text: '发布' },
-          { auth: 'mall:product:publish', code: 'unpublish', text: '下架' },
-          { auth: 'mall:product:write', code: 'edit', text: '编辑' },
+          { auth: 'api:mall.admin.products.detail', code: 'skus', text: 'SKU' },
           {
-            auth: 'mall:product:write',
+            auth: 'api:mall.admin.products.publish',
+            code: 'publish',
+            text: '发布',
+          },
+          {
+            auth: 'api:mall.admin.products.unpublish',
+            code: 'unpublish',
+            text: '下架',
+          },
+          {
+            auth: 'api:mall.admin.products.update',
+            code: 'edit',
+            text: '编辑',
+          },
+          {
+            auth: 'api:mall.admin.products.delete',
             code: 'delete',
             danger: true,
             text: '删除',
@@ -151,9 +163,9 @@ export function useSkuColumns(
         attrs: { nameField: 'name', onClick: onActionClick },
         name: 'CellOperation',
         options: [
-          { auth: 'mall:product:write', code: 'edit', text: '编辑' },
+          { auth: 'api:mall.admin.skus.update', code: 'edit', text: '编辑' },
           {
-            auth: 'mall:product:write',
+            auth: 'api:mall.admin.skus.delete',
             code: 'delete',
             danger: true,
             text: '删除',

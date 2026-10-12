@@ -32,6 +32,7 @@ import { Times } from '#/times';
 import { useColumns, useGridFormSchema } from './data';
 import Detail from './modules/detail.vue';
 import Form from './modules/form.vue';
+import Members from './modules/members.vue';
 
 interface RoleSearchFormValues extends Record<string, unknown> {
   createTime?: [Dayjs, Dayjs];
@@ -46,8 +47,17 @@ const roleSearchCodec = Times.createDateRangeCodec<RoleSearchFormValues>()({
 type RoleSearchSubmitValues = ReturnType<typeof roleSearchCodec.encode>;
 
 const { hasAccessByCodes } = useAccess();
-const canManageRoles = computed(() => hasAccessByCodes(['roles:manage']));
+const canCreateRoles = computed(() =>
+  hasAccessByCodes(['api:auth.role.create']),
+);
+const canEditRoles = computed(() => hasAccessByCodes(['api:auth.role.update']));
+const canDeleteRoles = computed(() =>
+  hasAccessByCodes(['api:auth.role.delete']),
+);
 const canCopyRoles = computed(() => hasAccessByCodes(['roles:copy']));
+const canViewMembers = computed(() =>
+  hasAccessByCodes(['api:auth.role_assignment.members']),
+);
 const copyOpen = ref(false);
 const copySubmitting = ref(false);
 const copySource = ref<SystemRole>();
@@ -63,6 +73,11 @@ const [DetailDrawer, detailDrawerApi] = useVbenDrawer({
   destroyOnClose: true,
 });
 
+const [MembersDrawer, membersDrawerApi] = useVbenDrawer({
+  connectedComponent: Members,
+  destroyOnClose: true,
+});
+
 const [Grid, gridApi] = useVbenVxeGrid({
   formOptions: {
     codec: roleSearchCodec,
@@ -70,7 +85,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
     submitOnChange: true,
   },
   gridOptions: {
-    columns: useColumns(onStatusChange, () => canManageRoles.value),
+    columns: useColumns(onStatusChange, () => canEditRoles.value),
     height: 'auto',
     keepSource: true,
     proxyConfig: {
@@ -125,7 +140,7 @@ function confirm(content: string, title: string) {
  * @returns 返回false则中止改变，返回其他值（undefined、true）则允许改变
  */
 async function onStatusChange(newStatus: number, row: SystemRole) {
-  if (!canManageRoles.value) return false;
+  if (!canEditRoles.value) return false;
   const status: Recordable<string> = {
     0: '禁用',
     1: '启用',
@@ -143,7 +158,7 @@ async function onStatusChange(newStatus: number, row: SystemRole) {
 }
 
 function onEdit(row: SystemRole) {
-  if (!canManageRoles.value) return;
+  if (!canEditRoles.value) return;
   formDrawerApi.setData(row).open();
 }
 
@@ -152,7 +167,7 @@ function onDetail(row: SystemRole) {
 }
 
 function onDelete(row: SystemRole) {
-  if (!canManageRoles.value) return;
+  if (!canDeleteRoles.value) return;
   const hideLoading = message.loading({
     content: $t('ui.actionMessage.deleting', [row.name]),
     duration: 0,
@@ -214,10 +229,11 @@ function onCreate() {
   >
     <FormDrawer @success="onRefresh" />
     <DetailDrawer />
+    <MembersDrawer />
     <Grid class="management-grid" :table-title="$t('system.role.list')">
       <template #roleName="{ row }">
         <Button
-          v-if="canManageRoles"
+          v-if="canEditRoles"
           :aria-label="`编辑角色及权限：${row.name}`"
           class="max-w-full !p-0"
           size="small"
@@ -231,6 +247,16 @@ function onCreate() {
       </template>
       <template #action="{ row }">
         <div class="flex items-center justify-center gap-1">
+          <Button
+            v-if="canViewMembers"
+            size="small"
+            type="link"
+            :aria-label="`管理角色成员：${row.name}`"
+            @click="membersDrawerApi.setData(row).open()"
+          >
+            <IconifyIcon icon="lucide:users" class="mr-1 size-4" />
+            成员
+          </Button>
           <Tooltip title="查看详情">
             <Button
               aria-label="查看详情"
@@ -252,7 +278,7 @@ function onCreate() {
             </Button>
           </Tooltip>
           <Popconfirm
-            v-if="canManageRoles"
+            v-if="canDeleteRoles"
             :title="$t('ui.actionMessage.deleteConfirm', [row.name])"
             @confirm="onDelete(row)"
           >
@@ -265,7 +291,7 @@ function onCreate() {
         </div>
       </template>
       <template #toolbar-tools>
-        <Button v-if="canManageRoles" type="primary" @click="onCreate">
+        <Button v-if="canCreateRoles" type="primary" @click="onCreate">
           <Plus class="size-5" />
           {{ $t('ui.actionTitle.create', [$t('system.role.name')]) }}
         </Button>

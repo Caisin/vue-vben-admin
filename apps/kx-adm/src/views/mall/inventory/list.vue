@@ -132,18 +132,18 @@ function onRefresh() {
         <Grid class="management-grid" table-title="库存投影">
           <template #toolbar-tools>
             <Button
-              v-access:code="'mall:inventory:adjust'"
               @click="onVirtualCodeImport"
+              v-access:code="'mall:inventory:import'"
             >
               虚拟码导入
             </Button>
           </template>
           <template #operation="{ row }">
             <Button
-              v-access:code="'mall:inventory:adjust'"
               size="small"
               type="link"
               @click="onAdjust(row)"
+              v-access:code="'api:mall.admin.inventory.adjust'"
             >
               调整
             </Button>

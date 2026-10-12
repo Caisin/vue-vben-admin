@@ -131,6 +131,7 @@ export interface PermissionMeta extends Record<string, JsonValue | undefined> {
 }
 
 export interface AdminPermission {
+  api_ids?: Array<number | string>;
   auth_code: string;
   component: string;
   created_at: number | string;
@@ -148,6 +149,7 @@ export interface AdminPermission {
 }
 
 export interface AdminPermissionWrite {
+  api_ids?: Array<number | string>;
   auth_code?: string;
   component?: string;
   enabled?: boolean;

@@ -97,12 +97,12 @@ function openOrderExport() {
       <template #toolbar-tools>
         <Space>
           <Button
-            v-access:code="'mall:order:fulfill'"
             @click="openShipmentImport"
+            v-access:code="'mall:shipment:import'"
           >
             批量发货
           </Button>
-          <Button v-access:code="'mall:order:export'" @click="openOrderExport">
+          <Button @click="openOrderExport" v-access:code="'mall:order:export'">
             订单导出
           </Button>
         </Space>

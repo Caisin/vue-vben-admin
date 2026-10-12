@@ -435,7 +435,8 @@ defineExpose({ refresh });
             type="primary"
             @click="openCreate"
           >
-            <template #icon><Plus /></template>手动入队
+            <template #icon><Plus /></template>
+            手动入队
           </Button>
         </Space>
       </template>
@@ -476,7 +477,7 @@ defineExpose({ refresh });
           </Button>
           <Button
             v-if="row.status === 'failed'"
-            v-access:code="'notify:message:retry'"
+            v-access:code="'api:notify.message.retry'"
             size="small"
             type="link"
             @click.stop="retry(row)"
@@ -489,7 +490,7 @@ defineExpose({ refresh });
             @confirm="cancel(row)"
           >
             <Button
-              v-access:code="'notify:message:retry'"
+              v-access:code="'api:notify.message.cancel'"
               danger
               size="small"
               type="link"
@@ -663,7 +664,7 @@ defineExpose({ refresh });
       </AForm>
       <template #footer>
         <Space>
-          <Button @click="drawerOpen = false"> 取消 </Button>
+          <Button @click="drawerOpen = false">取消</Button>
           <Button :loading="saving" type="primary" @click="enqueueMessage">
             {{ composeTitle === '手动入队消息' ? '入队' : '重新入队' }}
           </Button>

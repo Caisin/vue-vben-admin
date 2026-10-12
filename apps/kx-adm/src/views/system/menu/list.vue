@@ -7,6 +7,7 @@ import type { SystemMenu } from '#/api/system/menu';
 
 import { h, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { IconifyIcon, Plus } from '@vben/icons';
 import { $t } from '@vben/locales';
@@ -21,6 +22,8 @@ import { SystemMenuApi } from '#/api/system/menu';
 import { useColumns } from './data';
 import Form from './modules/form.vue';
 
+const { hasAccessByCodes } = useAccess();
+
 const [FormDrawer, formDrawerApi] = useVbenDrawer({
   connectedComponent: Form,
   destroyOnClose: true,
@@ -28,7 +31,10 @@ const [FormDrawer, formDrawerApi] = useVbenDrawer({
 
 const [Grid, gridApi] = useVbenVxeGrid({
   gridOptions: {
-    columns: useColumns(onActionClick, onStatusChange),
+    columns: useColumns(
+      onActionClick,
+      hasAccessByCodes(['api:auth.menu.update']) ? onStatusChange : undefined,
+    ),
     height: 'auto',
     keepSource: true,
     pagerConfig: {
@@ -161,7 +167,11 @@ function onDelete(row: SystemMenu) {
     <FormDrawer @success="onRefresh" />
     <Grid class="management-grid">
       <template #toolbar-tools>
-        <Button type="primary" @click="onCreate">
+        <Button
+          v-access:code="'api:auth.menu.create'"
+          type="primary"
+          @click="onCreate"
+        >
           <Plus class="size-5" />
           {{ $t('ui.actionTitle.create', [$t('system.menu.name')]) }}
         </Button>

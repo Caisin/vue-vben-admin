@@ -315,38 +315,38 @@ async function revealTracking(row: MallShipmentView) {
         <Space wrap>
           <Button
             v-if="canShip"
-            v-access:code="'mall:order:fulfill'"
             type="primary"
             @click="shipOrder"
+            v-access:code="'api:mall.admin.orders.ship'"
           >
             发货
           </Button>
           <Button
             v-if="canReady"
-            v-access:code="'mall:order:fulfill'"
             @click="readyOrder"
+            v-access:code="'api:mall.admin.orders.ready'"
           >
             设为待自提
           </Button>
           <Button
             v-if="canPickup"
-            v-access:code="'mall:order:fulfill'"
             @click="pickupOrder"
+            v-access:code="'api:mall.admin.orders.pickup'"
           >
             核销自提
           </Button>
           <Button
             v-if="canComplete"
-            v-access:code="'mall:order:fulfill'"
             @click="completeOrder"
+            v-access:code="'api:mall.admin.orders.complete'"
           >
             完成订单
           </Button>
           <Button
             v-if="canCancel"
-            v-access:code="'mall:order:cancel'"
             danger
             @click="cancelOrder"
+            v-access:code="'api:mall.admin.orders.cancel'"
           >
             取消订单
           </Button>
@@ -382,10 +382,10 @@ async function revealTracking(row: MallShipmentView) {
           <div class="mb-2 flex items-center gap-3">
             <span class="font-medium">收货地址</span>
             <Button
-              v-access:code="'mall:privacy:reveal'"
               :loading="revealingAddress"
               size="small"
               @click="revealAddress"
+              v-access:code="'api:mall.admin.orders.address-reveal'"
             >
               查看明文
             </Button>
@@ -412,14 +412,16 @@ async function revealTracking(row: MallShipmentView) {
           >
             <div class="flex flex-wrap items-center gap-3">
               <span>{{ shipment.carrier_name }}</span>
-              <span>{{
-                revealedTracking[String(shipment.id)] ||
-                shipment.tracking_no_mask
-              }}</span>
+              <span>
+                {{
+                  revealedTracking[String(shipment.id)] ||
+                  shipment.tracking_no_mask
+                }}
+              </span>
               <Button
-                v-access:code="'mall:privacy:reveal'"
                 size="small"
                 @click="revealTracking(shipment)"
+                v-access:code="'api:mall.admin.shipments.tracking-reveal'"
               >
                 查看物流单号
               </Button>

@@ -43,7 +43,12 @@ import { tikTokAccounts } from './tiktok-accounts';
 import TikTokOverview from './tiktok-overview.vue';
 
 const { hasAccessByCodes } = useAccess();
-const canManage = computed(() => hasAccessByCodes(['tiktok:account-manage']));
+const canSaveAccount = computed(() =>
+  hasAccessByCodes(['api:tiktok.account.save']),
+);
+const canRenameAccount = computed(() =>
+  hasAccessByCodes(['api:tiktok.account.rename']),
+);
 const accounts = ref<TikTokStoredAccount[]>([]);
 const accountsOpen = ref(false);
 const accountLabel = ref('');
@@ -107,6 +112,7 @@ async function changeAccount(uid: string) {
   });
 }
 async function disableAccount(row: TikTokStoredAccount) {
+  if (!hasAccessByCodes(['api:tiktok.account.disable'])) return;
   await act(async () => {
     await tikTokAccounts.disable(row.account.uid, row.version);
     if (account.value?.uid === row.account.uid) {
@@ -291,6 +297,12 @@ async function checkAccount() {
   });
 }
 async function cookieLogin() {
+  if (
+    updatingUid.value && !cookieText.value.trim()
+      ? !canRenameAccount.value
+      : !canSaveAccount.value
+  )
+    return;
   await act(async () => {
     if (updatingUid.value && !cookieText.value.trim()) {
       const saved = accounts.value.find(
@@ -486,14 +498,14 @@ onUnmounted(() => {
           账号管理
         </Button>
         <Button
-          v-if="canManage"
+          v-if="canSaveAccount"
           type="primary"
           :disabled="locked"
           @click="openCookie()"
         >
           添加账号
         </Button>
-        <Button :disabled="locked" @click="checkAccount"> 读取当前账号 </Button>
+        <Button :disabled="locked" @click="checkAccount">读取当前账号</Button>
         <Button :disabled="locked || !account" @click="chooseDirectory">
           选择本地视频目录
         </Button>
@@ -502,15 +514,13 @@ onUnmounted(() => {
         </Button>
       </div>
       <Alert
-        v-if="legacy && canManage"
+        v-if="legacy && canSaveAccount"
         type="info"
         message="检测到旧版本本机账号"
         description="迁移成功后将清除旧localStorage中的Cookie，账号保存到当前KX用户的后端数据库。"
       >
         <template #action>
-          <Button :disabled="locked" @click="migrateLegacy">
-            迁移旧账号
-          </Button>
+          <Button :disabled="locked" @click="migrateLegacy">迁移旧账号</Button>
         </template>
       </Alert>
       <Alert
@@ -569,7 +579,7 @@ onUnmounted(() => {
               title="移除本地清单？不会删除视频，也不会取消已提交的 TikTok 预约。"
               @confirm="remove"
             >
-              <Button danger :disabled="locked"> 移除清单 </Button>
+              <Button danger :disabled="locked">移除清单</Button>
             </Popconfirm>
           </div>
         </div>
@@ -728,7 +738,7 @@ onUnmounted(() => {
               title="清除已上传素材的引用，下次提交重新上传源文件？"
               @confirm="resetMedia(record)"
             >
-              <Button size="small" :disabled="locked"> 重新上传源文件 </Button>
+              <Button size="small" :disabled="locked">重新上传源文件</Button>
             </Popconfirm>
             <div
               v-else-if="column.key === 'actions' && record.status === 'review'"
@@ -743,13 +753,13 @@ onUnmounted(() => {
                 title="已在 TikTok 核实这条预约且视频 ID 一致？"
                 @confirm="reconcile(record, true)"
               >
-                <Button size="small" :disabled="locked"> 确认已预约 </Button>
+                <Button size="small" :disabled="locked">确认已预约</Button>
               </Popconfirm>
               <Popconfirm
                 title="确认 TikTok 中没有创建此次预约？重试可能造成重复发布，请先核实。"
                 @confirm="reconcile(record, false)"
               >
-                <Button size="small" :disabled="locked"> 确认未预约 </Button>
+                <Button size="small" :disabled="locked">确认未预约</Button>
               </Popconfirm>
             </div>
           </template>
@@ -788,27 +798,33 @@ onUnmounted(() => {
           ]"
         >
           <template #bodyCell="{ column, record }">
-            <span v-if="column.key === 'caption'">{{
-              record.schedule?.caption
-            }}</span>
-            <span v-else-if="column.key === 'time'">{{
-              record.schedule
-                ? localDateTime(record.schedule.scheduledAt).replace('T', ' ')
-                : ''
-            }}</span>
-            <span v-else-if="column.key === 'checks'">{{
-              [
-                record.schedule?.copyrightCheck ? '音乐版权' : '',
-                record.schedule?.contentCheck ? '内容检测' : '',
-              ]
-                .filter(Boolean)
-                .join('、') || '全部关闭'
-            }}</span>
-            <span v-else-if="column.key === 'visibility'">{{
-              record.schedule?.visibility === 2
-                ? '朋友'
-                : '公开（私密账号为关注者）'
-            }}</span>
+            <span v-if="column.key === 'caption'">
+              {{ record.schedule?.caption }}
+            </span>
+            <span v-else-if="column.key === 'time'">
+              {{
+                record.schedule
+                  ? localDateTime(record.schedule.scheduledAt).replace('T', ' ')
+                  : ''
+              }}
+            </span>
+            <span v-else-if="column.key === 'checks'">
+              {{
+                [
+                  record.schedule?.copyrightCheck ? '音乐版权' : '',
+                  record.schedule?.contentCheck ? '内容检测' : '',
+                ]
+                  .filter(Boolean)
+                  .join('、') || '全部关闭'
+              }}
+            </span>
+            <span v-else-if="column.key === 'visibility'">
+              {{
+                record.schedule?.visibility === 2
+                  ? '朋友'
+                  : '公开（私密账号为关注者）'
+              }}
+            </span>
           </template>
         </Table>
       </Modal>
@@ -821,9 +837,7 @@ onUnmounted(() => {
         <p class="mb-3 text-sm text-muted-foreground">
           账号由KX后端保存。切换账号同时恢复此设备上的专属视频清单；执行中请先暂停队列。
         </p>
-        <Button :disabled="locked" @click="act(loadAccounts)">
-          刷新账号
-        </Button>
+        <Button :disabled="locked" @click="act(loadAccounts)">刷新账号</Button>
         <Table
           :data-source="accounts"
           :pagination="false"
@@ -839,13 +853,15 @@ onUnmounted(() => {
               <strong>{{ record.label }}</strong>
               <p>{{ record.account.nickname }} · {{ record.account.uid }}</p>
             </div>
-            <span v-else-if="column.key === 'state'">{{
-              !record.enabled
-                ? '已停用'
-                : record.account.uid === account?.uid
-                  ? '当前账号'
-                  : '可切换'
-            }}</span>
+            <span v-else-if="column.key === 'state'">
+              {{
+                !record.enabled
+                  ? '已停用'
+                  : record.account.uid === account?.uid
+                    ? '当前账号'
+                    : '可切换'
+              }}
+            </span>
             <div v-else class="flex flex-wrap gap-2">
               <Button
                 :disabled="locked || !record.enabled"
@@ -854,18 +870,21 @@ onUnmounted(() => {
                 切换
               </Button>
               <Button
-                v-if="canManage"
+                v-if="canSaveAccount || canRenameAccount"
                 :disabled="locked"
                 @click="openCookie(record.account.uid)"
               >
                 {{ record.enabled ? '更新Cookie / 备注' : '重新登录启用' }}
               </Button>
               <Popconfirm
-                v-if="canManage && record.enabled"
+                v-if="
+                  hasAccessByCodes(['api:tiktok.account.disable']) &&
+                  record.enabled
+                "
                 title="停用此账号？会同步到其他设备，不会取消TikTok已创建的预约。"
                 @confirm="disableAccount(record)"
               >
-                <Button danger :disabled="locked"> 停用 </Button>
+                <Button danger :disabled="locked">停用</Button>
               </Popconfirm>
             </div>
           </template>

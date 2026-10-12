@@ -154,6 +154,7 @@ onMounted(load);
           :disabled="!selectedTemplateId || isCurrentDefault"
           :loading="saving"
           @click="saveDefault"
+          v-access:code="'api:asset.pay.template.default.save'"
         >
           <Check class="size-4" />
           {{ isCurrentDefault ? '当前默认' : '设为默认' }}

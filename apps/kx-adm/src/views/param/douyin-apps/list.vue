@@ -4,6 +4,7 @@ import type { DouyinAppConfig, DouyinAppWrite } from '#/api/param';
 
 import { nextTick, ref } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -12,6 +13,8 @@ import { Button, message, Modal, Space, Tag } from 'antdv-next';
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { DouyinAppApi } from '#/api/param';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const editing = ref<DouyinAppConfig>();
 const boundCredentialCodes = ref<string[]>([]);
@@ -216,12 +219,22 @@ function remove(row: DouyinAppConfig) {
     </EditModal>
     <Grid class="management-grid" table-title="抖音应用">
       <template #toolbar-tools>
-        <Button type="primary" @click="openCreate">
-          <Plus class="size-4" />新建
+        <Button
+          type="primary"
+          @click="openCreate"
+          v-access:code="'api:param.app.douyin.create'"
+        >
+          <Plus class="size-4" />
+          新建
         </Button>
       </template>
       <template #name="{ row }">
-        <Button class="px-0" type="link" @click="openEdit(row)">
+        <Button
+          class="px-0"
+          type="link"
+          @click="openEdit(row)"
+          :disabled="!hasActionAccess(['api:param.app.douyin.update'])"
+        >
           {{ row.app_name }}
         </Button>
       </template>
@@ -237,7 +250,14 @@ function remove(row: DouyinAppConfig) {
       </template>
       <template #operation="{ row }">
         <Space>
-          <Button danger type="link" @click="remove(row)">删除</Button>
+          <Button
+            danger
+            type="link"
+            @click="remove(row)"
+            v-access:code="'api:param.app.douyin.delete'"
+          >
+            删除
+          </Button>
         </Space>
       </template>
     </Grid>

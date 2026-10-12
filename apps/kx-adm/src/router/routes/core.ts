@@ -48,6 +48,12 @@ const coreRoutes: RouteRecordRaw[] = [
         alias: '/res/seas/review',
       },
       {
+        component: () => import('#/views/res/seas/review/index.vue'),
+        meta: { hideInMenu: true, title: '个人工作台' },
+        name: 'ResourceReviewWorkbench',
+        path: '/production/workbench',
+      },
+      {
         component: () => import('#/views/_core/user-overview/index.vue'),
         meta: {
           hideInMenu: true,

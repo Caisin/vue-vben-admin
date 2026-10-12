@@ -2,6 +2,7 @@
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { PayTemplate, PayTemplatePageQuery } from '#/api/asset/pay';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -14,6 +15,8 @@ import { vxeSortParams } from '#/vxe-sort';
 import { useColumns, useGridFormSchema } from './data';
 import Defaults from './modules/defaults.vue';
 import Form from './modules/form.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const payTemplateSortFields = ['id', 'code', 'created_at'];
 
@@ -83,8 +86,13 @@ async function onEnabledChange(enabled: boolean, row: PayTemplate) {
       <TabPane key="templates" tab="支付模板">
         <Grid class="management-grid" table-title="支付模板">
           <template #toolbar-tools>
-            <Button type="primary" @click="onCreate">
-              <Plus class="size-5" />新建支付模板
+            <Button
+              type="primary"
+              @click="onCreate"
+              v-access:code="'api:asset.pay.template.create'"
+            >
+              <Plus class="size-5" />
+              新建支付模板
             </Button>
           </template>
           <template #nameCell="{ row }">
@@ -93,6 +101,7 @@ async function onEnabledChange(enabled: boolean, row: PayTemplate) {
               size="small"
               type="link"
               @click.stop="onEdit(row)"
+              :disabled="!hasActionAccess(['api:asset.pay.template.update'])"
             >
               {{ row.name || '-' }}
             </Button>

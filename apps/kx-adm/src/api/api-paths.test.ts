@@ -36,6 +36,23 @@ const plaintextPathPatterns = [
   /^\/script-pipeline\/published-products\/.+\/media\/.+$/,
 ];
 
+// 动态路径必须连同调用文件精确核对：后端为这些上传、媒体和 SSE 路由显式声明明文传输。
+const plaintextFilePaths = new Map<string, string[]>([
+  [
+    'res/delivery.ts',
+    [
+      `\${base(scope, version)}/upload`,
+      `\${base(scope, version)}/assets/\${asset}/files/\${index}`,
+    ],
+  ],
+  ['res/episode-history.ts', [`\${path}/content`]],
+  ['res/review.ts', [`\${base(res, version)}/upload`]],
+  [
+    'res/seas/app_short_sync.ts',
+    [`/adm/res/app-short-sync/videos/migrate/\${taskId}/logs?after=\${after}`],
+  ],
+]);
+
 function collectApiFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const path = join(dir, entry);
@@ -87,8 +104,11 @@ describe('api 路径规范', () => {
   it('明文客户端只调用显式明文 API', () => {
     const violations = collectRequestCalls()
       .filter(
-        ({ client, path }) =>
+        ({ client, path, file }) =>
           client === 'plaintextRequestClient' &&
+          !plaintextFilePaths
+            .get(relative(apiRoot, file).replaceAll('\\', '/'))
+            ?.includes(path) &&
           !plaintextPathPatterns.some((pattern) => pattern.test(path)),
       )
       .map(({ file, path }) => `${relative(apiRoot, file)}: ${path}`);

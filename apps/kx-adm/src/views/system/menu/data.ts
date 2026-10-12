@@ -46,6 +46,12 @@ export function useColumns(
       width: 100,
     },
     {
+      field: 'apiIds',
+      title: '关联 API',
+      width: 100,
+      formatter: ({ row }) => String(row.apiIds?.length ?? 0),
+    },
+    {
       field: 'authCode',
       title: $t('system.menu.authCode'),
       width: 200,
@@ -98,11 +104,12 @@ export function useColumns(
         name: 'CellOperation',
         options: [
           {
+            auth: 'api:auth.menu.create',
             code: 'append',
             text: '新增下级',
           },
-          'edit', // 默认的编辑按钮
-          'delete', // 默认的删除按钮
+          { code: 'edit', auth: 'api:auth.menu.update', text: '编辑' },
+          { code: 'delete', auth: 'api:auth.menu.delete', text: '删除' },
         ],
       },
       field: 'operation',

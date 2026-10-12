@@ -319,7 +319,7 @@ async function showDetail(row: SoftwareApplication) {
       <Segmented v-model:value="viewMode" :options="[{label:'卡片',value:'cards'},{label:'表格',value:'table'}]" aria-label="应用展示方式" />
       <template v-if="viewMode === 'cards'">
         <Input.Search v-model:value="cardKeyword" class="max-w-80" placeholder="搜索应用" @search="cardPage = 1;loadCards()" />
-        <Button v-access:code="'software:application:edit'" type="primary" @click="edit()">
+        <Button v-access:code="'api:software.application.create'" type="primary" @click="edit()">
           <Plus class="size-4" />新增应用
         </Button>
       </template>
@@ -345,9 +345,9 @@ async function showDetail(row: SoftwareApplication) {
 <dd>{{ row.description || '-' }}</dd>
 </dl>
         <footer>
-<Button v-access:code="'software:version:refresh'" size="small" @click="refreshVersions(row)">刷新版本</Button>
+<Button v-access:code="'api:software.version.refresh'" size="small" @click="refreshVersions(row)">刷新版本</Button>
 <Button size="small" @click="showDetail(row)">版本与部署</Button>
-<Button v-access:code="'software:application:edit'" size="small" @click="edit(row)">编辑</Button>
+<Button v-access:code="'api:software.application.update'" size="small" @click="edit(row)">编辑</Button>
 </footer>
       </article>
       <Empty v-if="!cardLoading && !cardRows.length" description="暂无应用" />
@@ -358,7 +358,7 @@ async function showDetail(row: SoftwareApplication) {
     <Grid v-show="viewMode === 'table'" class="management-grid" table-title="应用管理">
       <template #toolbar-tools>
         <Button
-          v-access:code="'software:application:edit'"
+          v-access:code="'api:software.application.create'"
           type="primary"
           @click="edit()"
         >
@@ -379,7 +379,7 @@ async function showDetail(row: SoftwareApplication) {
         <VbenTableAction
           :actions="[
             {
-              auth: ['software:version:refresh'],
+              auth: ['api:software.version.refresh'],
               icon: 'lucide:refresh-cw',
               onClick: () => refreshVersions(row),
               tooltip: '刷新版本',
@@ -392,7 +392,7 @@ async function showDetail(row: SoftwareApplication) {
           ]"
           :dropdown-actions="[
             {
-              auth: ['software:application:edit'],
+              auth: ['api:software.application.update'],
               icon: 'lucide:edit',
               onClick: () => edit(row),
               text: '编辑',
@@ -466,7 +466,7 @@ async function showDetail(row: SoftwareApplication) {
               v-if="['meilisearch', 'custom'].includes(detailApplication?.provider ?? '')"
               size="small"
               type="link"
-              @click="openArtifactUpload(row)"
+              v-access:code="'api:software.version.artifact.upload'" @click="openArtifactUpload(row)"
             >
               上传制品
             </Button>

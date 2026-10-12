@@ -92,7 +92,6 @@ export function useColumns(
   onActionClick: (params: OnActionClickParams<ApiPermission>) => void,
 ): VxeTableGridColumns<ApiPermission> {
   return [
-    { type: 'checkbox', width: 46 },
     {
       field: 'api_method',
       sortable: true,
@@ -128,7 +127,7 @@ export function useColumns(
     },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: { auth: 'api:auth.api.update', beforeChange: onEnabledChange },
         name: 'CellSwitch',
         props: { checkedValue: true, unCheckedValue: false },
       },
@@ -198,14 +197,9 @@ export function useColumns(
         name: 'CellOperation',
         options: [
           {
-            auth: 'api_permissions:edit',
+            auth: 'api:auth.api.update',
             code: 'edit',
             text: '策略',
-          },
-          {
-            auth: 'api_permissions:assign',
-            code: 'assign',
-            text: '高级',
           },
         ],
       },

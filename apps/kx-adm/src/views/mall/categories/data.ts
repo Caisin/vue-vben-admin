@@ -51,10 +51,18 @@ export function useColumns(
         attrs: { nameField: 'name', onClick: onActionClick },
         name: 'CellOperation',
         options: [
-          { auth: 'mall:category:write', code: 'append', text: '新增下级' },
-          { auth: 'mall:category:write', code: 'edit', text: '编辑' },
           {
-            auth: 'mall:category:write',
+            auth: 'api:mall.admin.categories.create',
+            code: 'append',
+            text: '新增下级',
+          },
+          {
+            auth: 'api:mall.admin.categories.update',
+            code: 'edit',
+            text: '编辑',
+          },
+          {
+            auth: 'api:mall.admin.categories.delete',
             code: 'delete',
             danger: true,
             text: '删除',

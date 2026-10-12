@@ -27,7 +27,12 @@ import { RoleAssignmentApi } from '#/api/system/role-assignment';
 import { requestErrorMessage } from '#/request-errors';
 
 const { hasAccessByCodes } = useAccess();
-const canWrite = computed(() => hasAccessByCodes(['roles:distribute']));
+const canAdd = computed(() =>
+  hasAccessByCodes(['api:auth.role_assignment.members.add']),
+);
+const canRemove = computed(() =>
+  hasAccessByCodes(['api:auth.role_assignment.members.remove']),
+);
 const roles = ref<AssignmentRole[]>([]);
 const selectedRole = ref<string>();
 const currentRole = computed(() =>
@@ -60,7 +65,7 @@ const userColumns = [
   { key: 'enabled', title: '状态', width: 90 },
 ];
 const memberColumns = computed(() =>
-  canWrite.value
+  canRemove.value
     ? [...userColumns, { key: 'action', title: '操作', width: 70 }]
     : userColumns,
 );
@@ -161,7 +166,7 @@ function changeCandidates(pagination: { current?: number; pageSize?: number }) {
   void loadCandidates();
 }
 async function openAdd() {
-  if (!canWrite.value || !selectedRole.value) return;
+  if (!canAdd.value || !selectedRole.value) return;
   selectedUids.value = [];
   candidateKeyword.value = '';
   candidatePage.value = 1;
@@ -171,7 +176,7 @@ async function openAdd() {
   await loadCandidates();
 }
 async function add() {
-  if (!canWrite.value || !selectedRole.value) return;
+  if (!canAdd.value || !selectedRole.value) return;
   if (selectedUids.value.length === 0 || selectedUids.value.length > 100) {
     message.warning('请选择 1 至 100 个用户');
     return;
@@ -189,7 +194,7 @@ async function add() {
   }
 }
 async function remove(user: AssignmentUser) {
-  if (!canWrite.value || !selectedRole.value) return;
+  if (!canRemove.value || !selectedRole.value) return;
   saving.value = true;
   try {
     await RoleAssignmentApi.removeMember(selectedRole.value, user.id);
@@ -257,7 +262,7 @@ onMounted(refreshRoles);
           />
           <Button :loading="loading" @click="searchMembers">查询</Button>
           <Button
-            v-if="canWrite"
+            v-if="canAdd"
             :disabled="saving"
             type="primary"
             @click="openAdd"

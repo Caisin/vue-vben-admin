@@ -170,16 +170,16 @@ onMounted(load);
       </Button>
       <Button @click="load">刷新</Button>
       <Button
-        v-if="hasAccessByCodes(['cookie-manager:manage'])"
         type="primary"
         @click="edit()"
+        v-access:code="'api:cookie_mgr.site.create'"
       >
         新增网站账号
       </Button>
       <Button
-        v-if="hasAccessByCodes(['cookie-manager:manage'])"
         type="primary"
         @click="quickOpen = true"
+        v-access:code="'api:cookie_mgr.site.quick_dataeye'"
       >
         快速新增 DataEye
       </Button>
@@ -207,16 +207,16 @@ onMounted(load);
                 >
                   {{ site.proxy_url }}
                 </a>
-                <span v-else>{{
-                  site.proxy_enabled ? '等待服务端配置' : '未启用'
-                }}</span>
+                <span v-else>
+                  {{ site.proxy_enabled ? '等待服务端配置' : '未启用' }}
+                </span>
               </dd>
             </div>
           </template>
           <Button
-            v-if="hasAccessByCodes(['cookie-manager:manage'])"
             type="primary"
             @click="edit(site)"
+            v-access:code="'api:cookie_mgr.site.update'"
           >
             维护
           </Button>
@@ -236,12 +236,7 @@ onMounted(load);
             后台登录
           </Button>
           <Button
-            v-if="
-              hasAccessByCodes([
-                'cookie-manager:assign',
-                'cookie-manager:manage',
-              ])
-            "
+            v-if="hasAccessByCodes(['api:cookie_mgr.assignment.update'])"
             @click="
               router.push({
                 path: '/cookie-manager/assignments',
@@ -252,23 +247,25 @@ onMounted(load);
             分配用户
           </Button>
           <Button
-            v-if="hasAccessByCodes(['cookie-manager:manage'])"
             @click="rename(site)"
+            v-access:code="'api:cookie_mgr.site.rename'"
           >
             改名
           </Button>
           <Button
             v-if="
-              hasAccessByCodes(['cookie-manager:manage']) && site.cookies.length
+              hasAccessByCodes(['api:cookie_mgr.site.export']) &&
+              site.cookies.length
             "
             @click="copyCookies(site)"
+            v-access:code="'api:cookie_mgr.site.export'"
           >
             复制 Cookie
           </Button>
           <Button
-            v-if="hasAccessByCodes(['cookie-manager:manage'])"
             danger
             @click="removeSite(site)"
+            v-access:code="'api:cookie_mgr.site.disable'"
           >
             删除
           </Button>
@@ -306,10 +303,10 @@ onMounted(load);
         <template v-if="column.dataIndex === 'name'">
           <span>{{ record.name }}</span>
           <Button
-            v-if="hasAccessByCodes(['cookie-manager:manage'])"
             type="link"
             size="small"
             @click="rename(record as Site)"
+            v-access:code="'api:cookie_mgr.site.rename'"
           >
             改名
           </Button>
@@ -332,12 +329,7 @@ onMounted(load);
         </template>
         <template v-else-if="column.dataIndex === 'allowed_uids'">
           <Button
-            v-if="
-              hasAccessByCodes([
-                'cookie-manager:assign',
-                'cookie-manager:manage',
-              ])
-            "
+            v-if="hasAccessByCodes(['api:cookie_mgr.assignment.update'])"
             type="link"
             @click="
               router.push({
@@ -360,15 +352,15 @@ onMounted(load);
           >
             {{ record.proxy_url }}
           </a>
-          <span v-else>{{
-            record.proxy_enabled ? '等待服务端配置' : '未启用'
-          }}</span>
+          <span v-else>
+            {{ record.proxy_enabled ? '等待服务端配置' : '未启用' }}
+          </span>
         </template>
         <Space v-else-if="column.dataIndex === 'action'" wrap>
           <Button
-            v-if="hasAccessByCodes(['cookie-manager:manage'])"
             type="link"
             @click="edit(record as Site)"
+            v-access:code="'api:cookie_mgr.site.update'"
           >
             维护
           </Button>
@@ -389,20 +381,21 @@ onMounted(load);
             后台登录
           </Button>
           <Button
-            v-if="hasAccessByCodes(['cookie-manager:manage'])"
             danger
             type="link"
             @click="removeSite(record as Site)"
+            v-access:code="'api:cookie_mgr.site.disable'"
           >
             删除
           </Button>
           <Button
             v-if="
-              hasAccessByCodes(['cookie-manager:manage']) &&
+              hasAccessByCodes(['api:cookie_mgr.site.export']) &&
               record.cookies.length
             "
             type="link"
             @click="copyCookies(record as Site)"
+            v-access:code="'api:cookie_mgr.site.export'"
           >
             复制 Cookie
           </Button>

@@ -108,7 +108,7 @@ async function save(payload: any) {
   >
     <Grid class="management-grid" table-title="回传模板">
       <template #toolbar-tools>
-        <Button type="primary" @click="openEditor()">新增</Button>
+        <Button type="primary" @click="openEditor()" v-access:code="'api:res.admin.post_tmp.post'">新增</Button>
       </template>
       <template #percent="{ row }">{{ row.percent }}%</template>
       <template #moneyMap="{ row }">
@@ -131,7 +131,7 @@ async function save(payload: any) {
         />
       </template>
       <template #operation="{ row }">
-        <Button size="small" type="link" @click="openEditor(row)">编辑</Button>
+        <Button size="small" type="link" @click="openEditor(row)" v-access:code="'api:res.admin.post_tmp.post'">编辑</Button>
       </template>
     </Grid>
 

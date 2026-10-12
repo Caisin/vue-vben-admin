@@ -13,6 +13,7 @@ import type { FileUploadView, UploadFile, UploadFileKind } from '#/api/storage';
 
 import { computed, nextTick, ref, watch } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { useVbenModal } from '@vben/common-ui';
 import { IconifyIcon } from '@vben/icons';
 import { getPopupContainer } from '@vben/utils';
@@ -91,6 +92,35 @@ const group_code = ref('');
 const convert_url = ref('');
 
 const adapter = computed(() => props.adapter);
+const { hasAccessByCodes } = useAccess();
+function allGranted(codes: string[] | undefined) {
+  return Boolean(
+    codes?.length && codes.every((code) => hasAccessByCodes([code])),
+  );
+}
+const uploadAllowed = computed(() =>
+  adapter.value
+    ? allGranted(adapter.value.permissions?.upload)
+    : hasAccessByCodes(['api:storage.file.upload']),
+);
+const directAllowed = computed(() =>
+  adapter.value
+    ? allGranted(adapter.value.permissions?.direct)
+    : allGranted([
+        'api:storage.file.presign-upload',
+        'api:storage.file.presign-complete',
+      ]),
+);
+const convertAllowed = computed(() =>
+  adapter.value
+    ? allGranted(adapter.value.permissions?.convert)
+    : hasAccessByCodes(['api:storage.file.convert-remote']),
+);
+const groupAppendAllowed = computed(
+  () =>
+    !active_group_id.value ||
+    hasAccessByCodes(['api:storage.group.files.append']),
+);
 const useArticleAdapter = computed(() => Boolean(adapter.value));
 const upload_accept = computed(() => normalizeAccept(props.accept).join(','));
 const selected_count = computed(() => selected.value.size);
@@ -101,8 +131,8 @@ const active_storage_type = computed(
       (option) => option.value === active_storage_code.value,
     )?.storage_type,
 );
-const direct_upload_supported = computed(() =>
-  supportsDirectUpload(active_storage_type.value),
+const direct_upload_supported = computed(
+  () => supportsDirectUpload(active_storage_type.value) && directAllowed.value,
 );
 const available_upload_mode_options = computed(() =>
   direct_upload_supported.value
@@ -146,6 +176,7 @@ const [RenameModal, renameModalApi] = useVbenModal({
   class: 'w-[min(460px,calc(100vw-20px))]',
   async onConfirm() {
     const file = renaming_file.value;
+    if (!hasAccessByCodes(['api:storage.file.rename'])) return;
     const fileName = rename_value.value.trim();
     if (!file || !fileName) {
       message.warning('请输入文件名');
@@ -175,6 +206,7 @@ const [RenameModal, renameModalApi] = useVbenModal({
 const [GroupModal, groupModalApi] = useVbenModal({
   class: 'w-[min(480px,calc(100vw-20px))]',
   async onConfirm() {
+    if (!hasAccessByCodes(['api:storage.group.create'])) return;
     if (!group_name.value.trim() || !group_code.value.trim()) {
       message.warning('请输入分组名称和编码');
       return;
@@ -200,6 +232,7 @@ const [GroupModal, groupModalApi] = useVbenModal({
 const [ConvertModal, convertModalApi] = useVbenModal({
   class: 'w-[min(520px,calc(100vw-20px))]',
   async onConfirm() {
+    if (!convertAllowed.value || !groupAppendAllowed.value) return;
     const storageCode = active_storage_code.value;
     const convertRemote = adapter.value?.convertRemote;
     const url = convert_url.value.trim();
@@ -558,6 +591,8 @@ const directUpload = useDirectUpload({
 });
 
 async function uploadServerFile(file: File) {
+  if (!uploadAllowed.value || !groupAppendAllowed.value)
+    throw new Error('没有上传或分组写入权限');
   const storageCode = active_storage_code.value;
   const upload = adapter.value?.upload;
   if (!storageCode && !upload) throw new Error('请选择 storage');
@@ -611,6 +646,16 @@ async function uploadServerFiles(files: File[]) {
 }
 
 async function dropFiles(event: DragEvent) {
+  if (
+    !groupAppendAllowed.value ||
+    (active_upload_mode.value === 'direct'
+      ? !directAllowed.value
+      : !uploadAllowed.value)
+  ) {
+    drag_active.value = false;
+    message.warning('没有当前上传方式的权限');
+    return;
+  }
   drag_active.value = false;
   if (!active_storage_code.value || !event.dataTransfer) {
     message.warning('请选择 storage');
@@ -687,6 +732,7 @@ defineExpose<FilePickerExpose>({ close, open });
           class="mt-2 w-full justify-start"
           type="text"
           @click="openCreateGroup"
+          v-access:code="'api:storage.group.create'"
         >
           <template #icon>
             <IconifyIcon icon="lucide:folder-plus" />
@@ -739,7 +785,7 @@ defineExpose<FilePickerExpose>({ close, open });
             placeholder="上传方式"
           />
           <Button
-            v-if="!adapter || adapter.convertRemote"
+            v-if="convertAllowed && (!adapter || adapter.convertRemote)"
             :disabled="!active_storage_code"
             @click="openConvertUrl"
           >
@@ -749,7 +795,12 @@ defineExpose<FilePickerExpose>({ close, open });
             URL 转存
           </Button>
           <template
-            v-if="direct_upload_supported && active_upload_mode === 'direct'"
+            v-if="
+              directAllowed &&
+              groupAppendAllowed &&
+              direct_upload_supported &&
+              active_upload_mode === 'direct'
+            "
           >
             <Upload
               :accept="upload_accept || undefined"
@@ -781,7 +832,7 @@ defineExpose<FilePickerExpose>({ close, open });
             </Upload>
           </template>
           <Upload
-            v-else
+            v-else-if="uploadAllowed && groupAppendAllowed"
             :accept="upload_accept || undefined"
             :custom-request="serverUploadRequest"
             :multiple="multiple"
@@ -871,6 +922,7 @@ defineExpose<FilePickerExpose>({ close, open });
                   size="small"
                   type="text"
                   @click="openRename(row)"
+                  v-access:code="'api:storage.file.rename'"
                 >
                   <template #icon>
                     <IconifyIcon icon="lucide:pencil" />

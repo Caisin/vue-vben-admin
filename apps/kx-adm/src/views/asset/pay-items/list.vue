@@ -7,6 +7,7 @@ import type {
   PayItemWrite,
 } from '#/api/asset/pay';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -19,6 +20,8 @@ import { vxeSortParams } from '#/vxe-sort';
 import { useColumns, useGridFormSchema } from './data';
 import Form from './modules/form.vue';
 import SkuDrawer from './modules/sku-drawer.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const payItemSortFields = [
   'id',
@@ -135,8 +138,13 @@ async function onEnabledChange(enabled: boolean, row: PayItem) {
     <SkuDrawerComp />
     <Grid class="management-grid" table-title="支付商品">
       <template #toolbar-tools>
-        <Button type="primary" @click="onCreate">
-          <Plus class="size-5" />新建支付商品
+        <Button
+          type="primary"
+          @click="onCreate"
+          v-access:code="'api:asset.pay.item.create'"
+        >
+          <Plus class="size-5" />
+          新建支付商品
         </Button>
       </template>
       <template #skuCell="{ row }">
@@ -150,6 +158,7 @@ async function onEnabledChange(enabled: boolean, row: PayItem) {
           size="small"
           type="link"
           @click.stop="onEdit(row)"
+          :disabled="!hasActionAccess(['api:asset.pay.item.update'])"
         >
           {{ row.title || '-' }}
         </Button>

@@ -66,8 +66,40 @@ const Square = createIconifyIcon('lucide:square');
 const Database = createIconifyIcon('lucide:database');
 const Settings2 = createIconifyIcon('lucide:settings-2');
 const { hasAccessByCodes } = useAccess();
-const configure = computed(() => hasAccessByCodes(['data-sync:configure']));
-const execute = computed(() => hasAccessByCodes(['data-sync:execute']));
+const configure = computed(() =>
+  hasAccessByCodes([
+    'api:data_sync.job.create',
+    'api:data_sync.job.update',
+    'api:data_sync.job.inspect',
+    'api:data_sync.job.activate',
+    'api:data_sync.job.state',
+    'api:data_sync.schedule.save',
+    'api:data_sync.instance.create',
+    'api:data_sync.instance.update',
+    'api:data_sync.database.create',
+    'api:data_sync.database.update',
+    'api:data_sync.database.discover',
+    'api:data_sync.database.inspect',
+    'api:data_sync.database.activate',
+    'api:data_sync.database.confirm',
+    'api:data_sync.database.tables.update',
+    'api:data_sync.database.settings',
+    'api:data_sync.database.state',
+    'api:data_sync.database.schedule.save',
+  ]),
+);
+const execute = computed(() =>
+  hasAccessByCodes([
+    'api:data_sync.job.sync',
+    'api:data_sync.job.reconcile',
+    'api:data_sync.run.cancel',
+    'api:data_sync.database.sync',
+    'api:data_sync.database.cancel',
+    'api:data_sync.job.force_stop',
+    'api:data_sync.database.force_stop',
+    'api:data_sync.database.reconcile',
+  ]),
+);
 const jobs = ref<Job[]>([]);
 const instances = ref<Instance[]>([]);
 const loading = ref(false);
@@ -502,11 +534,8 @@ onMounted(async () => {
       <OperationsPanel
         :targets="selectedJobs.map((id) => ({ kind: 'job' as const, id }))"
         @finished="forceStopped"
-      /><Button
-        v-if="selectedJobs.length"
-        type="link"
-        @click="selectedJobs = []"
-      >
+      />
+      <Button v-if="selectedJobs.length" type="link" @click="selectedJobs = []">
         清空选择
       </Button>
     </div>
@@ -526,22 +555,17 @@ onMounted(async () => {
           <TabPane key="schema_conflict" tab="结构冲突" />
         </Tabs>
         <Tabs v-model:active-key="mode" size="small">
-          <TabPane key="all" tab="全部类型" /><TabPane
-            key="id_append"
-            tab="ID 增量"
-          /><TabPane key="id_and_time" tab="ID + 时间" /><TabPane
-            key="time_window"
-            tab="时间窗口"
-          /><TabPane key="full_table" tab="全表刷新" />
+          <TabPane key="all" tab="全部类型" />
+          <TabPane key="id_append" tab="ID 增量" />
+          <TabPane key="id_and_time" tab="ID + 时间" />
+          <TabPane key="time_window" tab="时间窗口" />
+          <TabPane key="full_table" tab="全表刷新" />
         </Tabs>
         <Tabs v-model:active-key="frequency" size="small">
-          <TabPane key="all" tab="全部频率" /><TabPane
-            key="scheduled"
-            tab="独立定时"
-          /><TabPane key="database" tab="全库调度" /><TabPane
-            key="manual"
-            tab="手动任务"
-          />
+          <TabPane key="all" tab="全部频率" />
+          <TabPane key="scheduled" tab="独立定时" />
+          <TabPane key="database" tab="全库调度" />
+          <TabPane key="manual" tab="手动任务" />
         </Tabs>
         <div class="toolbar">
           <Input.Search
@@ -559,8 +583,14 @@ onMounted(async () => {
               <RefreshCw class="size-4" />
             </Button>
           </Tooltip>
-          <Button v-if="configure" type="primary" @click="edit()">
-            <Plus class="size-4" />新增任务
+          <Button
+            v-if="configure"
+            type="primary"
+            @click="edit()"
+            v-access:code="'api:data_sync.job.create'"
+          >
+            <Plus class="size-4" />
+            新增任务
           </Button>
         </div>
         <Alert
@@ -599,8 +629,12 @@ onMounted(async () => {
               v-if="column.key === 'name'"
               :href="`/data-sync/jobs?job_id=${record.id}`"
               @click.prevent="show(record)"
-              >{{ record.name }}</a>
-            <span v-else-if="column.key === 'target'">{{ record.target_database }}.{{ record.target_table }}</span>
+            >
+              {{ record.name }}
+            </a>
+            <span v-else-if="column.key === 'target'">
+              {{ record.target_database }}.{{ record.target_table }}
+            </span>
             <div v-else-if="column.key === 'error'">
               {{
                 schemaConflictErrors[record.last_error ?? ''] ??
@@ -656,6 +690,7 @@ onMounted(async () => {
                     actionBusy
                   "
                   @click="dispatch('sync', record)"
+                  v-access:code="'api:data_sync.job.sync'"
                 >
                   <Play class="size-4" />
                 </Button>
@@ -675,6 +710,7 @@ onMounted(async () => {
                     actionBusy
                   "
                   @click="stopTable(record)"
+                  v-access:code="'api:data_sync.run.cancel'"
                 >
                   <Square class="size-4" />
                 </Button>
@@ -735,6 +771,7 @@ onMounted(async () => {
                   :disabled="!!record.active_run_id"
                   @click="edit(record)"
                   size="small"
+                  v-access:code="'api:data_sync.job.update'"
                 >
                   <Settings2 class="size-4" />
                 </Button>
@@ -748,12 +785,14 @@ onMounted(async () => {
           <Button
             v-if="configure"
             type="primary"
+            v-access:code="'api:data_sync.instance.create'"
             @click="
               editingInstance = undefined;
               instanceOpen = true;
             "
           >
-            <Plus class="size-4" />新增实例
+            <Plus class="size-4" />
+            新增实例
           </Button>
         </div>
         <Table
@@ -768,12 +807,17 @@ onMounted(async () => {
         >
           <template #bodyCell="{ column, record }">
             <a
-              v-if="column.key === 'name' && configure"
+              v-if="
+                column.key === 'name' &&
+                hasAccessByCodes(['api:data_sync.instance.update'])
+              "
               @click="
                 editingInstance = record;
                 instanceOpen = true;
               "
-              >{{ record.name }}</a>
+            >
+              {{ record.name }}
+            </a>
             <span v-else-if="column.key === 'name'">{{ record.name }}</span>
             <Tag
               v-else-if="column.key === 'enabled'"
@@ -819,6 +863,7 @@ onMounted(async () => {
             "
             :disabled="!!detail.job.active_run_id"
             @click="edit(detail.job)"
+            v-access:code="'api:data_sync.job.update'"
           >
             编辑配置
           </Button>
@@ -832,6 +877,7 @@ onMounted(async () => {
             :disabled="!!detail.job.active_run_id"
             :loading="actionBusy"
             @click="dispatch('inspect')"
+            v-access:code="'api:data_sync.job.inspect'"
           >
             检查结构
           </Button>
@@ -846,6 +892,7 @@ onMounted(async () => {
               detail.draft?.state !== 'validated' || !!detail.job.active_run_id
             "
             @click="activate"
+            v-access:code="'api:data_sync.job.activate'"
           >
             确认建表并启用
           </Button>
@@ -858,8 +905,10 @@ onMounted(async () => {
             "
             :loading="actionBusy"
             @click="dispatch('sync')"
+            v-access:code="'api:data_sync.job.sync'"
           >
-            <Play class="size-4" />启动本表同步
+            <Play class="size-4" />
+            启动本表同步
           </Button>
           <Button
             v-if="execute && syncActions(detail.job).stop"
@@ -869,8 +918,10 @@ onMounted(async () => {
               actionBusy
             "
             @click="stopTable(detail.job)"
+            v-access:code="'api:data_sync.run.cancel'"
           >
-            <Square class="size-4" />停止本表同步
+            <Square class="size-4" />
+            停止本表同步
           </Button>
           <ForceStopButton
             :hidden="!syncActions(detail.job).forceStop"
@@ -890,6 +941,7 @@ onMounted(async () => {
               !!detail.job.active_run_id || !detail.job.active_revision_id
             "
             @click="pause"
+            v-access:code="'api:data_sync.job.state'"
           >
             {{
               detail.job.schedule_paused || detail.job.state === 'paused'
@@ -931,9 +983,10 @@ onMounted(async () => {
               ]"
             >
               <template #bodyCell="{ column, record }">
-                <span v-if="column.key === 'instance'">{{
-                  instanceName(record.binding_id)
-                }}</span><Tag v-else-if="column.key === 'baseline'">
+                <span v-if="column.key === 'instance'">
+                  {{ instanceName(record.binding_id) }}
+                </span>
+                <Tag v-else-if="column.key === 'baseline'">
                   {{ record.baseline_done ? '完成' : '未完成' }}
                 </Tag>
               </template>
@@ -959,17 +1012,19 @@ onMounted(async () => {
                   @click="showRun(record)"
                 >
                   #{{ record.id }}
-</Button><span v-else-if="column.key === 'operation'">{{
-                  operations[record.operation]
-                }}</span><Tag
+                </Button>
+                <span v-else-if="column.key === 'operation'">
+                  {{ operations[record.operation] }}
+                </span>
+                <Tag
                   v-else-if="column.key === 'state'"
                   :color="color(record.state)"
                 >
                   {{ states[record.state] }}
                 </Tag>
-                <span v-else-if="column.key === 'duration'">{{
-                  formatSyncDuration(record)
-                }}</span>
+                <span v-else-if="column.key === 'duration'">
+                  {{ formatSyncDuration(record) }}
+                </span>
               </template>
             </Table>
           </TabPane>
@@ -1000,12 +1055,17 @@ onMounted(async () => {
                 ]"
               >
                 <template #bodyCell="{ column, record }">
-                  <span v-if="column.key === 'type'">{{ record.data_type.kind
-                    }}<template v-if="record.data_type.kind === 'decimal'">({{ record.data_type.precision }},{{
+                  <span v-if="column.key === 'type'">
+                    {{ record.data_type.kind }}
+                    <template v-if="record.data_type.kind === 'decimal'">
+                      ({{ record.data_type.precision }},{{
                         record.data_type.scale
-                      }})</template></span><span v-else-if="column.key === 'nullable'">{{
-                    record.nullable ? '是' : '否'
-                  }}</span>
+                      }})
+                    </template>
+                  </span>
+                  <span v-else-if="column.key === 'nullable'">
+                    {{ record.nullable ? '是' : '否' }}
+                  </span>
                 </template>
               </Table>
               <h3>目标 DDL</h3>
@@ -1015,11 +1075,16 @@ onMounted(async () => {
           </TabPane>
           <TabPane v-if="!detail.job.database_id" key="schedule" tab="定时配置">
             <div class="schedule-form">
-              <label>Cron<Input
+              <label>
+                Cron
+                <Input
                   v-model:value="schedule.cron_expr"
                   :disabled="!configure"
-              /></label>
-              <label>调度时区<Select
+                />
+              </label>
+              <label>
+                调度时区
+                <Select
                   v-model:value="schedule.timezone_offset_seconds"
                   :disabled="!configure"
                   :options="[
@@ -1028,7 +1093,8 @@ onMounted(async () => {
                     { value: 32400, label: 'UTC+09:00' },
                     { value: -18000, label: 'UTC-05:00' },
                   ]"
-              /></label>
+                />
+              </label>
               <Checkbox
                 v-model:checked="schedule.enabled"
                 :disabled="!configure"
@@ -1040,10 +1106,13 @@ onMounted(async () => {
                 type="primary"
                 :loading="scheduleBusy"
                 @click="saveSchedule"
+                v-access:code="'api:data_sync.schedule.save'"
               >
                 保存定时配置
               </Button>
-              <span v-if="scheduleId" class="text-muted-foreground">调度 #{{ scheduleId }}</span>
+              <span v-if="scheduleId" class="text-muted-foreground">
+                调度 #{{ scheduleId }}
+              </span>
             </div>
           </TabPane>
         </Tabs>
@@ -1060,9 +1129,17 @@ onMounted(async () => {
         <div class="toolbar">
           <Tag :color="color(runDetail.run.state)">
             {{ states[runDetail.run.state] }}
-</Tag><span>同步耗时：{{ formatSyncDuration(runDetail.run) }}</span><span>读取 {{ runDetail.run.read_rows }} / 写入
-            {{ runDetail.run.written_rows }}</span><Button
-            v-if="execute && runDetail.run.state === 'running'"
+          </Tag>
+          <span>同步耗时：{{ formatSyncDuration(runDetail.run) }}</span>
+          <span>
+            读取 {{ runDetail.run.read_rows }} / 写入
+            {{ runDetail.run.written_rows }}
+          </span>
+          <Button
+            v-if="
+              hasAccessByCodes(['api:data_sync.run.cancel']) &&
+              runDetail.run.state === 'running'
+            "
             danger
             :loading="actionBusy"
             @click="
@@ -1085,9 +1162,10 @@ onMounted(async () => {
           :scroll="{ x: 650 }"
         >
           <template #bodyCell="{ column, record }">
-            <span v-if="column.key === 'instance'">{{
-              instanceName(record.binding_id)
-            }}</span><Tag
+            <span v-if="column.key === 'instance'">
+              {{ instanceName(record.binding_id) }}
+            </span>
+            <Tag
               v-else-if="column.key === 'state'"
               :color="color(record.state)"
             >
@@ -1111,9 +1189,10 @@ onMounted(async () => {
           "
         >
           <template #bodyCell="{ column, record }">
-            <span v-if="column.key === 'instance'">{{
-              instanceName(record.binding_id)
-            }}</span><Tag
+            <span v-if="column.key === 'instance'">
+              {{ instanceName(record.binding_id) }}
+            </span>
+            <Tag
               v-else-if="column.key === 'state'"
               :color="color(record.state)"
             >

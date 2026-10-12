@@ -49,7 +49,10 @@ export function useColumns(
     { field: 'tier_rank', sortable: true, title: '等级', width: 90 },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: {
+          auth: 'api:asset.membership.plan.update',
+          beforeChange: onEnabledChange,
+        },
         name: onEnabledChange ? 'CellSwitch' : 'CellTag',
         props: { checkedValue: true, unCheckedValue: false },
       },

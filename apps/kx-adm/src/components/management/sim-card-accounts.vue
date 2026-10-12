@@ -206,7 +206,7 @@ watch(
 
 <template>
   <div v-access:code="'phone_accounts:view'">
-    <div v-access:code="'phone_accounts:manage'" class="account-toolbar">
+    <div v-access:code="'api:msg.account.create'" class="account-toolbar">
       <Button
         :disabled="!phoneNumber.trim()"
         type="primary"
@@ -254,13 +254,10 @@ watch(
           v-else-if="column.key === 'status'"
           :status="record.status"
         />
-        <Space
-          v-else-if="column.key === 'actions'"
-          v-access:code="'phone_accounts:manage'"
-          :size="0"
-        >
+        <Space v-else-if="column.key === 'actions'" :size="0">
           <Tooltip title="编辑账号">
             <Button
+              v-access:code="'api:msg.account.update'"
               aria-label="编辑账号"
               size="small"
               type="text"
@@ -276,7 +273,13 @@ watch(
               ok-text="删除"
               @confirm="remove(record)"
             >
-              <Button aria-label="删除账号" danger size="small" type="text">
+              <Button
+                v-access:code="'api:msg.account.delete'"
+                aria-label="删除账号"
+                danger
+                size="small"
+                type="text"
+              >
                 <template #icon><X /></template>
               </Button>
             </Popconfirm>

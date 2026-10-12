@@ -182,11 +182,19 @@ async function openOperation(nextOperation: BalanceOperation) {
     <Grid class="management-grid" table-title="账户资产余额">
       <template #toolbar-tools>
         <Space size="small">
-          <Button type="primary" @click="openOperation('grant')">
+          <Button
+            type="primary"
+            @click="openOperation('grant')"
+            v-access:code="'api:asset.balance.grant'"
+          >
             <Plus class="size-4" />
             发放
           </Button>
-          <Button danger @click="openOperation('spend')">
+          <Button
+            danger
+            @click="openOperation('spend')"
+            v-access:code="'api:asset.balance.spend'"
+          >
             <SquareMinus class="size-4" />
             扣减
           </Button>

@@ -364,7 +364,12 @@ watch(pageCode, () => gridApi.query());
         <Space>
           <Button @click="router.back()">返回</Button>
           <Tag color="blue">{{ pageCode || '未选择页面' }}</Tag>
-          <Button :disabled="!pageCode" type="primary" @click="openEditor()">
+          <Button
+            :disabled="!pageCode"
+            type="primary"
+            @click="openEditor()"
+            v-access:code="'api:res.admin.page.group.post'"
+          >
             新增模块
           </Button>
         </Space>
@@ -384,11 +389,13 @@ watch(pageCode, () => gridApi.query());
               icon: 'lucide:edit',
               onClick: () => openEditor(row),
               text: '编辑',
+              auth: 'api:res.admin.page.group.post',
             },
             {
               icon: 'lucide:package-plus',
               onClick: () => openResources(row),
               text: '资源',
+              auth: 'api:res.admin.page.item.page_code.group_code.post',
             },
           ]"
           :dropdown-actions="[
@@ -396,6 +403,7 @@ watch(pageCode, () => gridApi.query());
               icon: 'lucide:languages',
               onClick: () => openLanguage(row),
               text: '多语言',
+              auth: 'api:res.admin.page.group.post',
             },
             {
               danger: true,
@@ -405,6 +413,7 @@ watch(pageCode, () => gridApi.query());
                 title: '删除模块及其页面资源？',
               },
               text: '删除',
+              auth: 'api:res.admin.page.page_code.group_code.delete',
             },
           ]"
           align="center"
@@ -521,6 +530,7 @@ watch(pageCode, () => gridApi.query());
             :loading="resourceSaving"
             type="primary"
             @click="saveResources"
+            v-access:code="'api:res.admin.page.item.page_code.group_code.post'"
           >
             保存编排
           </Button>
@@ -536,7 +546,11 @@ watch(pageCode, () => gridApi.query());
       @ok="saveLanguages"
     >
       <div class="language-toolbar">
-        <Button :loading="languageSaving" @click="translateAll">
+        <Button
+          :loading="languageSaving"
+          @click="translateAll"
+          v-access:code="'api:res.admin.trans.text.post'"
+        >
           <template #icon><IconifyIcon icon="lucide:languages" /></template>
           一键翻译
         </Button>

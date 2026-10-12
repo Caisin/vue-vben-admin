@@ -137,7 +137,8 @@ async function save(id = uid.value, selectedRole = role.value) {
         @search="search($event)"
       >
         <template #popupRender="menu">
-          <component :is="menu" /><Button
+          <component :is="menu" />
+          <Button
             v-if="options.length < total"
             block
             :loading="searching"
@@ -154,7 +155,13 @@ async function save(id = uid.value, selectedRole = role.value) {
         "
         class="w-28"
       />
-      <Button type="primary" :disabled="!uid" :loading="busy" @click="save()">
+      <Button
+        type="primary"
+        :disabled="!uid"
+        :loading="busy"
+        @click="save()"
+        v-access:code="'api:res.review.members'"
+      >
         添加 / 更新
       </Button>
     </div>
@@ -170,14 +177,15 @@ async function save(id = uid.value, selectedRole = role.value) {
       ]"
     >
       <template #bodyCell="{ column, record }">
-        <span v-if="column.key === 'name'">{{
-          view?.users[String(record.uid)] || `用户 ${record.uid}`
-        }}</span>
+        <span v-if="column.key === 'name'">
+          {{ view?.users[String(record.uid)] || `用户 ${record.uid}` }}
+        </span>
         <span v-if="column.key === 'role'">{{ roleLabels[record.role] }}</span>
         <Popconfirm
           v-if="column.key === 'action' && view?.can_manage"
           title="移除后将立即失去此作品的协作权限，历史意见仍保留。"
           @confirm="save(record.uid, 'remove')"
+          v-access:code="'api:res.review.members'"
         >
           <Button type="link" danger :disabled="busy">移除</Button>
         </Popconfirm>

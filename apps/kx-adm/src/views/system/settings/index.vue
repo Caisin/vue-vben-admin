@@ -229,10 +229,17 @@ onMounted(loadPage);
         </div>
         <Space wrap>
           <Button :loading="loading" @click="loadSettings">
-            <template #icon><RotateCw /></template>刷新
+            <template #icon><RotateCw /></template>
+            刷新
           </Button>
-          <Button type="primary" :loading="saving" @click="saveSettings">
-            <template #icon><Settings /></template>保存
+          <Button
+            type="primary"
+            :loading="saving"
+            @click="saveSettings"
+            v-access:code="'api:param.system_settings.save'"
+          >
+            <template #icon><Settings /></template>
+            保存
           </Button>
         </Space>
       </header>
@@ -333,6 +340,7 @@ onMounted(loadPage);
                 <Button
                   :loading="initializeSearchKeyLoading"
                   @click="initializeMeilisearchMasterKey"
+                  v-access:code="'api:adm.meilisearch.master_key.initialize'"
                 >
                   <template #icon><Plus /></template>
                   初始化密钥
@@ -398,15 +406,18 @@ onMounted(loadPage);
         </div>
         <Space wrap>
           <Button :loading="mfaKeyLoading" @click="loadMfaKeyStatus">
-            <template #icon><RotateCw /></template>刷新
+            <template #icon><RotateCw /></template>
+            刷新
           </Button>
           <Popconfirm
             ok-text="生成并保存"
             title="系统只会在缺失时生成 MFA 主密钥；已存在时不会轮换，避免已启用 TOTP 的用户失效。"
+            v-access:code="'api:param.system_settings.mfa.ensure'"
             @confirm="ensureMfaKey"
           >
             <Button type="primary" :loading="mfaKeyLoading">
-              <template #icon><Settings /></template>自动生成并保存
+              <template #icon><Settings /></template>
+              自动生成并保存
             </Button>
           </Popconfirm>
         </Space>

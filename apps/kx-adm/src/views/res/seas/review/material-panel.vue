@@ -294,12 +294,8 @@ onBeforeUnmount(() => {
     :styles="{ body: { maxHeight: '82vh', overflowY: 'auto' } }"
     @cancel="!busy && emit('close')"
   >
-    <Alert
-      v-if="errorText"
-      type="error"
-      :message="errorText"
-      class="mb-3"
-    /><Alert v-if="success" type="success" :message="success" class="mb-3" />
+    <Alert v-if="errorText" type="error" :message="errorText" class="mb-3" />
+    <Alert v-if="success" type="success" :message="success" class="mb-3" />
     <Alert
       v-if="selectedSlot?.locked"
       type="info"
@@ -337,7 +333,8 @@ onBeforeUnmount(() => {
             :key="`${file.file_id}/${index}`"
             class="file-row"
           >
-            <span>{{ file.name }}</span><Button
+            <span>{{ file.name }}</span>
+            <Button
               v-if="editable"
               type="link"
               :disabled="busy"
@@ -363,12 +360,14 @@ onBeforeUnmount(() => {
             :maxlength="4000"
             :disabled="busy"
             placeholder="本次修改说明，例如：补充第3集完整工程截图"
-          /><Button
+          />
+          <Button
             class="mt-3"
             type="primary"
             :loading="busy"
             :disabled="!reason.trim() || (!files.length && !text.trim())"
             @click="save"
+            v-access:code="'api:res.delivery.assets.save'"
           >
             提交材料
           </Button>
@@ -381,7 +380,8 @@ onBeforeUnmount(() => {
             class="material-event"
           >
             <header>
-              <strong>{{ username(row.actor_uid) }}</strong><Tag
+              <strong>{{ username(row.actor_uid) }}</strong>
+              <Tag
                 :color="
                   String(row.id) === String(selectedSlot?.asset?.id)
                     ? 'green'
@@ -416,13 +416,15 @@ onBeforeUnmount(() => {
             <div class="mt-2 flex gap-2">
               <Button size="small" @click="selected = row">
                 针对这版提意见
-</Button><Button
+              </Button>
+              <Button
                 v-if="
                   editable && String(row.id) !== String(selectedSlot?.asset?.id)
                 "
                 size="small"
                 :disabled="busy"
                 @click="beginRestore(row)"
+                v-access:code="'api:res.delivery.assets.save'"
               >
                 恢复此版
               </Button>
@@ -456,20 +458,23 @@ onBeforeUnmount(() => {
             :src="previewUrl"
             :alt="previewName"
             class="material-image"
-          /><video
+          />
+          <video
             v-else-if="previewUrl && isVideo"
             :key="previewUrl"
             :src="previewUrl"
             controls
             class="material-video"
-          ></video><iframe
+          ></video>
+          <iframe
             v-else-if="previewUrl && /\.(pdf|txt|md|srt)$/i.test(previewName)"
             :src="previewUrl"
             :title="previewName"
             class="material-document"
             sandbox=""
           ></iframe>
-</Spin><Alert v-if="previewError" type="error" :message="previewError" />
+        </Spin>
+        <Alert v-if="previewError" type="error" :message="previewError" />
         <Button
           v-if="desktop && selected?.files?.length"
           class="mb-3"
@@ -488,24 +493,29 @@ onBeforeUnmount(() => {
             :maxlength="4000"
             placeholder="说明这份材料需要修改的内容"
             :disabled="busy"
-          /><Button
+          />
+          <Button
             class="mt-2"
             :disabled="busy || !note.trim()"
             @click="addNote"
+            v-access:code="'api:res.delivery.assets.note'"
           >
             提交材料修改建议
           </Button>
         </div>
         <article v-for="n in notes" :key="String(n.id)" class="material-note">
           <header>
-            <strong>{{ username(n.uid) }}</strong><Tag :color="n.state === 'resolved' ? 'green' : 'orange'">
+            <strong>{{ username(n.uid) }}</strong>
+            <Tag :color="n.state === 'resolved' ? 'green' : 'orange'">
               {{ noteLabels[n.state] }}
             </Tag>
           </header>
           <p>{{ n.body }}</p>
           <small
             v-if="n.media_link !== `delivery:asset:${selectedSlot?.asset?.id}`"
-            >针对历史材料，请核对当前修订</small>
+          >
+            针对历史材料，请核对当前修订
+          </small>
           <p v-if="n.resolution">
             {{ username(n.resolved_by) }}：{{ n.resolution }}
           </p>
@@ -542,7 +552,8 @@ onBeforeUnmount(() => {
       v-model:value="restoreReason"
       :maxlength="4000"
       placeholder="填写恢复原因"
-    /><Alert v-if="errorText" type="error" :message="errorText" />
+    />
+    <Alert v-if="errorText" type="error" :message="errorText" />
   </Modal>
   <Modal
     :open="Boolean(processing)"
@@ -560,7 +571,8 @@ onBeforeUnmount(() => {
       v-model:value="resolution"
       :maxlength="4000"
       placeholder="填写修改结果，并确认已上传对应修订材料"
-    /><Alert v-if="errorText" type="error" :message="errorText" />
+    />
+    <Alert v-if="errorText" type="error" :message="errorText" />
   </Modal>
 </template>
 <style scoped>

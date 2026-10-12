@@ -46,10 +46,6 @@ import {
 } from './data';
 import PopupModal from './modules/popup-modal.vue';
 
-interface CheckboxGrid {
-  getCheckboxRecords?: () => ApiPermission[];
-}
-
 interface TreeSelectOption {
   children?: TreeSelectOption[];
   key: boolean | number | string;
@@ -99,21 +95,16 @@ const apiPermissionSortFields = [
 
 const syncing = ref(false);
 const saving = ref(false);
-const assigning = ref(false);
-const batching = ref(false);
 const editOpen = ref(false);
-const assignOpen = ref(false);
 const editing = ref<ApiPermission>();
-const assigningApi = ref<ApiPermission>();
 const permissions = ref<PermissionNode[]>([]);
 const apiCountTotal = ref(0);
 const menuTree = ref<MenuTreeNode[]>([]);
 const menuOptions = ref<TreeSelectOption[]>([]);
-const permissionOptions = ref<TreeSelectOption[]>([]);
 const selectedMenuId = ref<number | string>('all');
 const selectedMenuNode = ref<MenuTreeNode>();
 const form = reactive({
-  access_mode: 'menu' as ApiAccessMode,
+  access_mode: 'custom' as ApiAccessMode,
   api_name: '',
   audit_debug: false,
   audit_enabled: true,
@@ -122,21 +113,12 @@ const form = reactive({
   operation_type: 'action' as ApiOperationType,
   security_enabled: true,
 });
-const assignForm = reactive({
-  permission_ids: [] as Array<number | string>,
-});
-
 const selectedMenuTitle = computed(() => {
   if (selectedMenuNode.value) return selectedMenuNode.value.title;
   const value = normalizeMenuId(selectedMenuId.value);
   if (value === 'all') return '全部 API';
   if (value === 0) return '未归属 API';
   return permissionTitle(value) ?? '当前菜单 API';
-});
-
-const assignTitle = computed(() => {
-  if (!assigningApi.value) return '高级：分配自定义权限';
-  return `自定义权限：${assigningApi.value.api_method} ${assigningApi.value.api_path}`;
 });
 
 const [Grid, gridApi] = useVbenVxeGrid<ApiPermission>({
@@ -297,7 +279,6 @@ function permissionTitle(id: number | string) {
 
 function onActionClick({ code, row }: OnActionClickParams<ApiPermission>) {
   if (code === 'edit') openEdit(row);
-  if (code === 'assign') openAssign(row);
 }
 
 function search() {
@@ -327,13 +308,6 @@ function selectMenu(value: MenuTreeSelectItem | number | string) {
   search();
 }
 
-function checkedRows() {
-  const grid = gridApi.grid as unknown as CheckboxGrid | undefined;
-  return typeof grid?.getCheckboxRecords === 'function'
-    ? grid.getCheckboxRecords()
-    : [];
-}
-
 async function syncApis() {
   syncing.value = true;
   try {
@@ -343,36 +317,6 @@ async function syncApis() {
     await gridApi.query();
   } finally {
     syncing.value = false;
-  }
-}
-
-async function batchAccessMode(access_mode: ApiAccessMode) {
-  const rows = checkedRows();
-  if (rows.length === 0) {
-    message.warning('请先勾选 API');
-    return;
-  }
-  const selectedMenu = normalizeMenuId(selectedMenuId.value);
-  const menu_perm_id =
-    access_mode === 'menu' && selectedMenu !== 'all' && selectedMenu > 0
-      ? selectedMenu
-      : undefined;
-  if (access_mode === 'menu' && !menu_perm_id) {
-    message.warning('跟随菜单时，请先在左侧选择具体菜单');
-    return;
-  }
-  batching.value = true;
-  try {
-    const count = await ApiPermissionApi.batchUpdate({
-      access_mode,
-      ids: rows.map((row) => normalizePermissionId(row.id)),
-      menu_perm_id,
-    });
-    message.success(`已更新 ${count} 条 API`);
-    await loadPermissions();
-    await gridApi.query();
-  } finally {
-    batching.value = false;
   }
 }
 
@@ -402,6 +346,7 @@ async function submitEdit() {
   try {
     await ApiPermissionApi.update(editing.value.id, {
       access_mode: form.access_mode,
+      auth_exempt: editing.value.auth_exempt,
       api_name: form.api_name,
       audit_debug: form.audit_debug,
       audit_enabled: form.audit_enabled,
@@ -416,30 +361,6 @@ async function submitEdit() {
     await gridApi.query();
   } finally {
     saving.value = false;
-  }
-}
-
-async function openAssign(row: ApiPermission) {
-  assigningApi.value = await ApiPermissionApi.detail(row.id);
-  assignForm.permission_ids = [...assigningApi.value.permission_ids];
-  assignOpen.value = true;
-}
-
-async function submitAssign() {
-  if (!assigningApi.value) return;
-  assigning.value = true;
-  try {
-    await ApiPermissionApi.assign(assigningApi.value.id, {
-      permission_ids: assignForm.permission_ids.map((id) =>
-        normalizePermissionId(id),
-      ),
-    });
-    message.success('API 自定义权限已保存');
-    assignOpen.value = false;
-    await loadPermissions();
-    await gridApi.query();
-  } finally {
-    assigning.value = false;
   }
 }
 
@@ -600,7 +521,6 @@ async function loadPermissions() {
     buildTreeSelectOptions(nonButtonPermissions),
     { key: 0, title: '未归属', value: 0 },
   );
-  permissionOptions.value = buildTreeSelectOptions(permissions.value);
 }
 
 onMounted(() => {
@@ -625,7 +545,8 @@ onMounted(() => {
           :loading="syncing"
           @click="syncApis"
         >
-          <template #icon><RotateCw /></template>同步 API
+          <template #icon><RotateCw /></template>
+          同步 API
         </Button>
       </Space>
     </header>
@@ -660,31 +581,6 @@ onMounted(() => {
 
       <section class="api-panel">
         <Grid class="management-grid" :table-title="selectedMenuTitle">
-          <template #toolbar-tools>
-            <Space>
-              <Button
-                v-access:code="'api_permissions:edit'"
-                :loading="batching"
-                @click="batchAccessMode('menu')"
-              >
-                选中跟随当前菜单
-              </Button>
-              <Button
-                v-access:code="'api_permissions:edit'"
-                :loading="batching"
-                @click="batchAccessMode('login')"
-              >
-                选中登录可访问
-              </Button>
-              <Button
-                v-access:code="'api_permissions:edit'"
-                :loading="batching"
-                @click="batchAccessMode('public')"
-              >
-                选中公开访问
-              </Button>
-            </Space>
-          </template>
           <template #method="{ row }">
             <Tag :color="methodColor(row.api_method)">{{ row.api_method }}</Tag>
           </template>
@@ -734,14 +630,7 @@ onMounted(() => {
             </Tag>
           </template>
           <template #permissionCount="{ row }">
-            <Button
-              v-access:code="'api_permissions:assign'"
-              size="small"
-              type="link"
-              @click="openAssign(row)"
-            >
-              {{ row.permission_count }} 项
-            </Button>
+            <span>{{ row.permission_count }} 项菜单功能绑定</span>
           </template>
           <template #createdAt="{ row }">
             {{ Times.formatUnix(row.created_at) }}
@@ -775,6 +664,7 @@ onMounted(() => {
           <FormItem label="访问策略">
             <Select
               v-model:value="form.access_mode"
+              disabled
               :options="accessModeOptions"
             />
           </FormItem>
@@ -816,29 +706,6 @@ onMounted(() => {
             </Checkbox>
           </FormItem>
         </div>
-      </Form>
-    </PopupModal>
-
-    <PopupModal
-      v-model:open="assignOpen"
-      :confirm-loading="assigning"
-      :title="assignTitle"
-      width="min(760px, calc(100vw - 24px))"
-      @ok="submitAssign"
-    >
-      <Form layout="vertical">
-        <FormItem label="关联菜单/按钮权限">
-          <TreeSelect
-            v-model:value="assignForm.permission_ids"
-            allow-clear
-            class="w-full"
-            :dropdown-style="{ maxHeight: '420px', overflow: 'auto' }"
-            :tree-data="permissionOptions"
-            tree-checkable
-            tree-default-expand-all
-            placeholder="仅自定义权限模式使用：拥有任一关联权限即可访问"
-          />
-        </FormItem>
       </Form>
     </PopupModal>
   </Page>

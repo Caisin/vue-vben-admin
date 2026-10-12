@@ -4,6 +4,7 @@ import type { KeyI18nRow } from './data';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { KeyI18nPageQuery } from '#/api/param/i18n';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -15,6 +16,8 @@ import { vxeSortParams } from '#/vxe-sort';
 
 import { useColumns, useGridFormSchema } from './data';
 import Form from './modules/form.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const keyI18nSortFields = ['key', 'lang'];
 
@@ -82,8 +85,13 @@ function onEdit(row: KeyI18nRow) {
     <FormDrawer @success="onRefresh" />
     <Grid class="management-grid" table-title="按键翻译">
       <template #toolbar-tools>
-        <Button type="primary" @click="onCreate">
-          <Plus class="size-5" />新增翻译
+        <Button
+          type="primary"
+          @click="onCreate"
+          v-access:code="'api:param.key_i18n.save'"
+        >
+          <Plus class="size-5" />
+          新增翻译
         </Button>
       </template>
       <template #keyCell="{ row }">
@@ -92,6 +100,7 @@ function onEdit(row: KeyI18nRow) {
           size="small"
           type="link"
           @click.stop="onEdit(row)"
+          :disabled="!hasActionAccess(['api:param.key_i18n.save'])"
         >
           {{ row.key || '-' }}
         </Button>

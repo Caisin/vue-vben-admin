@@ -82,8 +82,14 @@ async function detect() {
         class="min-w-40 flex-1"
         placeholder="自定义程序绝对路径（可选）"
       />
-      <Button :disabled="!serverId" :loading="loading" @click="detect">
-        <Scan class="size-4" />检测已有安装
+      <Button
+        :disabled="!serverId"
+        :loading="loading"
+        @click="detect"
+        v-access:code="'api:software.installation.detect'"
+      >
+        <Scan class="size-4" />
+        检测已有安装
       </Button>
     </div>
     <Alert

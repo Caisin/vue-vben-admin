@@ -164,8 +164,13 @@ function showDetail(row: DataSourceView) {
   >
     <Grid class="management-grid" table-title="数据源管理">
       <template #toolbar-tools>
-        <Button type="primary" @click="edit()">
-          <Plus class="size-5" />新增数据源
+        <Button
+          type="primary"
+          @click="edit()"
+          v-access:code="'api:adm.data_source.create'"
+        >
+          <Plus class="size-5" />
+          新增数据源
         </Button>
       </template>
       <template #db_type="{ row }">{{ row.db_type }}</template>
@@ -192,6 +197,7 @@ function showDetail(row: DataSourceView) {
               aria-label="编辑"
               :disabled="row.ds_code === 'base'"
               @click="edit(row)"
+              v-access:code="'api:adm.data_source.update'"
             >
               <Edit class="size-4" />
             </Button>
@@ -202,6 +208,7 @@ function showDetail(row: DataSourceView) {
               aria-label="测试连接"
               :disabled="probing"
               @click="probe(row)"
+              v-access:code="'api:adm.data_source.probe'"
             >
               <Plug class="size-4" />
             </Button>
@@ -213,6 +220,7 @@ function showDetail(row: DataSourceView) {
               aria-label="删除"
               :disabled="row.ds_code === 'base'"
               @click="remove(row)"
+              v-access:code="'api:adm.data_source.delete'"
             >
               <Trash class="size-4" />
             </Button>
@@ -229,7 +237,18 @@ function showDetail(row: DataSourceView) {
       <Form />
       <template #footer>
         <Button @click="open = false">取消</Button>
-        <Button :loading="saving" type="primary" @click="save"> 保存 </Button>
+        <Button
+          :loading="saving"
+          type="primary"
+          v-access:code="
+            editing
+              ? 'api:adm.data_source.update'
+              : 'api:adm.data_source.create'
+          "
+          @click="save"
+        >
+          保存
+        </Button>
       </template>
     </Drawer>
     <Drawer

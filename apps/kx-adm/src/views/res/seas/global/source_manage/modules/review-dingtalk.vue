@@ -6,6 +6,7 @@ import type {
 import type { Id } from '#/api/res/versions';
 
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 import {
   Alert,
@@ -24,6 +25,7 @@ import {
 import { reviewGroupApi as api } from '#/api/res/review-group';
 import { requestErrorMessage } from '#/request-errors';
 const props = defineProps<{ res: Id; name: string }>();
+const router = useRouter();
 const open = ref(false);
 const loading = ref(false);
 const busy = ref(false);
@@ -177,7 +179,8 @@ onBeforeUnmount(() => {
       :message="errorText"
       show-icon
       class="mb-3"
-    /><Alert v-if="success" type="success" :message="success" class="mb-3" />
+    />
+    <Alert v-if="success" type="success" :message="success" class="mb-3" />
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
         <Tag>
@@ -188,7 +191,8 @@ onBeforeUnmount(() => {
                 ? '已暂停'
                 : '尚未配置'
           }}
-</Tag><span v-if="view?.group_created">本剧协作群已创建，所有版本共用</span>
+        </Tag>
+        <span v-if="view?.group_created">本剧协作群已创建，所有版本共用</span>
       </div>
       <Button :loading="loading" :disabled="busy" @click="load(false)">
         刷新群与通知状态
@@ -208,6 +212,12 @@ onBeforeUnmount(() => {
       class="mb-3"
     />
     <section v-if="view?.can_manage">
+      <Alert
+        type="info"
+        show-icon
+        class="mb-4"
+        message="钉钉组织同步与系统部门树同步进行。同步完成后，系统部门会按钉钉的父子层级、名称和启停状态更新；负责人、协作者和角色授权读取系统部门。"
+      />
       <Alert
         type="info"
         show-icon
@@ -279,17 +289,21 @@ onBeforeUnmount(() => {
             !form.owner_uid
           "
           @click="save"
+          v-access:code="'api:res.review.dingtalk.save'"
         >
           {{ view.configured ? '保存配置' : '启用并自动建群' }}
-</Button><Button
+        </Button>
+        <Button
           v-if="view.configured"
           :disabled="
             busy || loading || !view.enabled || view.state === 'running'
           "
           @click="retry()"
+          v-access:code="'api:res.review.dingtalk.retry'"
         >
           重试建群 / 成员同步
         </Button>
+        <Button @click="router.push('/system/org-sync')">管理组织同步</Button>
         <Button
           v-if="view.configured"
           :disabled="busy || loading"
@@ -342,6 +356,7 @@ onBeforeUnmount(() => {
             v-if="record.state === 'uncertain' && view.can_manage"
             title="请先核对钉钉群记录。继续重试可能重复发送，确认群内未收到该通知？"
             @confirm="retry(record.id)"
+            v-access:code="'api:res.review.dingtalk.retry'"
           >
             <Button
               size="small"

@@ -25,6 +25,13 @@ const picker = ref<FilePickerExpose>();
 const preview = ref('');
 const previewError = ref('');
 const adapter: FilePickerAdapter = {
+  permissions: {
+    upload: ['api:official_site.asset.upload'],
+    direct: [
+      'api:official_site.asset.presign',
+      'api:official_site.asset.complete',
+    ],
+  },
   list: OfficialSiteAssetsApi.list,
   detail: OfficialSiteAssetsApi.detail,
   urls: OfficialSiteAssetsApi.urls,
@@ -80,9 +87,8 @@ function selected(files: SelectedStorageFile[]) {
   <div class="image-field">
     <span class="image-label">{{ label }}</span>
     <div class="image-preview">
-      <img v-if="preview" :src="preview" :alt="label" /><span v-else>{{
-        previewError || '请选择图片'
-      }}</span>
+      <img v-if="preview" :src="preview" :alt="label" />
+      <span v-else>{{ previewError || '请选择图片' }}</span>
     </div>
     <div v-if="!disabled" class="image-actions">
       <Button

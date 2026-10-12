@@ -112,8 +112,19 @@ function langText(lang: any) {
   >
     <Grid class="management-grid" table-title="任务配置">
       <template #toolbar-tools>
-        <Button @click="openSign">签到任务配置</Button>
-        <Button type="primary" @click="addTask">新增任务配置</Button>
+        <Button
+          @click="openSign"
+          v-access:code="'api:res.admin.sign_cfg.list.post'"
+        >
+          签到任务配置
+        </Button>
+        <Button
+          type="primary"
+          @click="addTask"
+          v-access:code="'api:res.admin.task_cfg.list.post'"
+        >
+          新增任务配置
+        </Button>
       </template>
       <template #taskType="{ row }">
         {{ taskType(row.cfg?.task_type) }}
@@ -126,7 +137,14 @@ function langText(lang: any) {
       </template>
       <template #lang="{ row }">{{ langText(row.cfg?.lang) }}</template>
       <template #operation="{ row }">
-        <Button size="small" type="link" @click="editTask(row)">编辑</Button>
+        <Button
+          size="small"
+          type="link"
+          @click="editTask(row)"
+          v-access:code="'api:res.admin.task_cfg.list.post'"
+        >
+          编辑
+        </Button>
       </template>
     </Grid>
     <TaskModal

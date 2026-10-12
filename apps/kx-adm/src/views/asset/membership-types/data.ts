@@ -42,7 +42,10 @@ export function useColumns(
     },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: {
+          auth: 'api:asset.membership.type.update',
+          beforeChange: onEnabledChange,
+        },
         name: onEnabledChange ? 'CellSwitch' : 'CellTag',
         props: { checkedValue: true, unCheckedValue: false },
       },

@@ -149,7 +149,13 @@ function formatTime(value: number) {
   >
     <Grid class="management-grid" table-title="页面管理">
       <template #toolbar-tools>
-        <Button type="primary" @click="openEditor()">新增页面</Button>
+        <Button
+          type="primary"
+          @click="openEditor()"
+          v-access:code="'api:res.admin.page.page_code.post'"
+        >
+          新增页面
+        </Button>
       </template>
       <template #pageCode="{ row }">
         <Tag color="blue">{{ row.page_code }}</Tag>
@@ -164,6 +170,7 @@ function formatTime(value: number) {
               icon: 'lucide:edit',
               onClick: () => openEditor(row),
               text: '编辑',
+              auth: 'api:res.admin.page.page_code.post',
             },
             {
               icon: 'lucide:blocks',
@@ -176,6 +183,7 @@ function formatTime(value: number) {
               icon: 'lucide:refresh-cw',
               onClick: () => refresh(row),
               text: '刷新',
+              auth: 'api:res.admin.page.refresh.page_code.post',
             },
             {
               icon: 'lucide:file-json',

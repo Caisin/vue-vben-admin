@@ -20,6 +20,8 @@ import { $t } from '#/locales';
 import { Times } from '#/times';
 import { prependTreeOption } from '#/tree-select';
 
+import { homePageSelectProps } from '../home-page-options';
+
 export function useWeeklyReportRepublishSchema(
   channels: NotifyChannel[],
 ): VbenFormSchema<WeeklyReportRepublishRequest>[] {
@@ -126,26 +128,16 @@ export function useFormSchema(
       modelPropName: 'modelValue',
     },
     {
-      component: 'Select',
-      componentProps: {
-        allowClear: true,
-        class: 'w-full',
-        placeholder: '未配置时继承角色默认页或进入我的信息',
-        showSearch: true,
-        treeDefaultExpandAll: true,
-        treeNodeFilterProp: 'label',
-      },
+      component: 'TreeSelect',
+      componentProps: homePageSelectProps(
+        '未配置时继承角色默认页或进入我的信息',
+      ),
       dependencies: {
         resolve: ({ values }) => ({
-          componentProps: {
-            allowClear: true,
-            class: 'w-full',
-            placeholder: '未配置时继承角色默认页或进入我的信息',
-            showSearch: true,
-            treeData: resolveHomeOptions(values),
-            treeDefaultExpandAll: true,
-            treeNodeFilterProp: 'label',
-          },
+          componentProps: homePageSelectProps(
+            '未配置时继承角色默认页或进入我的信息',
+            resolveHomeOptions(values),
+          ),
         }),
         triggerFields: ['permissions', 'roles'],
       },

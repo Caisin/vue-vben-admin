@@ -103,6 +103,7 @@ onMounted(async () => {
         :loading="busy"
         :disabled="!selected"
         @click="grant"
+        v-access:code="'api:auth.org_sync.company.grant'"
       >
         授予全公司数据权限
       </Button>
@@ -122,6 +123,7 @@ onMounted(async () => {
           danger
           :disabled="busy"
           @click="revoke(record.uid)"
+          v-access:code="'api:auth.org_sync.company.revoke'"
         >
           撤销
         </Button>

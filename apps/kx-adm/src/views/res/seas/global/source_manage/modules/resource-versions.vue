@@ -9,7 +9,6 @@ import type {
 } from '#/api/res/versions';
 
 import { computed, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 
@@ -42,7 +41,6 @@ import NovelImport from './novel-import.vue';
 import NovelReader from './novel-reader.vue';
 import VersionPreview from './version-preview.vue';
 const props = defineProps<{ resource?: ResRecord }>();
-const router = useRouter();
 const { hasAccessByCodes } = useAccess();
 const access = computed(() => resourceCapabilities(hasAccessByCodes));
 const open = defineModel<boolean>('open', { required: true });
@@ -153,7 +151,7 @@ watch(
   },
 );
 function readDetail(res: Id, id: Id) {
-  return access.value.upload ? api.detail(res, id) : api.manifest(res, id);
+  return access.value.readContent ? api.detail(res, id) : api.manifest(res, id);
 }
 async function refresh(preferred?: Id) {
   const res = props.resource;
@@ -360,9 +358,9 @@ async function removeVersion() {
     <Alert v-if="errorText" :message="errorText" type="error" class="mb-3" />
     <header class="resource-overview">
       <div>
-        <span class="resource-kicker">{{
-          drama ? '短剧素材' : novel ? '小说内容' : '剧本内容'
-        }}</span>
+        <span class="resource-kicker">
+          {{ drama ? '短剧素材' : novel ? '小说内容' : '剧本内容' }}
+        </span>
         <h2>{{ resource?.res_name }}</h2>
         <p>按版本管理内容与差异，预览当前版本的完整作品。</p>
       </div>
@@ -375,37 +373,22 @@ async function removeVersion() {
           <strong>{{ detail?.items.length ?? 0 }}</strong>
           <span>{{ drama ? '当前分集' : '当前章节' }}</span>
         </div>
-        <div v-if="access.upload && !drama">
+        <div v-if="access.readContent && !drama">
           <strong>{{ textCount.toLocaleString() }}</strong>
           <span>正文字符</span>
         </div>
       </div>
     </header>
     <div class="workspace-actions">
-      <Button
-        v-if="drama && access.manage && resource"
-        type="primary"
-        @click="
-          router.push({
-            path: '/resource-review',
-            query: {
-              res: String(resource.id),
-              version: detail ? String(detail.version.id) : undefined,
-            },
-          })
-        "
-      >
-        作品审核
-      </Button>
       <NovelImport
-        v-if="access.upload && textResource && resource"
+        v-if="access.importNovel && textResource && resource"
         :key="String(resource.id)"
         :res="resource.id"
         :resource-type="String(resource.res_type)"
         @complete="refresh($event)"
       />
       <Button
-        v-if="access.upload"
+        v-if="access.createVersion"
         :type="novel ? 'default' : 'primary'"
         :disabled="loading || busy"
         @click="editVersion()"
@@ -445,7 +428,8 @@ async function removeVersion() {
       <div class="version-layout">
         <aside class="version-sidebar">
           <div class="sidebar-heading">
-            <strong>全部版本</strong><span>{{ versions.length }}</span>
+            <strong>全部版本</strong>
+            <span>{{ versions.length }}</span>
           </div>
           <Input
             v-model:value="versionSearch"
@@ -466,17 +450,19 @@ async function removeVersion() {
               <div class="version-option-title">
                 <span class="version-mark">{{ index + 1 }}</span>
                 <strong>{{ v.name }}</strong>
-                <span v-if="drama" class="text-xs text-muted-foreground">{{
-                  {
-                    draft: '制作中',
-                    reviewing: '已交片 · 审片修改',
-                    final: '定版成片',
-                    published: '已上架',
-                  }[v.review_state]
-                }}</span>
-                <span v-if="v.lang" class="text-xs text-muted-foreground">{{
-                  v.lang
-                }}</span>
+                <span v-if="drama" class="text-xs text-muted-foreground">
+                  {{
+                    {
+                      draft: '制作中',
+                      reviewing: '已交片 · 审片修改',
+                      final: '定版成片',
+                      published: '已上架',
+                    }[v.review_state]
+                  }}
+                </span>
+                <span v-if="v.lang" class="text-xs text-muted-foreground">
+                  {{ v.lang }}
+                </span>
               </div>
               <p>{{ v.remark || '暂无差异备注' }}</p>
               <time>{{ date(v.updated_at) }} 更新</time>
@@ -494,8 +480,8 @@ async function removeVersion() {
             <div>
               <span class="resource-kicker">当前版本</span>
               <h3>
-                {{ detail.version.name
-                }}<small
+                {{ detail.version.name }}
+                <small
                   v-if="detail.version.lang"
                   class="ml-2 text-sm text-muted-foreground"
                 >
@@ -509,7 +495,7 @@ async function removeVersion() {
             </div>
             <div class="flex flex-wrap gap-2">
               <Button
-                v-if="access.upload"
+                v-if="access.updateVersion"
                 :disabled="
                   busy ||
                   loading ||
@@ -521,13 +507,13 @@ async function removeVersion() {
               </Button>
               <Popconfirm
                 v-if="
-                  access.manage &&
+                  access.deleteVersion &&
                   ['draft', 'reviewing'].includes(detail.version.review_state)
                 "
                 :title="`删除版本「${detail.version.name}」及其 ${detail.items.length} 个章节？`"
                 @confirm="removeVersion"
               >
-                <Button danger :disabled="busy || loading"> 删除版本 </Button>
+                <Button danger :disabled="busy || loading">删除版本</Button>
               </Popconfirm>
             </div>
           </header>
@@ -557,7 +543,7 @@ async function removeVersion() {
           <div class="content-actions">
             <DirectoryUpload
               v-if="
-                access.upload &&
+                access.importVideo &&
                 drama &&
                 resource &&
                 ['draft', 'reviewing'].includes(detail.version.review_state)
@@ -568,20 +554,20 @@ async function removeVersion() {
               @complete="refresh()"
             />
             <VersionPreview
-              v-if="access.upload && drama && resource"
+              v-if="access.readContent && drama && resource"
               :detail="detail"
               :resource-name="resource.res_name || '资源'"
               @refresh="refresh()"
             />
             <NovelReader
-              v-if="access.upload && !drama && resource"
+              v-if="access.readContent && !drama && resource"
               ref="reader"
               :detail="detail"
               :resource-name="resource.res_name || '资源'"
             />
             <Button
               v-if="
-                access.upload &&
+                access.createItem &&
                 ['draft', 'reviewing'].includes(detail.version.review_state)
               "
               :disabled="busy || loading"
@@ -607,11 +593,11 @@ async function removeVersion() {
             :columns="[
               { title: '序号', dataIndex: 'seq_no', width: 70 },
               { title: '章节标题', key: 'title' },
-              ...(access.upload && !drama
+              ...(access.readContent && !drama
                 ? [{ title: '字符数', key: 'characters', width: 90 }]
                 : []),
               { title: '章节备注', dataIndex: 'remark' },
-              ...(access.upload
+              ...(access.updateItem || access.deleteItem
                 ? [{ title: '操作', key: 'actions', width: drama ? 170 : 260 }]
                 : []),
             ]"
@@ -619,7 +605,7 @@ async function removeVersion() {
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'title'">
                 <Button
-                  v-if="access.upload && !drama"
+                  v-if="access.readContent && !drama"
                   type="link"
                   class="chapter-title"
                   @click="reader?.show(record.id)"
@@ -628,15 +614,15 @@ async function removeVersion() {
                 </Button>
                 <span v-else>{{ record.title }}</span>
               </template>
-              <span v-else-if="column.key === 'characters'">{{
-                record.content.length.toLocaleString()
-              }}</span>
+              <span v-else-if="column.key === 'characters'">
+                {{ record.content.length.toLocaleString() }}
+              </span>
               <div
                 v-else-if="column.key === 'actions'"
                 class="flex flex-wrap gap-1"
               >
                 <Button
-                  v-if="access.upload && !drama"
+                  v-if="access.readContent && !drama"
                   type="link"
                   @click="reader?.show(record.id)"
                 >
@@ -644,7 +630,7 @@ async function removeVersion() {
                 </Button>
                 <Button
                   v-if="
-                    access.upload &&
+                    access.updateItem &&
                     ['draft', 'reviewing'].includes(detail.version.review_state)
                   "
                   type="link"
@@ -655,7 +641,7 @@ async function removeVersion() {
                 </Button>
                 <Popconfirm
                   v-if="
-                    access.manage &&
+                    access.deleteItem &&
                     ['draft', 'reviewing'].includes(detail.version.review_state)
                   "
                   :title="`删除章节「${record.title}」？`"

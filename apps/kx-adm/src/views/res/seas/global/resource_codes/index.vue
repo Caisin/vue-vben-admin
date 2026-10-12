@@ -71,7 +71,11 @@ async function saved() {
   >
     <Grid class="management-grid" table-title="作品编号管理">
       <template #toolbar-tools>
-        <Button type="primary" @click="openCreate">
+        <Button
+          type="primary"
+          @click="openCreate"
+          v-access:code="'api:res.admin.res.codes.create'"
+        >
           <Plus class="size-5" />
           新增作品编号
         </Button>
@@ -86,7 +90,12 @@ async function saved() {
       <template #operation="{ row }">
         <VbenTableAction
           :actions="[
-            { icon: 'lucide:edit', text: '修改', onClick: () => openEdit(row) },
+            {
+              icon: 'lucide:edit',
+              text: '修改',
+              auth: 'api:res.admin.res.codes.update',
+              onClick: () => openEdit(row),
+            },
           ]"
           align="center"
         />

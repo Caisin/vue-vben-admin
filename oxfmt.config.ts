@@ -4,10 +4,8 @@ export default defineConfig({
   overrides: [
     ...(oxfmtConfig.overrides ?? []),
     {
-      files: [
-        'apps/kx-adm/src/views/vestige/**/*.vue',
-        'apps/kx-adm/src/views/system/role-assignment/*.vue',
-      ],
+      // 管理端模板交给同一换行规则，避免与 Vue ESLint 的闭合标签规则反复改写。
+      files: ['apps/kx-adm/src/**/*.vue'],
       options: { htmlWhitespaceSensitivity: 'ignore' },
     },
   ],

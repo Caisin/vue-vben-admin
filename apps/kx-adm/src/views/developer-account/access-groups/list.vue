@@ -37,8 +37,20 @@ import { useColumns, useFormSchema } from './data';
 
 const groupModalOpen = ref(false);
 const { hasAccessByCodes } = useAccess();
-const canManageAccess = computed(() =>
-  hasAccessByCodes(['developer_account_access:manage']),
+const canCreate = computed(() =>
+  hasAccessByCodes(['api:developer_account.access.group.create']),
+);
+const canUpdate = computed(() =>
+  hasAccessByCodes(['api:developer_account.access.group.update']),
+);
+const canDelete = computed(() =>
+  hasAccessByCodes(['api:developer_account.access.group.delete']),
+);
+const canAccounts = computed(() =>
+  hasAccessByCodes(['api:developer_account.access.group.accounts.replace']),
+);
+const canUsers = computed(() =>
+  hasAccessByCodes(['api:developer_account.access.group.users.replace']),
 );
 const relationDrawerOpen = ref(false);
 const saving = ref(false);
@@ -162,6 +174,8 @@ async function openRelations(
 }
 
 async function saveRelations() {
+  if (!(relationMode.value === 'accounts' ? canAccounts.value : canUsers.value))
+    return;
   if (!selectedGroup.value) return;
   saving.value = true;
   try {
@@ -233,7 +247,7 @@ async function loadUserOptions() {
 
     <Grid class="management-grid" table-title="账户权限分组">
       <template #toolbar-tools>
-        <Button v-if="canManageAccess" type="primary" @click="openCreate">
+        <Button v-if="canCreate" type="primary" @click="openCreate">
           <template #icon>
             <Plus />
           </template>
@@ -242,7 +256,7 @@ async function loadUserOptions() {
       </template>
       <template #groupName="{ row }">
         <button
-          v-if="canManageAccess"
+          v-if="canUpdate"
           class="cell-action"
           type="button"
           @click="openEdit(row)"
@@ -276,7 +290,7 @@ async function loadUserOptions() {
       </template>
       <template #remove="{ row }">
         <Popconfirm
-          v-if="canManageAccess"
+          v-if="canDelete"
           :title="`确认删除账户权限分组 ${row.grp_name}？`"
           cancel-text="取消"
           ok-text="删除"
@@ -338,7 +352,7 @@ async function loadUserOptions() {
       <Select
         v-if="relationMode === 'accounts'"
         v-model:value="selectedAccountIds"
-        :disabled="!canManageAccess"
+        :disabled="!canAccounts"
         class="w-full"
         mode="multiple"
         :options="accountOptions"
@@ -348,7 +362,7 @@ async function loadUserOptions() {
       <Select
         v-else
         v-model:value="selectedUids"
-        :disabled="!canManageAccess"
+        :disabled="!canUsers"
         class="w-full"
         mode="multiple"
         :options="userOptions"
@@ -368,7 +382,7 @@ async function loadUserOptions() {
         <div class="flex justify-end gap-2">
           <Button @click="relationDrawerOpen = false">取消</Button>
           <Button
-            v-if="canManageAccess"
+            v-if="relationMode === 'accounts' ? canAccounts : canUsers"
             :loading="saving"
             type="primary"
             @click="saveRelations"

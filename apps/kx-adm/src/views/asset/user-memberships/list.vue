@@ -256,11 +256,19 @@ async function openRevoke() {
     <Grid class="management-grid" table-title="账户会员状态">
       <template #toolbar-tools>
         <Space size="small">
-          <Button type="primary" @click="openGrant">
+          <Button
+            type="primary"
+            @click="openGrant"
+            v-access:code="'api:asset.membership.account.grant'"
+          >
             <Plus class="size-4" />
             发放
           </Button>
-          <Button danger @click="openRevoke">
+          <Button
+            danger
+            @click="openRevoke"
+            v-access:code="'api:asset.membership.account.revoke'"
+          >
             <CircleX class="size-4" />
             撤销
           </Button>

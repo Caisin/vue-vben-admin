@@ -4,6 +4,7 @@ import type { WechatAppConfig, WechatAppCreate, WechatAppUpdate } from '#/api';
 
 import { nextTick, ref } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -14,6 +15,8 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { WechatAppApi } from '#/api';
 
 import ContentModal from '../login-apps/modules/modal.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const editing = ref<WechatAppConfig>();
 const [Form, formApi] = useVbenForm({
@@ -198,26 +201,49 @@ function remove(row: WechatAppConfig) {
         class="mb-3"
         message="AppID、AppSecret、回调 Token 和消息 AES Key 由一份凭证统一保存；已绑定凭证不会出现在新增候选中。"
         show-icon
-      /><Form class="mx-1" />
-</EditModal><Grid class="management-grid" table-title="微信小程序">
+      />
+      <Form class="mx-1" />
+    </EditModal>
+    <Grid class="management-grid" table-title="微信小程序">
       <template #toolbar-tools>
-        <Button type="primary" @click="openCreate">
-          <Plus class="size-4" />新建
+        <Button
+          type="primary"
+          @click="openCreate"
+          v-access:code="'api:auth.login_app.wechat.create'"
+        >
+          <Plus class="size-4" />
+          新建
         </Button>
-</template><template #name="{ row }">
-        <Button class="px-0" type="link" @click="openEdit(row)">
+      </template>
+      <template #name="{ row }">
+        <Button
+          class="px-0"
+          type="link"
+          @click="openEdit(row)"
+          :disabled="!hasActionAccess(['api:auth.login_app.wechat.update'])"
+        >
           {{ row.app_name }}
         </Button>
-</template><template #credential="{ row }">
+      </template>
+      <template #credential="{ row }">
         <Tag :color="row.credentials_configured ? 'success' : 'error'">
           {{ row.credentials_configured ? '已配置' : '缺失' }}
         </Tag>
-</template><template #status="{ row }">
+      </template>
+      <template #status="{ row }">
         <Tag :color="row.enabled ? 'success' : 'default'">
           {{ row.enabled ? '启用' : '停用' }}
         </Tag>
-</template><template #operation="{ row }">
-        <Button danger type="link" @click="remove(row)">删除</Button>
+      </template>
+      <template #operation="{ row }">
+        <Button
+          danger
+          type="link"
+          @click="remove(row)"
+          v-access:code="'api:auth.login_app.wechat.delete'"
+        >
+          删除
+        </Button>
       </template>
     </Grid>
   </Page>

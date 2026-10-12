@@ -82,8 +82,8 @@ const userSearchCodec = Times.createDateRangeCodec<UserSearchFormValues>()({
 });
 const { hasAccessByCodes } = useAccess();
 const [message, MessageHolder] = useMessage();
-const canEditUsers = computed(() =>
-  hasAccessByCodes(['AC_100100', 'users:delegate-roles']),
+const canCreateUsers = computed(() =>
+  hasAccessByCodes(['users:create', 'users:delegate-create']),
 );
 
 type UserSearchSubmitValues = ReturnType<typeof userSearchCodec.encode>;
@@ -984,11 +984,12 @@ watch(selectedDeptId, (value) => {
         <div class="weekly-participant-list">
           <Space wrap class="mb-2">
             <Button
-              v-if="hasAccessByCodes(['user:weekly-report-dingtalk'])"
+              v-if="hasAccessByCodes(['api:auth.weekly_report.remind_missing'])"
               :disabled="!canRemindSelectedWeeklyReport"
               :loading="weeklyReportParticipantLoading"
               type="primary"
               @click="remindWeeklyReportMissing"
+              v-access:code="'api:auth.weekly_report.remind_missing'"
             >
               {{
                 selectedWeeklyReportPublish?.reminder_round
@@ -1016,6 +1017,7 @@ watch(selectedDeptId, (value) => {
             <Button
               :disabled="!selectedWeeklyReportPublishId"
               @click="republishWeeklyReport"
+              v-access:code="'api:auth.weekly_report.republish'"
             >
               <template #icon><RotateCw /></template>
               重新推送周报
@@ -1035,14 +1037,16 @@ watch(selectedDeptId, (value) => {
               class="weekly-participant-item"
             >
               <span>{{ index + 1 }}. {{ participant.display_name }}</span>
-              <span>{{
-                participant.status === 'mapping_invalid'
-                  ? '人员映射异常'
-                  : '未填写'
-              }}</span>
-              <span>{{
-                Times.formatOptionalUnix(participant.last_checked_at)
-              }}</span>
+              <span>
+                {{
+                  participant.status === 'mapping_invalid'
+                    ? '人员映射异常'
+                    : '未填写'
+                }}
+              </span>
+              <span>
+                {{ Times.formatOptionalUnix(participant.last_checked_at) }}
+              </span>
               <span>提醒 {{ participant.reminder_count }} 次</span>
             </div>
             <div
@@ -1109,19 +1113,19 @@ watch(selectedDeptId, (value) => {
                 导出周报模板
               </Button>
               <Button
-                v-access:code="'user:weekly-report-dingtalk'"
                 :disabled="!selectedDeptId || Number(selectedDeptId) <= 0"
                 @click="openWeeklyReportDingTalk"
+                v-access:code="'api:auth.weekly_report.dingtalk'"
               >
                 发布到钉钉
               </Button>
               <Button
-                v-access:code="'user:weekly-report-dingtalk'"
+                v-access:code="'api:auth.weekly_report.publish.page'"
                 @click="openWeeklyReportPublishes"
               >
                 周报发布记录
               </Button>
-              <Button v-if="canEditUsers" type="primary" @click="onCreate">
+              <Button v-if="canCreateUsers" type="primary" @click="onCreate">
                 <Plus class="size-5" />
                 {{ $t('ui.actionTitle.create', [$t('system.user.name')]) }}
               </Button>
@@ -1142,7 +1146,7 @@ watch(selectedDeptId, (value) => {
                   text: $t('common.edit'),
                   icon: 'lucide:edit',
                   onClick: () => onEdit(row),
-                  auth: ['AC_100100', 'users:delegate-roles'],
+                  auth: ['users:update', 'users:delegate-update'],
                 },
               ]"
               :dropdown-actions="[
@@ -1157,7 +1161,7 @@ watch(selectedDeptId, (value) => {
                   text: '重置登录密码',
                   icon: 'lucide:key-round',
                   onClick: () => onResetPassword(row),
-                  auth: ['AC_100100'],
+                  auth: ['users:reset-password'],
                 },
                 {
                   text: $t('common.delete'),
@@ -1167,7 +1171,7 @@ watch(selectedDeptId, (value) => {
                     title: $t('ui.actionMessage.deleteConfirm', [row.name]),
                     confirm: () => onDelete(row),
                   },
-                  auth: ['AC_100100'],
+                  auth: ['users:delete'],
                 },
               ]"
               align="center"

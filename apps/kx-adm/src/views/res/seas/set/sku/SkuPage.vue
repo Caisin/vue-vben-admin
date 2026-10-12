@@ -116,6 +116,7 @@ async function remove(record: any) {
     <Grid class="management-grid" :table-title="title">
       <template #toolbar-tools>
         <Button
+          v-access:code="'api:asset.pay.sku.create'"
           type="primary"
           @click="
             openModal('base', {
@@ -152,23 +153,30 @@ async function remove(record: any) {
               icon: 'lucide:edit',
               onClick: () => openModal('base', row),
               text: '编辑',
+              auth: 'api:asset.pay.sku.update',
             },
             {
               icon: 'lucide:coins',
               onClick: () => openModal('normal', row),
               ifShow: productInfo(row).item_type !== 'vip',
               text: '普通模板',
+              auth: 'api:asset.pay.sku.update',
             },
             {
               icon: 'lucide:crown',
               onClick: () => openModal('vip', row),
               ifShow: productInfo(row).item_type === 'vip',
               text: 'VIP 模板',
+              auth: 'api:asset.pay.sku.update',
             },
           ]"
           align="center"
         />
-        <Popconfirm title="确定删除该 SKU？" @confirm="remove(row)">
+        <Popconfirm
+          v-access:code="'api:asset.pay.sku.delete'"
+          title="确定删除该 SKU？"
+          @confirm="remove(row)"
+        >
           <Button danger size="small" type="link">删除</Button>
         </Popconfirm>
       </template>

@@ -19,6 +19,7 @@ import type {
 
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { useVbenModal } from '@vben/common-ui';
 
 import Checklist from '@editorjs/checklist';
@@ -64,6 +65,9 @@ interface ModalPayload {
 }
 
 const emit = defineEmits<{ success: [] }>();
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
+
 const holder = ref<HTMLElement>();
 const previewRef = ref<InstanceType<typeof PreviewModal>>();
 const pickerRef = ref<FilePickerExpose>();
@@ -139,6 +143,10 @@ const articleAssetAdapter = computed<FilePickerAdapter | undefined>(() => {
   const id = articleId.value;
   if (!id) return undefined;
   return {
+    permissions: {
+      upload: ['api:article.asset.upload'],
+      convert: ['api:article.asset.remote_image'],
+    },
     list: (params?: UploadFilePageQuery) => ArticleApi.assets(id, params),
     upload: (file: File) => ArticleApi.uploadAsset(id, file),
     convertRemote: (url: string) => ArticleApi.transferRemoteImage(id, { url }),
@@ -304,6 +312,7 @@ async function buildPayload(): Promise<ArticleUpdateWrite> {
 }
 
 async function saveDraft() {
+  if (!hasActionAccess(['api:article.update'])) return;
   if (!detail.value || !editor) return;
   if (savePromise) {
     saveQueued = true;
@@ -569,10 +578,23 @@ onBeforeUnmount(() => {
           <Tag v-if="detail?.current_release_id" color="processing">
             线上版本 #{{ detail.current_release_id }}
           </Tag>
-          <Button :loading="saving" @click="saveDraft">保存草稿</Button>
+          <Button
+            :loading="saving"
+            @click="saveDraft"
+            v-access:code="'api:article.update'"
+          >
+            保存草稿
+          </Button>
           <Button @click="quickPreview">快速预览</Button>
-          <Button @click="serverPreview">主题预览</Button>
-          <Button :loading="publishing" type="primary" @click="publish">
+          <Button @click="serverPreview" v-access:code="'api:article.preview'">
+            主题预览
+          </Button>
+          <Button
+            :loading="publishing"
+            type="primary"
+            @click="publish"
+            v-access:code="'api:article.publish'"
+          >
             发布
           </Button>
           <Tag v-if="publishRelease?.state === 'failed'" color="error">
@@ -582,6 +604,7 @@ onBeforeUnmount(() => {
             v-if="detail?.state === 'published'"
             danger
             @click="unpublish"
+            v-access:code="'api:article.unpublish'"
           >
             取消发布
           </Button>

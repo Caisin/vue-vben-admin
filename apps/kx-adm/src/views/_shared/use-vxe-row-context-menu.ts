@@ -4,6 +4,8 @@ import type { CSSProperties } from 'vue';
 
 import { computed, nextTick, onUnmounted, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
+
 interface VxeRowContextGrid<T> {
   $el?: HTMLElement;
   getRowById?: (id: string) => null | T | undefined;
@@ -12,18 +14,24 @@ interface VxeRowContextGrid<T> {
 export function useVxeRowContextMenu<T>(
   items: MenuProps['items'],
   onClick: (key: string, row: T) => void,
+  permissions: Record<string, string> = {},
 ) {
+  const { hasAccessByCodes } = useAccess();
+  const allowed = (key: string) =>
+    !permissions[key] || hasAccessByCodes([permissions[key]]);
   const open = ref(false);
   const row = ref<T>();
   const anchorStyle = ref<CSSProperties>({ left: '0px', top: '0px' });
   let cleanup: (() => void) | null = null;
 
   const menu = computed<MenuProps>(() => ({
-    items,
+    items: items?.filter(
+      (item) => !item || !('key' in item) || allowed(String(item.key)),
+    ),
     onClick({ key }) {
       const current = row.value;
       open.value = false;
-      if (current) onClick(String(key), current);
+      if (current && allowed(String(key))) onClick(String(key), current);
     },
   }));
 

@@ -26,6 +26,8 @@ export interface FilePickerProps {
 }
 
 export interface FilePickerAdapter {
+  /** 适配器写接口的按钮权限；缺失的操作不开放。 */
+  permissions?: Partial<Record<'convert' | 'direct' | 'upload', string[]>>;
   convertRemote?: (url: string) => Promise<FileUploadView>;
   detail?: (id: FileId) => Promise<UploadFile>;
   list: (params?: UploadFilePageQuery) => Promise<Page<UploadFile>>;

@@ -5,6 +5,7 @@ import type { JsonValue } from '#/api/request';
 
 import { computed, reactive, ref } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -28,6 +29,8 @@ import { vxeSortParams } from '#/vxe-sort';
 
 import { useColumns, useFormSchema } from './data';
 import PopupModal from './modules/popup-modal.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const paramSortFields = ['param_code', 'enabled'];
 
@@ -196,13 +199,18 @@ async function remove(row: KxParam) {
   >
     <Grid class="management-grid" table-title="系统参数">
       <template #toolbar-tools>
-        <Button type="primary" @click="openCreate">
-          <template #icon><Plus /></template>新建参数
+        <Button
+          type="primary"
+          @click="openCreate"
+          v-access:code="'api:param.save'"
+        >
+          <template #icon><Plus /></template>
+          新建参数
         </Button>
       </template>
       <template #code="{ row }">
         <Button
-          :disabled="row.confidential"
+          :disabled="row.confidential || !hasActionAccess(['api:param.set'])"
           :aria-label="`编辑参数 ${row.param_code}`"
           class="px-0"
           type="link"
@@ -227,7 +235,7 @@ async function remove(row: KxParam) {
           <Button
             size="small"
             type="link"
-            :disabled="row.confidential"
+            :disabled="row.confidential || !hasActionAccess(['api:param.set'])"
             :aria-label="`编辑参数 ${row.param_code}`"
             @click="openEdit(row)"
           >
@@ -240,6 +248,7 @@ async function remove(row: KxParam) {
             :loading="refreshing === row.param_code"
             :aria-label="`刷新参数 ${row.param_code} 缓存`"
             @click="refreshCache(row)"
+            v-access:code="'api:param.cache.refresh'"
           >
             刷新缓存
           </Button>
@@ -248,6 +257,7 @@ async function remove(row: KxParam) {
             ok-text="删除"
             ok-type="danger"
             @confirm="remove(row)"
+            v-access:code="'api:param.delete'"
           >
             <Button
               size="small"

@@ -425,7 +425,7 @@ onMounted(loadReferenceData);
     <Grid class="management-grid" table-title="安装实例">
       <template #toolbar-tools>
         <Button
-          v-access:code="'software:installation:create'"
+          v-access:code="'api:software.installation.create'"
           type="primary"
           @click="openCreate"
         >
@@ -473,7 +473,11 @@ onMounted(loadReferenceData);
         <Space size="small">
           <Button
             v-if="row.observed_version"
-            v-access:code="'software:installation:lifecycle'"
+            v-access:code="
+              row.state === 'stopped'
+                ? 'api:software.installation.start'
+                : 'api:software.installation.stop'
+            "
             :aria-label="row.state === 'stopped' ? '启动' : '停止'"
             :title="row.state === 'stopped' ? '启动' : '停止'"
             type="text"
@@ -487,7 +491,7 @@ onMounted(loadReferenceData);
           </Button>
           <Button
             v-if="row.observed_version"
-            v-access:code="'software:installation:lifecycle'"
+            v-access:code="'api:software.installation.restart'"
             aria-label="重启"
             title="重启"
             type="text"
@@ -497,7 +501,7 @@ onMounted(loadReferenceData);
             <RestartIcon class="size-4" />
           </Button>
           <Button
-            v-access:code="'software:installation:create'"
+            v-access:code="'api:software.installation.config.update'"
             aria-label="修改配置"
             title="修改配置"
             type="text"
@@ -537,7 +541,7 @@ onMounted(loadReferenceData);
             ]"
             :dropdown-actions="[
               {
-                auth: ['software:installation:lifecycle'],
+                auth: ['api:software.installation.start'],
                 icon: 'lucide:play',
                 text: '启动',
                 onClick: () => openAction(row, 'start'),
@@ -546,7 +550,7 @@ onMounted(loadReferenceData);
                   Boolean(row.observed_version) && row.state !== 'running',
               },
               {
-                auth: ['software:installation:lifecycle'],
+                auth: ['api:software.installation.stop'],
                 icon: 'lucide:square',
                 text: '停止',
                 onClick: () => openAction(row, 'stop'),
@@ -555,7 +559,7 @@ onMounted(loadReferenceData);
                   Boolean(row.observed_version) && row.state !== 'stopped',
               },
               {
-                auth: ['software:installation:lifecycle'],
+                auth: ['api:software.installation.restart'],
                 icon: 'lucide:rotate-cw',
                 text: '重启',
                 onClick: () => openAction(row, 'restart'),
@@ -571,7 +575,7 @@ onMounted(loadReferenceData);
                 ifShow: Boolean(row.observed_version),
               },
               {
-                auth: ['software:installation:create'],
+                auth: ['api:software.installation.config.update'],
                 icon: 'lucide:settings-2',
                 onClick: () => openConfig(row),
                 text: '安装配置',
@@ -599,7 +603,7 @@ onMounted(loadReferenceData);
                   row.config_json.install_method !== 'package',
               },
               {
-                auth: ['software:installation:check'],
+                auth: ['api:software.installation.check'],
                 icon: 'lucide:scan-search',
                 onClick: () => openAction(row, 'check'),
                 text: '检查',
@@ -840,7 +844,15 @@ onMounted(loadReferenceData);
       </Form>
       <template #footer>
         <Button @click="createOpen = false">取消</Button>
-        <Button :loading="creating" @click="saveInstallation()">
+        <Button
+          :loading="creating"
+          @click="saveInstallation()"
+          v-access:code="
+            editingInstallation
+              ? 'api:software.installation.config.update'
+              : 'api:software.installation.create'
+          "
+        >
           {{ editingInstallation ? '保存配置' : '创建实例' }}
         </Button>
         <Button

@@ -25,7 +25,13 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ finished: [] }>();
 const { hasAccessByCodes } = useAccess();
-const allowed = computed(() => hasAccessByCodes(['data-sync:execute']));
+const allowed = computed(() =>
+  hasAccessByCodes([
+    props.database
+      ? 'api:data_sync.database.force_stop'
+      : 'api:data_sync.job.force_stop',
+  ]),
+);
 const open = ref(false);
 const sending = ref(false);
 const task = ref<TaskRun>();

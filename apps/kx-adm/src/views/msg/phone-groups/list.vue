@@ -11,6 +11,7 @@ import type { SystemUser } from '#/api/system/user';
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { useAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { ExternalLink, Plus, RotateCw, X } from '@vben/icons';
 
@@ -140,10 +141,14 @@ const [FormDrawer, formDrawerApi] = useVbenDrawer({
   destroyOnClose: true,
 });
 
+const { hasAccessByCodes } = useAccess();
+
 const [Grid, gridApi] = useVbenVxeGrid<PhoneGroup>({
   formOptions: { schema: useFormSchema(), submitOnChange: true },
   gridOptions: {
-    columns: useColumns(onEnabledChange),
+    columns: useColumns(
+      hasAccessByCodes(['api:msg.group.update']) ? onEnabledChange : undefined,
+    ),
     height: 'auto',
     pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
     proxyConfig: {
@@ -444,16 +449,17 @@ async function saveNotificationChannels() {
     <Grid class="management-grid" table-title="号码权限">
       <template #toolbar-tools>
         <Button
-          v-access:code="'phone_groups:manage'"
+          v-access:code="'api:msg.group.create'"
           type="primary"
           @click="openCreate"
         >
-          <template #icon><Plus /></template>新增分组
+          <template #icon><Plus /></template>
+          新增分组
         </Button>
       </template>
       <template #groupName="{ row }">
         <Button
-          v-access:code="'phone_groups:manage'"
+          :disabled="!hasAccessByCodes(['api:msg.group.update'])"
           class="px-0"
           size="small"
           type="link"
@@ -464,7 +470,11 @@ async function saveNotificationChannels() {
       </template>
       <template #simCount="{ row }">
         <Button
-          v-access:code="'phone_groups:manage'"
+          v-access:code="[
+            'api:msg.group.sims.replace',
+            'api:msg.group.sims.add_by_query',
+            'api:msg.group.sims.add_by_phones',
+          ]"
           class="px-0"
           size="small"
           type="link"
@@ -475,7 +485,7 @@ async function saveNotificationChannels() {
       </template>
       <template #userCount="{ row }">
         <Button
-          v-access:code="'phone_groups:manage'"
+          v-access:code="'api:msg.group.users.replace'"
           class="px-0"
           size="small"
           type="link"
@@ -486,7 +496,7 @@ async function saveNotificationChannels() {
       </template>
       <template #notificationChannelCount="{ row }">
         <Button
-          v-access:code="'phone_groups:manage'"
+          v-access:code="'api:msg.group.notification_channels.replace'"
           class="px-0"
           size="small"
           type="link"
@@ -503,12 +513,13 @@ async function saveNotificationChannels() {
           @confirm="remove(row)"
         >
           <Button
-            v-access:code="'phone_groups:manage'"
+            v-access:code="'api:msg.group.delete'"
             danger
             size="small"
             type="link"
           >
-            <template #icon><X /></template>删除
+            <template #icon><X /></template>
+            删除
           </Button>
         </Popconfirm>
       </template>
@@ -532,19 +543,20 @@ async function saveNotificationChannels() {
           allow-clear
         />
         <Button
-          v-access:code="'phone_groups:manage'"
+          v-access:code="'api:msg.group.sims.add_by_phones'"
           :disabled="assignLoading"
           @click="phoneInputOpen = true"
         >
           按行输入号码
         </Button>
         <Button
-          v-access:code="'phone_groups:manage'"
+          v-access:code="'api:msg.group.sims.replace'"
           :disabled="assignLoading"
           type="primary"
           @click="openAddSims"
         >
-          <template #icon><Plus /></template>添加号码
+          <template #icon><Plus /></template>
+          添加号码
         </Button>
       </div>
       <p class="mb-3 text-sm text-muted-foreground" role="status">
@@ -572,7 +584,13 @@ async function saveNotificationChannels() {
               :title="`确认从分组移除 ${record.phone_number || record.iccid}？`"
               @confirm="removeSim(record.iccid)"
             >
-              <Button :disabled="assignLoading" danger size="small" type="link">
+              <Button
+                v-access:code="'api:msg.group.sims.replace'"
+                :disabled="assignLoading"
+                danger
+                size="small"
+                type="link"
+              >
                 移除
               </Button>
             </Popconfirm>
@@ -620,11 +638,12 @@ async function saveNotificationChannels() {
     >
       <div class="mb-3 flex justify-end">
         <Button
-          v-access:code="'phone_groups:manage'"
+          v-access:code="'api:msg.group.users.replace'"
           type="primary"
           @click="openAddUsers"
         >
-          <template #icon><Plus /></template>添加用户
+          <template #icon><Plus /></template>
+          添加用户
         </Button>
       </div>
       <Table
@@ -646,7 +665,14 @@ async function saveNotificationChannels() {
               :title="`确认移除用户 ${record.name}？`"
               @confirm="removeUser(record.id)"
             >
-              <Button danger size="small" type="link">移除</Button>
+              <Button
+                v-access:code="'api:msg.group.users.replace'"
+                danger
+                size="small"
+                type="link"
+              >
+                移除
+              </Button>
             </Popconfirm>
           </template>
         </template>
@@ -681,7 +707,7 @@ async function saveNotificationChannels() {
         <div class="flex justify-end gap-2">
           <Button @click="notificationDrawerOpen = false">取消</Button>
           <Button
-            v-access:code="'phone_groups:manage'"
+            v-access:code="'api:msg.group.notification_channels.replace'"
             :loading="assignLoading"
             :disabled="!notificationReady"
             type="primary"
@@ -710,19 +736,26 @@ async function saveNotificationChannels() {
       />
       <Space class="mt-3" wrap>
         <Button
-          v-access:code="'notify:channel:write'"
+          v-access:code="'api:notify.channel.create'"
           @click="openNotifyChannelPage(true)"
         >
-          <template #icon><Plus /></template>新增钉钉通知群
+          <template #icon><Plus /></template>
+          新增钉钉通知群
         </Button>
         <Button :loading="assignLoading" @click="refreshNotificationChannels">
-          <template #icon><RotateCw /></template>刷新
+          <template #icon><RotateCw /></template>
+          刷新
         </Button>
         <Button
-          v-access:code="'notify:channel:write'"
+          v-access:code="[
+            'api:notify.channel.create',
+            'api:notify.channel.update',
+            'api:notify.channel.delete',
+          ]"
           @click="openNotifyChannelPage()"
         >
-          <template #icon><ExternalLink /></template>维护通知通道
+          <template #icon><ExternalLink /></template>
+          维护通知通道
         </Button>
       </Space>
       <FormItem label="转发关键词（每行一个）" class="mt-5">

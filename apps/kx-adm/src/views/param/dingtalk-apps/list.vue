@@ -8,6 +8,7 @@ import type {
 
 import { computed, nextTick, ref } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Plus, Settings } from '@vben/icons';
 
@@ -20,6 +21,8 @@ import { DingtalkAppApi } from '#/api';
 import { hasDingtalkCallbackBase } from '../login-apps/modules/dingtalk-callback-base';
 import DingtalkCallbackModal from '../login-apps/modules/dingtalk-callback.vue';
 import ContentModal from '../login-apps/modules/modal.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const editing = ref<DingtalkAppConfig>();
 const callbackBase = ref('');
@@ -218,15 +221,16 @@ void loadCallback();
     content-class="management-content"
     title="钉钉应用"
   >
-    <CallbackModal /><EditModal
-      :title="editing ? '编辑钉钉应用' : '新建钉钉应用'"
-    >
+    <CallbackModal />
+    <EditModal :title="editing ? '编辑钉钉应用' : '新建钉钉应用'">
       <Alert
         class="mb-3"
         message="应用主键从凭证 AppKey 派生；已绑定凭证不会出现在新增候选中。"
         show-icon
-      /><Form class="mx-1" />
-</EditModal><Alert
+      />
+      <Form class="mx-1" />
+    </EditModal>
+    <Alert
       v-if="!callbackConfigured"
       class="mb-3"
       message="钉钉登录回调地址尚未配置"
@@ -234,35 +238,67 @@ void loadCallback();
       type="warning"
     >
       <template #action>
-        <Button @click="callbackModalApi.open()">
-          <Settings class="size-4" />配置回调
+        <Button
+          @click="callbackModalApi.open()"
+          v-access:code="'api:auth.login_app.dingtalk.callback_base.save'"
+        >
+          <Settings class="size-4" />
+          配置回调
         </Button>
       </template>
-</Alert><Grid class="management-grid" table-title="钉钉应用">
+    </Alert>
+    <Grid class="management-grid" table-title="钉钉应用">
       <template #toolbar-tools>
         <Space>
-          <Button @click="callbackModalApi.open()">
-            <Settings class="size-4" />登录回调配置
-</Button><Button type="primary" @click="openCreate">
-            <Plus class="size-4" />新建
+          <Button
+            @click="callbackModalApi.open()"
+            v-access:code="'api:auth.login_app.dingtalk.callback_base.save'"
+          >
+            <Settings class="size-4" />
+            登录回调配置
+          </Button>
+          <Button
+            type="primary"
+            @click="openCreate"
+            v-access:code="'api:auth.login_app.dingtalk.create'"
+          >
+            <Plus class="size-4" />
+            新建
           </Button>
         </Space>
-</template><template #name="{ row }">
-        <Button class="px-0" type="link" @click="openEdit(row)">
+      </template>
+      <template #name="{ row }">
+        <Button
+          class="px-0"
+          type="link"
+          @click="openEdit(row)"
+          :disabled="!hasActionAccess(['api:auth.login_app.dingtalk.update'])"
+        >
           {{ row.app_name }}
         </Button>
-</template><template #default="{ row }">
+      </template>
+      <template #default="{ row }">
         <Tag>{{ row.is_def ? '是' : '否' }}</Tag>
-</template><template #credential="{ row }">
+      </template>
+      <template #credential="{ row }">
         <Tag :color="row.credentials_configured ? 'success' : 'error'">
           {{ row.credentials_configured ? '已配置' : '缺失' }}
         </Tag>
-</template><template #status="{ row }">
+      </template>
+      <template #status="{ row }">
         <Tag :color="row.enabled ? 'success' : 'default'">
           {{ row.enabled ? '启用' : '停用' }}
         </Tag>
-</template><template #operation="{ row }">
-        <Button danger type="link" @click="remove(row)">删除</Button>
+      </template>
+      <template #operation="{ row }">
+        <Button
+          danger
+          type="link"
+          @click="remove(row)"
+          v-access:code="'api:auth.login_app.dingtalk.delete'"
+        >
+          删除
+        </Button>
       </template>
     </Grid>
   </Page>

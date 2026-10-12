@@ -152,11 +152,24 @@ const otaForm = reactive({
 const route = useRoute();
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
-const canManageDevices = computed(() => hasAccessByCodes(['devices:manage']));
+const canDeviceAction = (code: string) => hasAccessByCodes([`api:${code}`]);
+const canManageDevices = computed(() =>
+  [
+    'msg.device.refresh_info',
+    'msg.device.refresh_card_status',
+    'msg.device.refresh_mqtt_config',
+    'msg.device.refresh_forward_config',
+    'msg.device.restart',
+  ].some((code) => canDeviceAction(code)),
+);
 const { message: locateMessage } = App.useApp();
 const canLocateDevice = computed(() => hasAccessByCodes(['devices:locate']));
 const canManageSystemConfig = computed(() =>
-  hasAccessByCodes(['devices:system-config']),
+  [
+    'msg.device.refresh_system_config_all',
+    'msg.device.refresh_system_config',
+    'msg.device.update_config',
+  ].some((code) => canDeviceAction(code)),
 );
 const canRunOta = computed(() => hasAccessByCodes(['devices:ota']));
 const canViewPhoneAccounts = computed(() =>
@@ -827,35 +840,36 @@ onMounted(loadInitialDevices);
       </div>
       <Space wrap>
         <Button
-          v-if="canManageDevices"
+          v-if="canDeviceAction('msg.device.refresh_info_all')"
           :loading="actionLoading === 'devices'"
           @click="refreshAll('devices')"
         >
           刷新设备信息
         </Button>
         <Button
-          v-if="canManageDevices"
+          v-if="canDeviceAction('msg.device.refresh_card_status_all')"
           :loading="actionLoading === 'cards'"
           @click="refreshAll('cards')"
         >
           刷新号码状态
         </Button>
         <Button
-          v-if="canManageSystemConfig"
+          v-if="canDeviceAction('msg.device.refresh_system_config_all')"
           :loading="actionLoading === 'system-config'"
           @click="refreshAll('system-config')"
         >
           同步系统配置
         </Button>
         <Button
-          v-if="canManageDevices"
+          v-if="canDeviceAction('msg.device.refresh_all')"
           :loading="actionLoading === 'all'"
           type="primary"
           @click="refreshAll('all')"
         >
-          <template #icon><RotateCw /></template>完整刷新
+          <template #icon><RotateCw /></template>
+          完整刷新
         </Button>
-        <Button v-if="canRunOta" @click="openOtaBatch"> 批量版本升级 </Button>
+        <Button v-if="canRunOta" @click="openOtaBatch">批量版本升级</Button>
       </Space>
     </header>
 
@@ -903,7 +917,7 @@ onMounted(loadInitialDevices);
               <template #icon><ExternalLink /></template>
             </Button>
           </Tooltip>
-          <Tooltip v-if="canManageDevices" title="同步">
+          <Tooltip v-if="canDeviceAction('msg.device.refresh')" title="同步">
             <Button
               aria-label="同步"
               size="small"
@@ -947,14 +961,16 @@ onMounted(loadInitialDevices);
               target="_blank"
               rel="noopener noreferrer"
             >
-              <template #icon><ExternalLink /></template>设备后台
+              <template #icon><ExternalLink /></template>
+              设备后台
             </Button>
             <Button
-              v-if="canManageDevices"
+              v-if="canDeviceAction('msg.device.refresh')"
               :loading="actionLoading === `${selectedDevice.device_code}:sync`"
               @click="runDeviceAction(selectedDevice, 'sync')"
             >
-              <template #icon><RotateCw /></template>同步号码
+              <template #icon><RotateCw /></template>
+              同步号码
             </Button>
             <Button
               v-if="canLocateDevice"
@@ -964,7 +980,8 @@ onMounted(loadInitialDevices);
               "
               @click="runDeviceAction(selectedDevice, 'locate')"
             >
-              <template #icon><Pin /></template>定位设备
+              <template #icon><Pin /></template>
+              定位设备
             </Button>
             <Dropdown v-if="canManageDevices || canManageSystemConfig">
               <Button
@@ -975,24 +992,61 @@ onMounted(loadInitialDevices);
                   ) || actionLoading === `${selectedDevice.device_code}:restart`
                 "
               >
-                <template #icon><Settings /></template>设备指令
+                <template #icon><Settings /></template>
+                设备指令
               </Button>
               <template #popupRender>
                 <Menu @click="handleCommandMenu">
-                  <MenuItem key="refresh-info">设备信息</MenuItem>
-                  <MenuItem key="refresh-card-status">号码状态</MenuItem>
                   <MenuItem
-                    v-if="canManageSystemConfig"
+                    v-if="canDeviceAction('msg.device.refresh_info')"
+                    key="refresh-info"
+                  >
+                    设备信息
+                  </MenuItem>
+                  <MenuItem
+                    v-if="canDeviceAction('msg.device.refresh_card_status')"
+                    key="refresh-card-status"
+                  >
+                    号码状态
+                  </MenuItem>
+                  <MenuItem
+                    v-if="canDeviceAction('msg.device.refresh_system_config')"
                     key="refresh-system-config"
                   >
                     系统配置
                   </MenuItem>
-                  <MenuItem key="refresh-mqtt-config">MQTT 配置</MenuItem>
-                  <MenuItem key="refresh-forward-config">转发配置</MenuItem>
-                  <MenuItem key="update-system-config">修改系统配置</MenuItem>
-                  <MenuItem key="update-mqtt-config">修改 MQTT 配置</MenuItem>
+                  <MenuItem
+                    v-if="canDeviceAction('msg.device.refresh_mqtt_config')"
+                    key="refresh-mqtt-config"
+                  >
+                    MQTT 配置
+                  </MenuItem>
+                  <MenuItem
+                    v-if="canDeviceAction('msg.device.refresh_forward_config')"
+                    key="refresh-forward-config"
+                  >
+                    转发配置
+                  </MenuItem>
+                  <MenuItem
+                    v-if="canDeviceAction('msg.device.update_config')"
+                    key="update-system-config"
+                  >
+                    修改系统配置
+                  </MenuItem>
+                  <MenuItem
+                    v-if="canDeviceAction('msg.device.update_config')"
+                    key="update-mqtt-config"
+                  >
+                    修改 MQTT 配置
+                  </MenuItem>
                   <MenuItem key="open-forward-config">打开转发配置</MenuItem>
-                  <MenuItem danger key="restart">重启系统</MenuItem>
+                  <MenuItem
+                    danger
+                    v-if="canDeviceAction('msg.device.restart')"
+                    key="restart"
+                  >
+                    重启系统
+                  </MenuItem>
                 </Menu>
               </template>
             </Dropdown>
@@ -1062,7 +1116,7 @@ onMounted(loadInitialDevices);
             </span>
             <Tooltip v-else-if="column.key === 'balance'" title="点击修改余额">
               <Button
-                v-if="canManageDevices && slotHasCard(record)"
+                v-if="canDeviceAction('msg.sim.balance') && slotHasCard(record)"
                 class="cell-edit-button"
                 type="link"
                 @click="openSlotBalance(record)"
@@ -1086,7 +1140,7 @@ onMounted(loadInitialDevices);
               title="点击修改有效期"
             >
               <Button
-                v-if="canManageDevices && slotHasCard(record)"
+                v-if="canDeviceAction('msg.sim.expires') && slotHasCard(record)"
                 class="cell-edit-button"
                 type="link"
                 @click="openSlotExpiry(record)"
@@ -1109,7 +1163,10 @@ onMounted(loadInitialDevices);
                   <template #icon><Eye /></template>
                 </Button>
               </Tooltip>
-              <Tooltip v-if="canManageDevices" title="发短信">
+              <Tooltip
+                v-if="canDeviceAction('msg.sim.send_sms')"
+                title="发短信"
+              >
                 <Button
                   aria-label="发短信"
                   size="small"
@@ -1119,7 +1176,10 @@ onMounted(loadInitialDevices);
                   <template #icon><MessageSquareCode /></template>
                 </Button>
               </Tooltip>
-              <Tooltip v-if="canManageDevices" title="查余额">
+              <Tooltip
+                v-if="canDeviceAction('msg.sim.refresh_balance')"
+                title="查余额"
+              >
                 <Button
                   aria-label="查余额"
                   :loading="balanceRefreshingIccid === record.current_sim_iccid"
@@ -1130,7 +1190,10 @@ onMounted(loadInitialDevices);
                   <template #icon><RotateCw /></template>
                 </Button>
               </Tooltip>
-              <Tooltip v-if="canManageDevices" title="设备配置">
+              <Tooltip
+                v-if="canDeviceAction('msg.sim.update_device')"
+                title="设备配置"
+              >
                 <Button
                   aria-label="设备配置"
                   size="small"
@@ -1178,21 +1241,21 @@ onMounted(loadInitialDevices);
           @change="handleOperationsTable"
         >
           <template #bodyCell="{ column, record }">
-            <span v-if="column.key === 'command'">{{
-              commandLabels[record.command] || record.command
-            }}</span>
+            <span v-if="column.key === 'command'">
+              {{ commandLabels[record.command] || record.command }}
+            </span>
             <Tag
               v-else-if="column.key === 'status'"
               :color="operationStatusColor(record.status)"
             >
               {{ record.status }}
             </Tag>
-            <span v-else-if="column.key === 'created_at'">{{
-              Times.formatUnix(record.created_at)
-            }}</span>
-            <span v-else-if="column.key === 'error_message'">{{
-              displayValue(record.error_message)
-            }}</span>
+            <span v-else-if="column.key === 'created_at'">
+              {{ Times.formatUnix(record.created_at) }}
+            </span>
+            <span v-else-if="column.key === 'error_message'">
+              {{ displayValue(record.error_message) }}
+            </span>
             <Tooltip v-else-if="column.key === 'actions'" title="详情">
               <Button
                 aria-label="详情"
@@ -1283,9 +1346,9 @@ onMounted(loadInitialDevices);
             >
               {{ record.direction === 'inbound' ? '接收' : '发送' }}
             </Tag>
-            <span v-else-if="column.key === 'received_at'">{{
-              Times.formatUnix(record.received_at)
-            }}</span>
+            <span v-else-if="column.key === 'received_at'">
+              {{ Times.formatUnix(record.received_at) }}
+            </span>
           </template>
         </Table>
       </template>

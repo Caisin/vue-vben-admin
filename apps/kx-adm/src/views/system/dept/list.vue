@@ -180,7 +180,11 @@ function refreshGrid() {
       <template #toolbar-tools>
         <Button @click="gridApi.grid.setAllTreeExpand(true)">展开全部</Button>
         <Button @click="gridApi.grid.setAllTreeExpand(false)">收起全部</Button>
-        <Button type="primary" @click="onCreate">
+        <Button
+          type="primary"
+          @click="onCreate"
+          v-access:code="'api:auth.dept.create'"
+        >
           <Plus class="size-5" />
           {{ $t('ui.actionTitle.create', [$t('system.dept.name')]) }}
         </Button>

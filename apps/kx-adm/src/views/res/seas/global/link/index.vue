@@ -693,7 +693,11 @@ onMounted(async () => {
               查询
             </Button>
             <Button @click="resetQuery">重置</Button>
-            <Button type="primary" @click="openEditor()">
+            <Button
+              type="primary"
+              @click="openEditor()"
+              v-access:code="'api:res.admin.link.post'"
+            >
               <template #icon><IconifyIcon icon="lucide:plus" /></template>
               新增
             </Button>
@@ -707,7 +711,11 @@ onMounted(async () => {
         table-title="链接管理"
       >
         <template #toolbar-tools>
-          <Button type="primary" @click="openEditor()">
+          <Button
+            type="primary"
+            @click="openEditor()"
+            v-access:code="'api:res.admin.link.post'"
+          >
             <IconifyIcon icon="lucide:plus" />
             新增
           </Button>
@@ -735,11 +743,13 @@ onMounted(async () => {
                 icon: 'lucide:edit',
                 onClick: () => openEditor(row),
                 text: '编辑',
+                auth: 'api:res.admin.link.post',
               },
               {
                 icon: 'lucide:badge-dollar-sign',
                 onClick: () => openPay(row),
                 text: '收费设置',
+                auth: 'api:res.admin.link.post',
               },
             ]"
             :dropdown-actions="[
@@ -755,6 +765,7 @@ onMounted(async () => {
                   title: '是否确认删除？',
                 },
                 text: '删除',
+                auth: 'api:res.admin.link.delete',
               },
             ]"
             align="center"
@@ -790,9 +801,9 @@ onMounted(async () => {
                     预览
                   </Button>
                 </div>
-                <span class="break-all">{{
-                  item.url || '缺少对应 param 前缀配置'
-                }}</span>
+                <span class="break-all">
+                  {{ item.url || '缺少对应 param 前缀配置' }}
+                </span>
               </div>
             </template>
             <template v-else>
@@ -807,9 +818,9 @@ onMounted(async () => {
                     复制
                   </Button>
                 </div>
-                <span class="break-all">{{
-                  fbLink(row) || '缺少 app_jump_link 参数配置'
-                }}</span>
+                <span class="break-all">
+                  {{ fbLink(row) || '缺少 app_jump_link 参数配置' }}
+                </span>
               </div>
             </template>
           </div>
@@ -964,7 +975,13 @@ onMounted(async () => {
               placeholder="请选择充值模板"
               @change="(value: any) => loadPayDetail(value)"
             />
-            <Button type="primary" @click="savePayTemplate">保存模板</Button>
+            <Button
+              type="primary"
+              @click="savePayTemplate"
+              v-access:code="'api:res.admin.link.post'"
+            >
+              保存模板
+            </Button>
           </Space>
         </Card>
         <div v-if="selectedRecord" class="template-grid">

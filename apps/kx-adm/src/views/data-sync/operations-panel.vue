@@ -42,10 +42,8 @@ const emit = defineEmits<{ finished: [] }>();
 const route = useRoute();
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
-const canOperate = computed(
-  () =>
-    hasAccessByCodes(['data-sync:configure']) ||
-    hasAccessByCodes(['data-sync:execute']),
+const canOperate = computed(() =>
+  hasAccessByCodes(['api:data_sync.operation.create']),
 );
 const open = ref(false);
 const showHistory = ref(false);
@@ -427,9 +425,9 @@ defineExpose({ prepare, view });
       "
     >
       <template #bodyCell="{ column, record }">
-        <span v-if="column.key === 'action'">{{
-          actionLabels[record.action]
-        }}</span>
+        <span v-if="column.key === 'action'">
+          {{ actionLabels[record.action] }}
+        </span>
         <Tag v-else-if="column.key === 'state'">
           {{ operationStates[record.state] }}
         </Tag>
@@ -460,16 +458,14 @@ defineExpose({ prepare, view });
     />
     <template v-if="!operation">
       <Space class="mb-3">
-        <span>已选择 {{ selected.length }} 个对象</span><Select
+        <span>已选择 {{ selected.length }} 个对象</span>
+        <Select
           v-model:value="action"
           :options="options"
           :disabled="busy"
           style="width: 220px"
-        /><Button
-          :loading="busy"
-          :disabled="!selected.length"
-          @click="preflight"
-        >
+        />
+        <Button :loading="busy" :disabled="!selected.length" @click="preflight">
           检查可执行性
         </Button>
       </Space>
@@ -507,12 +503,14 @@ defineExpose({ prepare, view });
         ]"
       >
         <template #bodyCell="{ column, record }">
-          <span v-if="column.key === 'reason'">{{
-            record.actions.find(
-              (a: { action: string; reason?: string | null }) =>
-                a.action === action,
-            )?.reason || '可执行'
-          }}</span>
+          <span v-if="column.key === 'reason'">
+            {{
+              record.actions.find(
+                (a: { action: string; reason?: string | null }) =>
+                  a.action === action,
+              )?.reason || '可执行'
+            }}
+          </span>
         </template>
       </Table>
       <Table
@@ -537,8 +535,12 @@ defineExpose({ prepare, view });
     </template>
     <template v-else>
       <Space class="mb-3">
-        <strong>{{ actionLabels[operation.action] }}</strong><Tag>{{ operationStates[operation.state] }}</Tag><span>成功 {{ operation.succeeded }} / 未完成 {{ operation.failed }} / 总计
-          {{ operation.total }}</span>
+        <strong>{{ actionLabels[operation.action] }}</strong>
+        <Tag>{{ operationStates[operation.state] }}</Tag>
+        <span>
+          成功 {{ operation.succeeded }} / 未完成 {{ operation.failed }} / 总计
+          {{ operation.total }}
+        </span>
       </Space>
       <Progress
         :percent="operationProgress(operation)"
@@ -557,20 +559,24 @@ defineExpose({ prepare, view });
         class="mb-3"
       />
       <Space wrap class="mb-3">
-        <Button @click="view(operation.id)">刷新进度</Button><Button
-          v-if="canOperate && operationActive(operation.state)"
+        <Button @click="view(operation.id)">刷新进度</Button>
+        <Button
+          v-if="operationActive(operation.state)"
           danger
           @click="cancel"
+          v-access:code="'api:data_sync.operation.cancel'"
         >
           停止后续操作
-</Button><Button
+        </Button>
+        <Button
           v-if="
             canOperate && !operationActive(operation.state) && operation.failed
           "
           @click="retryFailed"
         >
           重新预检未完成项
-</Button><Button :loading="busy" @click="exportResults"> 导出筛选结果 </Button>
+        </Button>
+        <Button :loading="busy" @click="exportResults">导出筛选结果</Button>
       </Space>
       <Space class="mb-3">
         <Input.Search
@@ -580,7 +586,8 @@ defineExpose({ prepare, view });
             resultPage = 1;
             refreshResults();
           "
-        /><Select
+        />
+        <Select
           v-model:value="resultState"
           allow-clear
           placeholder="全部结果"

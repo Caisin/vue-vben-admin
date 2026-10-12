@@ -3,6 +3,14 @@ import type { Page, PageQuery } from '#/api/request';
 
 import { requestClient } from '#/api/request';
 
+import { invalidatePermissionCatalog } from './permission-catalog-cache';
+
+async function catalogMutation<T>(request: Promise<T>) {
+  const result = await request;
+  invalidatePermissionCatalog();
+  return result;
+}
+
 export type ApiAccessMode = 'custom' | 'login' | 'menu' | 'public';
 export type ApiClientScope = 'backend' | 'mobile' | 'public';
 export type ApiOperationType =
@@ -93,12 +101,14 @@ export const ApiPermissionApi = {
   detail: (id: number | string) =>
     requestClient.get<ApiPermission>(`/auth/api/${id}`),
   update: (id: number | string, data: ApiPermissionWrite) =>
-    requestClient.put<ApiPermission>(`/auth/api/${id}`, data),
+    catalogMutation(requestClient.put<ApiPermission>(`/auth/api/${id}`, data)),
   assign: (id: number | string, data: ApiPermissionAssign) =>
-    requestClient.put<ApiPermission>(`/auth/api/${id}/permissions`, data),
+    catalogMutation(
+      requestClient.put<ApiPermission>(`/auth/api/${id}/permissions`, data),
+    ),
   batchUpdate: (data: ApiPermissionBatchUpdate) =>
-    requestClient.put<number>('/auth/api/batch', data),
-  sync: () => requestClient.post<number>('/auth/api/sync'),
+    catalogMutation(requestClient.put<number>('/auth/api/batch', data)),
+  sync: () => catalogMutation(requestClient.post<number>('/auth/api/sync')),
   permissionCounts: () =>
     requestClient.get<ApiPermissionCountSummary>('/auth/api/permission-counts'),
   async permissionOptions() {

@@ -84,7 +84,11 @@ async function save() {
             :disabled="saving"
             class="min-w-0 flex-1"
           />
-          <Button :disabled="saving" @click="createOpen = true">
+          <Button
+            :disabled="saving"
+            @click="createOpen = true"
+            v-access:code="'api:res.admin.res.codes.create'"
+          >
             新增作品编号
           </Button>
         </div>

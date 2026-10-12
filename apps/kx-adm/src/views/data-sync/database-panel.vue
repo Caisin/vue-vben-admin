@@ -10,6 +10,7 @@ import type { TaskRun } from '#/api/task/run';
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
+import { useAccess } from '@vben/access';
 import { createIconifyIcon, Plus } from '@vben/icons';
 
 import {
@@ -65,6 +66,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ job: [Job] }>();
 
+const { hasAccessByCodes } = useAccess();
 const selectedDatabases = ref<number[]>([]);
 const route = useRoute();
 const router = useRouter();
@@ -373,6 +375,29 @@ async function show(record?: DatabaseSync) {
   }
 }
 async function save() {
+  if (
+    !hasAccessByCodes([
+      selected.value
+        ? 'api:data_sync.database.settings'
+        : 'api:data_sync.database.create',
+    ])
+  )
+    return;
+  if (
+    selected.value &&
+    form.value.tables.some((table) => {
+      const stored = tableRecords.value.find(
+        (row) => row.definition.target_table === table.target_table,
+      );
+      return (
+        stored && JSON.stringify(stored.definition) !== JSON.stringify(table)
+      );
+    }) &&
+    !hasAccessByCodes(['api:data_sync.database.tables.update'])
+  ) {
+    message.warning('没有修改表配置的权限，请恢复表配置后保存');
+    return;
+  }
   if (
     !form.value.name.trim() ||
     !form.value.target_ds_code ||
@@ -867,7 +892,8 @@ const polling = useTaskPolling({
       "
       :history="false"
       @finished="load"
-    /><Button
+    />
+    <Button
       v-if="selectedDatabases.length"
       type="link"
       @click="selectedDatabases = []"
@@ -877,8 +903,14 @@ const polling = useTaskPolling({
   </div>
   <div>
     <div class="toolbar">
-      <Button v-if="configure" type="primary" @click="show()">
-        <Plus class="size-4" />新增全库配置
+      <Button
+        v-if="configure"
+        type="primary"
+        @click="show()"
+        v-access:code="'api:data_sync.database.create'"
+      >
+        <Plus class="size-4" />
+        新增全库配置
       </Button>
       <Tooltip title="刷新全库配置">
         <Button aria-label="刷新全库配置" @click="load">
@@ -918,9 +950,10 @@ const polling = useTaskPolling({
       "
     >
       <template #bodyCell="{ column, record }">
-        <a v-if="column.key === 'name'" @click="show(record)">{{
-          record.name
-        }}</a><Tag v-else-if="column.key === 'state'">
+        <a v-if="column.key === 'name'" @click="show(record)">
+          {{ record.name }}
+        </a>
+        <Tag v-else-if="column.key === 'state'">
           {{ states[record.state] ?? record.state }}
           {{ record.schedule_paused ? ' / 调度已停止' : '' }}
         </Tag>
@@ -961,6 +994,7 @@ const polling = useTaskPolling({
                 busy
               "
               @click="controlRun(record, false)"
+              v-access:code="'api:data_sync.database.sync'"
             >
               <Play class="size-4" />
             </Button>
@@ -974,6 +1008,7 @@ const polling = useTaskPolling({
                 (record.schedule_paused && !record.active_task_id) || busy
               "
               @click="controlRun(record, true)"
+              v-access:code="'api:data_sync.database.cancel'"
             >
               <Square class="size-4" />
             </Button>
@@ -1030,7 +1065,8 @@ const polling = useTaskPolling({
               @click="locateTable(row.target_table)"
             >
               {{ row.target_table }}
-</Button>：{{ databaseErrorText(row.error || '检查或执行失败') }}
+            </Button>
+            ：{{ databaseErrorText(row.error || '检查或执行失败') }}
           </div>
         </template>
       </Alert>
@@ -1051,6 +1087,11 @@ const polling = useTaskPolling({
           type="primary"
           :disabled="!canEdit"
           :loading="busy"
+          v-access:code="
+            selected
+              ? 'api:data_sync.database.settings'
+              : 'api:data_sync.database.create'
+          "
           @click="save"
         >
           保存配置
@@ -1059,6 +1100,7 @@ const polling = useTaskPolling({
           v-if="configure"
           :disabled="!selected || !canEdit || dirty"
           @click="dispatch('discover')"
+          v-access:code="'api:data_sync.database.discover'"
         >
           发现源表
         </Button>
@@ -1066,6 +1108,7 @@ const polling = useTaskPolling({
           v-if="configure"
           :disabled="!selected || !canEdit || dirty || !counts.confirmed"
           @click="dispatch('inspect')"
+          v-access:code="'api:data_sync.database.inspect'"
         >
           {{
             counts.pending || counts.excluded ? '检查已确认表' : '检查所有表'
@@ -1075,6 +1118,7 @@ const polling = useTaskPolling({
           v-if="configure"
           :disabled="selected?.state !== 'validated' || dirty || busy"
           @click="dispatch('activate')"
+          v-access:code="'api:data_sync.database.activate'"
         >
           确认建表并启用
         </Button>
@@ -1088,6 +1132,7 @@ const polling = useTaskPolling({
             busy
           "
           @click="dispatch('sync')"
+          v-access:code="'api:data_sync.database.sync'"
         >
           {{
             counts.pending || counts.excluded ? '同步已确认表' : '立即同步全库'
@@ -1098,6 +1143,7 @@ const polling = useTaskPolling({
           danger
           :disabled="busy"
           @click="controlRun(selected, true)"
+          v-access:code="'api:data_sync.database.cancel'"
         >
           停止全库同步
         </Button>
@@ -1123,6 +1169,7 @@ const polling = useTaskPolling({
             ['ready', 'paused'].includes(selected.state)
           "
           @click="pause"
+          v-access:code="'api:data_sync.database.state'"
         >
           {{
             selected.schedule_paused || selected.state === 'paused'
@@ -1135,8 +1182,8 @@ const polling = useTaskPolling({
         {{ selected.schedule_paused ? '调度已停止 · ' : '' }}
         {{ states[selected.state] ?? selected.state }} · 成功
         {{ selected.completed_tables }} / {{ selected.total_tables }} · 失败
-        {{ selected.failed_tables
-        }}<span v-if="taskPending"> · 已提交 #{{ taskPending }}</span>
+        {{ selected.failed_tables }}
+        <span v-if="taskPending">· 已提交 #{{ taskPending }}</span>
         <span
           v-if="
             lastRun?.executor_code === 'data_sync.database.sync' &&
@@ -1144,7 +1191,8 @@ const polling = useTaskPolling({
             Number(lastRun.id) === selected.last_task_id
           "
         >
-          · 同步耗时：{{ formatSyncDuration(lastRun) }}</span>
+          · 同步耗时：{{ formatSyncDuration(lastRun) }}
+        </span>
       </div>
       <fieldset
         :disabled="!canEdit"
@@ -1154,12 +1202,17 @@ const polling = useTaskPolling({
       >
         <h3>源范围与目标</h3>
         <div class="fields">
-          <label class="field">配置名称<Input
+          <label class="field">
+            配置名称
+            <Input
               v-model:value="form.name"
               :disabled="!canEdit"
               :maxlength="128"
-          /></label>
-          <label class="field">Databend 数据源<Select
+            />
+          </label>
+          <label class="field">
+            Databend 数据源
+            <Select
               v-model:value="form.target_ds_code"
               :disabled="!canEdit"
               :options="targets"
@@ -1168,8 +1221,11 @@ const polling = useTaskPolling({
                 form.warehouse = null;
                 dirty = true;
               "
-          /></label>
-          <label class="field">目标数据库<MetadataSelect
+            />
+          </label>
+          <label class="field">
+            目标数据库
+            <MetadataSelect
               v-model:value="form.target_database"
               label="全库目标数据库"
               :disabled="!canEdit"
@@ -1184,31 +1240,41 @@ const polling = useTaskPolling({
                   })
               "
               @change="dirty = true"
-          /></label>
-          <label class="field">回执数据库<Input
+            />
+          </label>
+          <label class="field">
+            回执数据库
+            <Input
               v-model:value="form.receipt_database"
               placeholder="_kx_sync_meta"
               :disabled="!canEdit"
               @change="dirty = true"
-          /></label>
-          <label class="field">计算仓库<WarehouseSelect
+            />
+          </label>
+          <label class="field">
+            计算仓库
+            <WarehouseSelect
               v-model:value="form.warehouse"
               :ds-code="form.target_ds_code"
               :allow-insecure="form.allow_insecure"
               :active="open"
               :disabled="!canEdit"
               @update:value="dirty = true"
-          /></label>
-          <label class="field">目标表前缀<Input
-              v-model:value="form.table_prefix"
-              :disabled="!canEdit"
-          /></label>
-          <label class="field">私有批次存储<Select
+            />
+          </label>
+          <label class="field">
+            目标表前缀
+            <Input v-model:value="form.table_prefix" :disabled="!canEdit" />
+          </label>
+          <label class="field">
+            私有批次存储
+            <Select
               v-model:value="form.storage_code"
               :disabled="!canEdit"
               :options="stores"
               @change="dirty = true"
-          /></label>
+            />
+          </label>
           <Checkbox v-model:checked="form.schema_prefix" :disabled="!canEdit">
             表名包含 Schema
           </Checkbox>
@@ -1221,7 +1287,9 @@ const polling = useTaskPolling({
           :key="index"
           class="scope-row"
         >
-          <label class="field">源实例<Select
+          <label class="field">
+            源实例
+            <Select
               v-model:value="scope.instance_code"
               :disabled="!canEdit"
               :options="
@@ -1235,8 +1303,11 @@ const polling = useTaskPolling({
                 scope.schema = '';
                 dirty = true;
               "
-          /></label>
-          <label class="field">Schema / 源库<MetadataSelect
+            />
+          </label>
+          <label class="field">
+            Schema / 源库
+            <MetadataSelect
               v-model:value="scope.schema"
               label="全库源范围"
               :context-key="open ? scope.instance_code : ''"
@@ -1246,7 +1317,8 @@ const polling = useTaskPolling({
                   DataSyncApi.sourceSchemas(scope.instance_code, keyword)
               "
               @change="dirty = true"
-          /></label>
+            />
+          </label>
           <Tooltip title="移除源范围">
             <Button
               :disabled="!canEdit || form.sources.length <= 1"
@@ -1268,7 +1340,8 @@ const polling = useTaskPolling({
             dirty = true;
           "
         >
-          <Plus class="size-4" />添加源范围
+          <Plus class="size-4" />
+          添加源范围
         </Button>
       </fieldset>
       <h3 ref="strategiesHeading">逐表同步策略</h3>
@@ -1326,22 +1399,34 @@ const polling = useTaskPolling({
             <FilterX class="size-4" />
           </Button>
         </Tooltip>
-        <span role="status">显示 {{ visibleTables.length }} / {{ totals.total }} 张表</span>
+        <span role="status">
+          显示 {{ visibleTables.length }} / {{ totals.total }} 张表
+        </span>
       </div>
       <div class="toolbar">
-        <span>参与 {{ counts.confirmed }} · 排除 {{ counts.excluded }} · 待确认跳过
-          {{ counts.pending }}</span><template v-if="configure">
-          <Button :disabled="!canEdit || !counts.pending" @click="confirmAll">
-            <CheckCheck class="size-4" />全部确认
+        <span>
+          参与 {{ counts.confirmed }} · 排除 {{ counts.excluded }} · 待确认跳过
+          {{ counts.pending }}
+        </span>
+        <template v-if="configure">
+          <Button
+            :disabled="!canEdit || !counts.pending"
+            @click="confirmAll"
+            v-access:code="'api:data_sync.database.confirm'"
+          >
+            <CheckCheck class="size-4" />
+            全部确认
           </Button>
           <Select
             v-model:value="bulkMode"
             :options="strategyOptions"
             :disabled="!canEdit"
             class="bulk-select"
-          /><Button
+          />
+          <Button
             :disabled="!canEdit || !selectedTables.length"
             @click="bulk"
+            v-access:code="'api:data_sync.database.tables.update'"
           >
             应用到所选表
           </Button>
@@ -1387,9 +1472,9 @@ const polling = useTaskPolling({
                     </div>
                   </div>
                 </template>
-                <span tabindex="0" class="source-table-name cursor-help">{{
-                  source.name
-                }}</span>
+                <span tabindex="0" class="source-table-name cursor-help">
+                  {{ source.name }}
+                </span>
               </Tooltip>
             </div>
           </div>
@@ -1401,9 +1486,9 @@ const polling = useTaskPolling({
             class="strategy-select"
             @change="(value) => strategy(record, value as SyncConfig['mode'])"
           />
-          <span v-else-if="column.key === 'frequency'">{{
-            tableFrequencyLabel(record.sync_interval_seconds)
-          }}</span>
+          <span v-else-if="column.key === 'frequency'">
+            {{ tableFrequencyLabel(record.sync_interval_seconds) }}
+          </span>
           <Checkbox
             v-else-if="column.key === 'confirmed'"
             v-model:checked="record.confirmed"
@@ -1411,14 +1496,16 @@ const polling = useTaskPolling({
             :aria-label="`确认 ${record.target_table} 策略`"
             @change="dirty = true"
           />
-          <span v-else-if="column.key === 'state'">{{
-            record.excluded_reason !== null
-              ? `排除：${record.excluded_reason}`
-              : databaseTableError(record, planRow(record)) ||
-                (record.confirmed
-                  ? (states[planRow(record)?.state ?? ''] ?? '待检查')
-                  : '未确认，暂不执行')
-          }}</span>
+          <span v-else-if="column.key === 'state'">
+            {{
+              record.excluded_reason !== null
+                ? `排除：${record.excluded_reason}`
+                : databaseTableError(record, planRow(record)) ||
+                  (record.confirmed
+                    ? (states[planRow(record)?.state ?? ''] ?? '待检查')
+                    : '未确认，暂不执行')
+            }}
+          </span>
           <div v-else-if="column.key === 'actions'" class="toolbar">
             <Button
               v-if="execute"
@@ -1433,6 +1520,7 @@ const polling = useTaskPolling({
                 record.excluded_reason !== null
               "
               @click="dispatch('sync', record.target_table)"
+              v-access:code="'api:data_sync.database.sync'"
             >
               同步一次
             </Button>
@@ -1441,9 +1529,11 @@ const polling = useTaskPolling({
               size="small"
               :disabled="!canEdit"
               @click="editTable(record)"
+              v-access:code="'api:data_sync.database.tables.update'"
             >
               配置
-</Button><Button
+            </Button>
+            <Button
               v-if="planRow(record)?.job_id"
               size="small"
               @click="viewJob(record)"
@@ -1456,16 +1546,19 @@ const polling = useTaskPolling({
       <template v-if="selected">
         <h3>定时运行</h3>
         <div class="fields">
-          <label class="field">Cron<Input
-              v-model:value="schedule.cron_expr"
-              :disabled="!configure"
-          /></label>
-          <label class="field">时区偏移（秒）<InputNumber
+          <label class="field">
+            Cron
+            <Input v-model:value="schedule.cron_expr" :disabled="!configure" />
+          </label>
+          <label class="field">
+            时区偏移（秒）
+            <InputNumber
               v-model:value="schedule.timezone_offset_seconds"
               :disabled="!configure"
               :min="-43200"
               :max="50400"
-          /></label>
+            />
+          </label>
           <Checkbox v-model:checked="schedule.enabled" :disabled="!configure">
             启用定时同步
           </Checkbox>
@@ -1473,6 +1566,7 @@ const polling = useTaskPolling({
         <Button
           v-if="configure"
           :disabled="busy || dirty"
+          v-access:code="'api:data_sync.database.schedule.save'"
           @click="saveSchedule"
         >
           保存定时配置
@@ -1495,7 +1589,9 @@ const polling = useTaskPolling({
         :inert="linkingJob"
         class="table-editor configuration"
       >
-        <label class="field mb-4">关联已有同步任务<MetadataSelect
+        <label class="field mb-4">
+          关联已有同步任务
+          <MetadataSelect
             :value="
               editing.existing_job_id ? String(editing.existing_job_id) : ''
             "
@@ -1512,7 +1608,8 @@ const polling = useTaskPolling({
             :load="existingJobs"
             placeholder="不关联，检查时创建任务"
             @change="linkJob"
-        /></label>
+          />
+        </label>
         <Alert
           v-if="editingError || databaseTableError(editing, planRow(editing))"
           type="error"
@@ -1534,12 +1631,15 @@ const polling = useTaskPolling({
         >
           排除此表
         </Checkbox>
-        <label v-if="editing.excluded_reason !== null" class="field">排除原因<Input
-            v-model:value="editing.excluded_reason"
-            :maxlength="256"
-        /></label>
+        <label v-if="editing.excluded_reason !== null" class="field">
+          排除原因
+          <Input v-model:value="editing.excluded_reason" :maxlength="256" />
+        </label>
         <template v-else>
-          <label class="field">目标表<Input v-model:value="editing.target_table" /></label>
+          <label class="field">
+            目标表
+            <Input v-model:value="editing.target_table" />
+          </label>
           <StrategyFields v-model:config="editing.config" />
           <h3>同步频率</h3>
           <TableFrequency v-model:value="editing.sync_interval_seconds" />
@@ -1574,47 +1674,75 @@ const polling = useTaskPolling({
               v-for="table in separatedTables"
               :key="table.config.sources[0]?.instance_code"
               class="field"
-              >{{ table.config.sources[0]?.instance_code }} 独立目标表<Input
-                v-model:value="table.target_table"
-            /></label>
+            >
+              {{ table.config.sources[0]?.instance_code }} 独立目标表
+              <Input v-model:value="table.target_table" />
+            </label>
           </div>
           <div class="fields">
-            <label class="field">每批最多行数<InputNumber
+            <label class="field">
+              每批最多行数
+              <InputNumber
                 v-model:value="editing.config.limits.max_rows"
                 :min="1"
                 :max="1000000"
-/></label><label class="field">每批字节上限<InputNumber
+              />
+            </label>
+            <label class="field">
+              每批字节上限
+              <InputNumber
                 v-model:value="editing.config.limits.max_bytes"
                 :min="1024"
                 :max="67108864"
-/></label><label class="field">源实例并发数<InputNumber
+              />
+            </label>
+            <label class="field">
+              源实例并发数
+              <InputNumber
                 v-model:value="editing.config.limits.source_concurrency"
                 :min="1"
                 :max="8"
-/></label><label
+              />
+            </label>
+            <label
               v-if="['id_append', 'id_and_time'].includes(editing.config.mode)"
               class="field"
-              >同表 ID 拉取并发数<InputNumber
+            >
+              同表 ID 拉取并发数
+              <InputNumber
                 v-model:value="editing.config.limits.id_concurrency"
                 :precision="0"
                 :min="1"
                 :max="8"
-/></label><label
+              />
+            </label>
+            <label
               v-if="['id_append', 'id_and_time'].includes(editing.config.mode)"
               class="field"
-              >ID 区间跨度<InputNumber
+            >
+              ID 区间跨度
+              <InputNumber
                 v-model:value="editing.config.limits.id_span"
                 :min="1"
                 :max="1000000"
-/></label><label class="field">时间回看（秒）<InputNumber
+              />
+            </label>
+            <label class="field">
+              时间回看（秒）
+              <InputNumber
                 v-model:value="editing.config.limits.overlap_seconds"
                 :min="0"
                 :max="2678400"
-/></label><label class="field">提交等待（秒）<InputNumber
+              />
+            </label>
+            <label class="field">
+              提交等待（秒）
+              <InputNumber
                 v-model:value="editing.config.limits.settle_delay_seconds"
                 :min="0"
                 :max="86400"
-            /></label>
+              />
+            </label>
           </div>
         </template>
       </fieldset>

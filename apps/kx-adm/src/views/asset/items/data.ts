@@ -61,7 +61,7 @@ export function useColumns(
     { field: 'default_valid_seconds', title: '默认有效秒数', width: 140 },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: { auth: 'api:asset.item.update', beforeChange: onEnabledChange },
         name: onEnabledChange ? 'CellSwitch' : 'CellTag',
         props: { checkedValue: true, unCheckedValue: false },
       },

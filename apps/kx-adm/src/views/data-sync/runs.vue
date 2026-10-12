@@ -44,8 +44,40 @@ import { startJob, stopJob } from './sync-control';
 const selectedJobs = ref<number[]>([]);
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
-const execute = computed(() => hasAccessByCodes(['data-sync:execute']));
-const configure = computed(() => hasAccessByCodes(['data-sync:configure']));
+const execute = computed(() =>
+  hasAccessByCodes([
+    'api:data_sync.job.sync',
+    'api:data_sync.job.reconcile',
+    'api:data_sync.run.cancel',
+    'api:data_sync.database.sync',
+    'api:data_sync.database.cancel',
+    'api:data_sync.job.force_stop',
+    'api:data_sync.database.force_stop',
+    'api:data_sync.database.reconcile',
+  ]),
+);
+const configure = computed(() =>
+  hasAccessByCodes([
+    'api:data_sync.job.create',
+    'api:data_sync.job.update',
+    'api:data_sync.job.inspect',
+    'api:data_sync.job.activate',
+    'api:data_sync.job.state',
+    'api:data_sync.schedule.save',
+    'api:data_sync.instance.create',
+    'api:data_sync.instance.update',
+    'api:data_sync.database.create',
+    'api:data_sync.database.update',
+    'api:data_sync.database.discover',
+    'api:data_sync.database.inspect',
+    'api:data_sync.database.activate',
+    'api:data_sync.database.confirm',
+    'api:data_sync.database.tables.update',
+    'api:data_sync.database.settings',
+    'api:data_sync.database.state',
+    'api:data_sync.database.schedule.save',
+  ]),
+);
 const route = useRoute();
 const status = ref(
   typeof route.query.state === 'string' ? route.query.state : 'running',
@@ -208,16 +240,12 @@ onMounted(() => polling.start());
     />
     <Tabs v-model:active-key="status">
       <TabPane key="schema_conflict" tab="结构冲突" />
-      <TabPane key="running" tab="正在进行" /><TabPane
-        key="blocked"
-        tab="待对账"
-      /><TabPane key="failed" tab="失败" /><TabPane
-        key="succeeded"
-        tab="成功"
-      /><TabPane key="cancelled" tab="已取消" /><TabPane
-        key=""
-        tab="全部记录"
-      />
+      <TabPane key="running" tab="正在进行" />
+      <TabPane key="blocked" tab="待对账" />
+      <TabPane key="failed" tab="失败" />
+      <TabPane key="succeeded" tab="成功" />
+      <TabPane key="cancelled" tab="已取消" />
+      <TabPane key="" tab="全部记录" />
     </Tabs>
     <div class="toolbar">
       <Input
@@ -284,9 +312,9 @@ onMounted(() => polling.start());
         <Tag v-else-if="column.key === 'state'">
           {{ states[record.state] ?? record.state }}
         </Tag>
-        <span v-else-if="column.key === 'operation'">{{
-          operations[record.operation] ?? record.operation
-        }}</span>
+        <span v-else-if="column.key === 'operation'">
+          {{ operations[record.operation] ?? record.operation }}
+        </span>
         <div v-else-if="column.key === 'error'">
           {{
             schemaConflictErrors[record.error_code ?? ''] ?? record.error_code
@@ -298,21 +326,24 @@ onMounted(() => polling.start());
             {{ record.message }}
           </div>
         </div>
-        <span v-else-if="column.key === 'duration'">{{
-          formatSyncDuration(record)
-        }}</span>
+        <span v-else-if="column.key === 'duration'">
+          {{ formatSyncDuration(record) }}
+        </span>
         <Tooltip
           v-else-if="column.key === 'rows'"
           title="本轮所有来源、所有批次累计确认写入的行数；执行中持续更新"
         >
           <span>{{ Number(record.written_rows).toLocaleString() }} 条</span>
         </Tooltip>
-        <span v-else-if="column.key === 'bytes'">{{ (Number(record.bytes) / 1048576).toFixed(2) }} MiB</span>
-        <span v-else-if="column.key === 'started'">{{
-          new Date(Number(record.started_at) * 1000).toLocaleString()
-        }}</span>
+        <span v-else-if="column.key === 'bytes'">
+          {{ (Number(record.bytes) / 1048576).toFixed(2) }} MiB
+        </span>
+        <span v-else-if="column.key === 'started'">
+          {{ new Date(Number(record.started_at) * 1000).toLocaleString() }}
+        </span>
         <div v-else-if="column.key === 'actions'" class="actions">
-          <Button size="small" @click="show(record)">明细</Button><Button
+          <Button size="small" @click="show(record)">明细</Button>
+          <Button
             size="small"
             @click="
               router.push({
@@ -353,6 +384,7 @@ onMounted(() => polling.start());
             size="small"
             danger
             :loading="cancelling.includes(record.id)"
+            v-access:code="'api:data_sync.run.cancel'"
             @click="cancel(record)"
           >
             停止本表

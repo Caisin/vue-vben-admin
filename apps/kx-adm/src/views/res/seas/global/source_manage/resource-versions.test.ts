@@ -164,18 +164,18 @@ describe('版本弹层权限闭环', () => {
     expect(document.body.textContent).not.toContain('目录上传');
     expect(document.body.textContent).not.toContain('视频预览');
   });
-  it('上传角色读取内容并提供创建和上传入口，不提供授权及删除', async () => {
-    await mount('res:content:upload');
+  it('只读内容权限提供预览，不隐式带入版本写入或上传', async () => {
+    await mount('api:res.admin.res.versions.detail');
     expect(state.detail).toHaveBeenCalledWith(2, 3);
     expect(state.manifest).not.toHaveBeenCalled();
-    expect(buttons()).toContain('新增版本');
-    expect(buttons()).toContain('修改版本信息');
-    expect(document.body.textContent).toContain('目录上传');
+    expect(buttons()).not.toContain('新增版本');
+    expect(buttons()).not.toContain('修改版本信息');
+    expect(document.body.textContent).not.toContain('目录上传');
     for (const title of ['下载权限', '删除版本', '下载当前版本'])
       expect(buttons()).not.toContain(title);
   });
   it('授权角色读取目录并提供下载权限入口', async () => {
-    await mount('res:download:authorize');
+    await mount('api:res.admin.res.download_permissions.get');
     expect(state.manifest).toHaveBeenCalledWith(2, 3);
     expect(buttons()).toContain('下载权限');
     expect(buttons()).not.toContain('新增版本');

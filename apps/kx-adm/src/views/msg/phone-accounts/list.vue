@@ -9,6 +9,7 @@ import type {
 
 import { onMounted, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus, X } from '@vben/icons';
 
@@ -23,6 +24,8 @@ import { vxeSortParams } from '#/vxe-sort';
 
 import { useColumns, useFormSchema } from './data';
 import Form from './modules/form.vue';
+
+const { hasAccessByCodes } = useAccess();
 
 const filterOptions = ref<PhoneAccountFilterOptions>({
   platforms: [],
@@ -49,7 +52,9 @@ const [Grid, gridApi] = useVbenVxeGrid<PhoneAccount>({
     submitOnChange: true,
   },
   gridOptions: {
-    columns: useColumns(onStatusChange),
+    columns: useColumns(
+      hasAccessByCodes(['api:msg.account.update']) ? onStatusChange : undefined,
+    ),
     height: 'auto',
     pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
     proxyConfig: {
@@ -146,16 +151,17 @@ onMounted(loadFilterOptions);
     <Grid class="management-grid" table-title="号码账号">
       <template #toolbar-tools>
         <Button
-          v-access:code="'phone_accounts:manage'"
+          v-access:code="'api:msg.account.create'"
           type="primary"
           @click="openCreate"
         >
-          <template #icon><Plus /></template>新增账号
+          <template #icon><Plus /></template>
+          新增账号
         </Button>
       </template>
       <template #accountName="{ row }">
         <Button
-          v-access:code="'phone_accounts:manage'"
+          :disabled="!hasAccessByCodes(['api:msg.account.update'])"
           class="min-w-0 truncate px-0 text-left"
           size="small"
           type="link"
@@ -197,12 +203,13 @@ onMounted(loadFilterOptions);
           @confirm="remove(row)"
         >
           <Button
-            v-access:code="'phone_accounts:manage'"
+            v-access:code="'api:msg.account.delete'"
             danger
             size="small"
             type="link"
           >
-            <template #icon><X /></template>删除
+            <template #icon><X /></template>
+            删除
           </Button>
         </Popconfirm>
       </template>

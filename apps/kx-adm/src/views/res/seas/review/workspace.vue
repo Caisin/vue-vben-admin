@@ -271,38 +271,43 @@ onBeforeUnmount(() => {
         <p class="subheading">材料补齐、审片修改、定稿入库，都在这里完成。</p>
       </div>
       <div class="header-actions">
-        <DeliveryGuide /><ReviewMembers
+        <DeliveryGuide />
+        <ReviewMembers
           v-if="review"
           :res="scope"
           :view="review"
           @refresh="refresh()"
-        /><DownloadPermissions
+        />
+        <DownloadPermissions
           v-if="view?.can_manage"
           :scope="scope"
           :version="versionId!"
-        /><ReviewDingtalk v-if="review" :res="scope" :name="name" /><Button
-          :loading="loading"
-          :disabled="busy"
-          @click="refresh()"
-        >
+        />
+        <ReviewDingtalk v-if="review" :res="scope" :name="name" />
+        <Button :loading="loading" :disabled="busy" @click="refresh()">
           刷新
         </Button>
       </div>
     </header>
-    <Alert
-      v-if="errorText"
-      type="error"
-      :message="errorText"
-      class="mb-4"
-    /><Alert v-if="success" type="success" :message="success" class="mb-4" />
+    <Alert v-if="errorText" type="error" :message="errorText" class="mb-4" />
+    <Alert v-if="success" type="success" :message="success" class="mb-4" />
     <Spin :spinning="loading">
       <template v-if="view && version && review">
         <div class="stage-strip">
-          <span :class="{ active: version.review_state === 'draft' }">01 准备交付</span><span :class="{ active: version.review_state === 'reviewing' }">02 审片与修改</span><span
+          <span :class="{ active: version.review_state === 'draft' }">
+            01 准备交付
+          </span>
+          <span :class="{ active: version.review_state === 'reviewing' }">
+            02 审片与修改
+          </span>
+          <span
             :class="{
               active: version.review_state === 'final' && !view.release,
             }"
-            >03 确认定稿</span><span :class="{ active: Boolean(view.release) }">04 入库资源</span>
+          >
+            03 确认定稿
+          </span>
+          <span :class="{ active: Boolean(view.release) }">04 入库资源</span>
         </div>
         <div class="version-toolbar">
           <Select
@@ -316,7 +321,8 @@ onBeforeUnmount(() => {
             class="version-select"
             :disabled="busy"
             @update:value="refresh($event as Id)"
-          /><Tag
+          />
+          <Tag
             :color="
               view.release
                 ? 'blue'
@@ -332,12 +338,15 @@ onBeforeUnmount(() => {
               v-if="view.can_edit"
               :disabled="busy"
               @click="beginVersion(true)"
+              v-access:code="'api:res.review.copy'"
             >
               复制交付版本
-</Button><Button
+            </Button>
+            <Button
               v-if="view.can_edit"
               :disabled="busy"
               @click="beginVersion(false)"
+              v-access:code="'api:res.review.create'"
             >
               全新版本
             </Button>
@@ -345,7 +354,12 @@ onBeforeUnmount(() => {
         </div>
         <div class="delivery-summary">
           <div>
-            <span>必交材料</span><strong>{{ view.submitted }}<small> / {{ view.required }}</small></strong><Progress
+            <span>必交材料</span>
+            <strong>
+              {{ view.submitted }}
+              <small>/ {{ view.required }}</small>
+            </strong>
+            <Progress
               :percent="
                 view.required
                   ? Math.round((view.submitted * 100) / view.required)
@@ -355,7 +369,12 @@ onBeforeUnmount(() => {
             />
           </div>
           <div>
-            <span>待补齐</span><strong :class="{ 'text-amber-600': missing.length }">{{ missing.length }}<small> 项</small></strong><Button
+            <span>待补齐</span>
+            <strong :class="{ 'text-amber-600': missing.length }">
+              {{ missing.length }}
+              <small>项</small>
+            </strong>
+            <Button
               type="link"
               size="small"
               @click="
@@ -367,7 +386,12 @@ onBeforeUnmount(() => {
             </Button>
           </div>
           <div>
-            <span>待处理意见</span><strong>{{ view.pending }}<small> 条</small></strong><Button
+            <span>待处理意见</span>
+            <strong>
+              {{ view.pending }}
+              <small>条</small>
+            </strong>
+            <Button
               type="link"
               size="small"
               @click="
@@ -379,22 +403,30 @@ onBeforeUnmount(() => {
             </Button>
           </div>
           <div>
-            <span>交付范围</span><strong>{{ version.planned_episodes || '未设置'
-              }}<small> 集</small></strong><small>提示词 / 工程截图：前
-              {{ Math.min(Number(version.planned_episodes), 6) }} 集</small>
+            <span>交付范围</span>
+            <strong>
+              {{ version.planned_episodes || '未设置' }}
+              <small>集</small>
+            </strong>
+            <small>
+              提示词 / 工程截图：前
+              {{ Math.min(Number(version.planned_episodes), 6) }} 集
+            </small>
           </div>
         </div>
         <div class="next-action">
           <div>
-            <strong>{{
-              view.release
-                ? '已完成入库'
-                : version.review_state === 'final'
-                  ? '下一步：将定稿交付包入库'
-                  : version.review_state === 'reviewing'
-                    ? '下一步：核对材料并完成修改意见'
-                    : '下一步：补齐必交材料，提交交片'
-            }}</strong>
+            <strong>
+              {{
+                view.release
+                  ? '已完成入库'
+                  : version.review_state === 'final'
+                    ? '下一步：将定稿交付包入库'
+                    : version.review_state === 'reviewing'
+                      ? '下一步：核对材料并完成修改意见'
+                      : '下一步：补齐必交材料，提交交片'
+              }}
+            </strong>
             <p>
               {{
                 view.release
@@ -410,6 +442,7 @@ onBeforeUnmount(() => {
               v-if="view.can_edit && version.review_state === 'draft'"
               title="确认提交完整交付包并进入审片？交片后计划集数固定，材料仍可根据意见调整。"
               @confirm="transition('reviewing')"
+              v-access:code="'res:review:submit'"
             >
               <Button
                 type="primary"
@@ -427,6 +460,7 @@ onBeforeUnmount(() => {
               v-if="view.can_manage && version.review_state === 'reviewing'"
               title="确认本轮修改全部完成？定稿后整套材料固定，只能复制新版本修改。"
               @confirm="transition('final')"
+              v-access:code="'res:review:finalize'"
             >
               <Button
                 type="primary"
@@ -443,11 +477,11 @@ onBeforeUnmount(() => {
               "
               title="确认将此定稿包入库？将创建独立的资源和固定视频版本，不覆盖任何已有资源。"
               @confirm="ingest"
+              v-access:code="'api:res.delivery.ingest'"
             >
-              <Button type="primary" :loading="busy">
-                定稿入库
-              </Button>
-</Popconfirm><Tag v-if="view.release" color="green">
+              <Button type="primary" :loading="busy">定稿入库</Button>
+            </Popconfirm>
+            <Tag v-if="view.release" color="green">
               入库完成 ·
               {{
                 new Date(
@@ -463,7 +497,8 @@ onBeforeUnmount(() => {
             @click="tab = 'materials'"
           >
             交付清单
-</Button><Button
+          </Button>
+          <Button
             :type="tab === 'review' ? 'primary' : 'default'"
             @click="tab = 'review'"
           >
@@ -484,13 +519,20 @@ onBeforeUnmount(() => {
               class="global-material"
               @click="openSlot(slot)"
             >
-              <span class="global-icon">{{
-                slot.kind === 'poster' ? '封' : '文'
-              }}</span><span><strong>{{ slot.label }}</strong><small>{{
-                  slot.complete
-                    ? `${slot.asset?.files.length || 0} 个附件${slot.asset?.text ? ' · 已填写文字' : ''}`
-                    : '必交 · 等待提交'
-                }}</small></span><Tag :color="slot.complete ? 'green' : 'orange'">
+              <span class="global-icon">
+                {{ slot.kind === 'poster' ? '封' : '文' }}
+              </span>
+              <span>
+                <strong>{{ slot.label }}</strong>
+                <small>
+                  {{
+                    slot.complete
+                      ? `${slot.asset?.files.length || 0} 个附件${slot.asset?.text ? ' · 已填写文字' : ''}`
+                      : '必交 · 等待提交'
+                  }}
+                </small>
+              </span>
+              <Tag :color="slot.complete ? 'green' : 'orange'">
                 {{
                   slot.locked ? '已锁定' : slot.complete ? '已提交' : '待补齐'
                 }}
@@ -513,10 +555,16 @@ onBeforeUnmount(() => {
                   :max="1000"
                   :precision="0"
                   class="w-24"
-                /><Button :disabled="busy" @click="transition('draft')">
+                />
+                <Button
+                  :disabled="busy"
+                  @click="transition('draft')"
+                  v-access:code="'res:review:plan'"
+                >
                   保存集数
                 </Button>
-</template><FilmBatch
+              </template>
+              <FilmBatch
                 v-if="editable"
                 :res="scope"
                 :version="version.id"
@@ -537,12 +585,14 @@ onBeforeUnmount(() => {
                 { value: 'pending', label: '只看待处理意见' },
                 { value: 'final', label: '只看已定稿' },
               ]"
-            /><Input
+            />
+            <Input
               v-model:value="keyword"
               placeholder="定位集数"
               class="w-36"
               allow-clear
-            /><Button @click="optional = !optional">
+            />
+            <Button @click="optional = !optional">
               {{ optional ? '收起可选项' : '可选项：SRT / DEMO / YouTube' }}
             </Button>
           </div>
@@ -562,8 +612,12 @@ onBeforeUnmount(() => {
             ]"
           >
             <template #bodyCell="{ column, record }">
-              <strong v-if="column.key === 'episode'">第 {{ record.no }} 集</strong><template v-else-if="column.key === 'status'">
-                <Tag v-if="record.locked" color="green">已定稿</Tag><Button
+              <strong v-if="column.key === 'episode'">
+                第 {{ record.no }} 集
+              </strong>
+              <template v-else-if="column.key === 'status'">
+                <Tag v-if="record.locked" color="green">已定稿</Tag>
+                <Button
                   v-else
                   type="link"
                   @click="
@@ -577,7 +631,8 @@ onBeforeUnmount(() => {
                     record.pending ? `${record.pending} 条待处理` : '进入审片'
                   }}
                 </Button>
-</template><template v-else>
+              </template>
+              <template v-else>
                 <Button
                   v-if="
                     record.slots.some(
@@ -607,9 +662,11 @@ onBeforeUnmount(() => {
                         ? '＋ 提交'
                         : '待提交'
                   }}
-</Button><span v-else class="text-muted-foreground">不要求</span>
+                </Button>
+                <span v-else class="text-muted-foreground">不要求</span>
               </template>
-</template><template #emptyText>
+            </template>
+            <template #emptyText>
               <Empty description="没有符合筛选条件的分集" />
             </template>
           </Table>
@@ -660,16 +717,13 @@ onBeforeUnmount(() => {
             : '创建空版本，需要重新设置计划集数并提交完整交付材料。'
         "
         class="mb-3"
-      /><Input
+      />
+      <Input
         v-model:value="newName"
         :maxlength="100"
         placeholder="版本名称，如：第二轮字幕修订"
-      /><Alert
-        v-if="errorText"
-        type="error"
-        :message="errorText"
-        class="mt-3"
       />
+      <Alert v-if="errorText" type="error" :message="errorText" class="mt-3" />
     </Modal>
   </section>
 </template>

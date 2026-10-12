@@ -1,19 +1,95 @@
-import type { ApiPermission } from '#/api/system/api-permission';
 import type { SystemMenu } from '#/api/system/menu';
 
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildApiGrantTree,
   buildPermissionGrantTree,
-  buildUnboundApiGrantTree,
   filterGrantTreeByIds,
   filterPermissionGrantTree,
-  mergeSearchedGrantSelection,
   mergeVisibleGrantSelection,
 } from './tree';
 
 describe('permission grant trees', () => {
+  it('only shows assignable backend APIs and preserves API-free domain capabilities', () => {
+    const node: SystemMenu = {
+      id: 'root',
+      pid: '0',
+      name: 'System',
+      type: 'catalog',
+      status: 1,
+      path: '/system',
+      authCode: '',
+      meta: { title: '后台' },
+    };
+    const menus = [
+      {
+        ...node,
+        children: [
+          { ...node, id: 'backend', type: 'button' as const, apiIds: ['1'] },
+          { ...node, id: 'client', type: 'button' as const, apiIds: ['2'] },
+          { ...node, id: 'mixed', type: 'button' as const, apiIds: ['1', '2'] },
+          { ...node, id: 'domain', type: 'button' as const, apiIds: [] },
+        ],
+      },
+    ];
+    const tree = buildPermissionGrantTree(
+      menus,
+      [{ id: 1, api_code: 'app.looking.but.backend' }],
+      true,
+    );
+    expect(tree[0]?.children?.map((child) => child.id)).toEqual([
+      'backend',
+      'mixed',
+      'domain',
+    ]);
+    expect(
+      tree[0]?.children?.find((child) => child.id === 'mixed')?.apiIds,
+    ).toEqual(['1']);
+    expect(
+      buildPermissionGrantTree(
+        [
+          {
+            ...node,
+            children: [
+              { ...node, id: 'client', type: 'button', apiIds: ['2'] },
+            ],
+          },
+        ],
+        [],
+        true,
+      ),
+    ).toEqual([]);
+  });
+  it('finds real workflow buttons by a missing dependency API code', () => {
+    const menus = [
+      {
+        id: '1',
+        pid: '0',
+        name: 'Publish',
+        type: 'button',
+        status: 1,
+        path: '',
+        authCode: 'article:publish',
+        meta: { title: '发布文章' },
+        apiIds: ['8', '9'],
+      },
+    ] satisfies SystemMenu[];
+    const tree = buildPermissionGrantTree(menus, [
+      { id: 8, api_code: 'article.publish' },
+      { id: 9, api_code: 'article.release.detail' },
+    ]);
+    expect(
+      filterPermissionGrantTree(tree, 'api:article.release.detail').map(
+        (n) => n.id,
+      ),
+    ).toEqual(['1']);
+    expect(
+      filterPermissionGrantTree(tree, 'article.release.detail').map(
+        (n) => n.id,
+      ),
+    ).toEqual(['1']);
+    expect(filterPermissionGrantTree(tree, 'api:article.delete')).toEqual([]);
+  });
   it('keeps menu ancestors while filtering descendants', () => {
     const menus = [
       {
@@ -49,73 +125,6 @@ describe('permission grant trees', () => {
     expect(filtered[0]?.children?.map((item) => item.id)).toEqual(['2']);
   });
 
-  it('groups only enabled non-public APIs without a menu binding', () => {
-    const base = {
-      access_mode: 'custom',
-      api_code: '/auth/demo;GET',
-      api_key: 'demo',
-      api_method: 'GET',
-      api_name: '示例 API',
-      api_path: '/auth/demo',
-      auth_exempt: false,
-      client_scope: 'backend',
-      cfg_hash: '',
-      created_at: 0,
-      enabled: true,
-      id: 7,
-      menu_perm_id: 0,
-      operation_type: 'detail',
-      permission_count: 0,
-      permission_ids: [],
-      security_exempt: false,
-      updated_at: 0,
-    } satisfies ApiPermission;
-    const tree = buildUnboundApiGrantTree([
-      base,
-      { ...base, id: 8, menu_perm_id: 20 },
-      { ...base, auth_exempt: true, id: 9 },
-    ]);
-
-    expect(tree).toHaveLength(1);
-    expect(tree[0]?.label).toBe('/auth');
-    expect(tree[0]?.children?.map((item) => item.id)).toEqual(['7']);
-  });
-
-  it('can include enabled non-public APIs that already have menu bindings', () => {
-    const base = {
-      access_mode: 'menu',
-      api_code: '/auth/demo;GET',
-      api_key: 'demo',
-      api_method: 'GET',
-      api_name: '示例 API',
-      api_path: '/auth/demo',
-      auth_exempt: false,
-      client_scope: 'backend',
-      cfg_hash: '',
-      created_at: 0,
-      enabled: true,
-      id: 7,
-      menu_perm_id: 20,
-      operation_type: 'detail',
-      permission_count: 0,
-      permission_ids: [],
-      security_exempt: false,
-      updated_at: 0,
-    } satisfies ApiPermission;
-
-    const tree = buildApiGrantTree(
-      [
-        base,
-        { ...base, auth_exempt: true, id: 8 },
-        { ...base, enabled: false, id: 9 },
-      ],
-      { includeBound: true },
-    );
-
-    expect(tree).toHaveLength(1);
-    expect(tree[0]?.children?.map((item) => item.id)).toEqual(['7']);
-  });
-
   it('keeps hidden selections while updating filtered tree nodes', () => {
     const visibleNodes = [
       {
@@ -133,15 +142,6 @@ describe('permission grant trees', () => {
       '2',
       '1',
     ]);
-  });
-
-  it('only adds grants while selecting search results', () => {
-    expect(mergeSearchedGrantSelection(['1', '2'], ['3'])).toEqual([
-      '1',
-      '2',
-      '3',
-    ]);
-    expect(mergeSearchedGrantSelection(['1', '2'], [])).toEqual(['1', '2']);
   });
 
   it('keeps selected grants and their ancestors in readonly trees', () => {
@@ -207,5 +207,58 @@ describe('permission grant trees', () => {
 
     expect(mergeVisibleGrantSelection([], ['11'], nodes)).toEqual(['11']);
     expect(mergeVisibleGrantSelection([], ['12'], nodes)).toEqual(['12']);
+  });
+});
+
+describe('menu function assignment', () => {
+  it('makes catalogs structural and keeps API bindings on functional nodes', () => {
+    const nodes = buildPermissionGrantTree([
+      {
+        id: '1',
+        pid: '0',
+        name: 'Catalog',
+        meta: { title: '目录' },
+        authCode: '',
+        path: '/catalog',
+        type: 'catalog',
+        status: 1,
+        children: [
+          {
+            id: '2',
+            pid: '1',
+            name: 'Page',
+            meta: { title: '页面' },
+            authCode: '',
+            path: '/page',
+            type: 'menu',
+            status: 1,
+            apiIds: ['7'],
+          },
+        ],
+      },
+    ]);
+    expect(nodes[0]?.disabled).toBe(true);
+    expect(nodes[0]?.children?.[0]?.apiIds).toEqual(['7']);
+  });
+  it('can revoke a searched selection without changing hidden grants', () => {
+    const visible = [
+      { id: '1', kind: 'permission', label: '页面', searchText: '页面' },
+    ] as const;
+    expect(mergeVisibleGrantSelection(['1', '2'], [], visible)).toEqual(['2']);
+  });
+  it('does not offer retired aggregate permissions for assignment', () => {
+    const nodes = buildPermissionGrantTree([
+      {
+        id: 'legacy',
+        pid: '0',
+        name: 'LegacyManage',
+        type: 'button',
+        status: 0,
+        meta: { title: '旧管理', permission_tree_retired: true },
+        authCode: 'old:manage',
+        path: '',
+      },
+    ]);
+    expect(nodes).toEqual([]);
   });
 });

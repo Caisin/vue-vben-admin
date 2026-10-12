@@ -383,7 +383,8 @@ function retire(row: CredentialView) {
             type="link"
             @click.stop="openReplace(row)"
           >
-            <RotateCw class="size-4" />更换
+            <RotateCw class="size-4" />
+            更换
           </Button>
           <Dropdown>
             <Button size="small" title="更多操作" type="text">
@@ -400,7 +401,7 @@ function retire(row: CredentialView) {
                     Number(row.created_by) ===
                       Number(userStore.userInfo?.userId)
                   "
-                  v-access:code="'credential:update'"
+                  v-access:code="'api:credential.viewer.replace'"
                   key="viewers"
                   @click="openViewers(row)"
                 >
@@ -408,7 +409,11 @@ function retire(row: CredentialView) {
                 </MenuItem>
                 <MenuItem
                   v-if="row.state !== 'retired'"
-                  v-access:code="'credential:status'"
+                  v-access:code="
+                    row.state === 'active'
+                      ? 'api:credential.item.disable'
+                      : 'api:credential.item.enable'
+                  "
                   key="status"
                   @click="toggleState(row)"
                 >
@@ -464,7 +469,8 @@ function retire(row: CredentialView) {
             type="primary"
             @click="openCreate"
           >
-            <Plus class="size-4" />新增凭证
+            <Plus class="size-4" />
+            新增凭证
           </Button>
         </Space>
       </template>

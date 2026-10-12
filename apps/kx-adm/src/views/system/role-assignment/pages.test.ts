@@ -380,7 +380,8 @@ describe('角色分配配置和执行闭环', () => {
   });
 
   it('分配者跨页选人，添加失败保留选择，重试成功后刷新成员', async () => {
-    state.codes.add('roles:distribute');
+    state.codes.add('api:auth.role_assignment.members.add');
+    state.codes.add('api:auth.role_assignment.members.remove');
     await mount('index');
     const add = [
       ...document.querySelectorAll<HTMLButtonElement>('button'),

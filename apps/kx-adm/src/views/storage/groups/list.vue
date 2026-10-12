@@ -5,6 +5,7 @@ import type {
 } from '#/adapter/vxe-table';
 import type { FileGroup } from '#/api/storage/group';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -17,6 +18,8 @@ import { vxeSortLocalRows } from '#/vxe-sort';
 
 import { useColumns } from './data';
 import Form from './modules/form.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const groupSortFields = ['id', 'group_code', 'order_no', 'create_time'];
 
@@ -104,8 +107,13 @@ function onDelete(row: FileGroup) {
     <FormDrawer @success="onRefresh" />
     <Grid class="management-grid" table-title="文件分组">
       <template #toolbar-tools>
-        <Button type="primary" @click="onCreate">
-          <Plus class="size-5" />新建文件分组
+        <Button
+          type="primary"
+          @click="onCreate"
+          v-access:code="'api:storage.group.create'"
+        >
+          <Plus class="size-5" />
+          新建文件分组
         </Button>
       </template>
       <template #nameCell="{ row }">
@@ -114,6 +122,7 @@ function onDelete(row: FileGroup) {
           size="small"
           type="link"
           @click.stop="onEdit(row)"
+          :disabled="!hasActionAccess(['api:storage.group.update'])"
         >
           {{ row.group_name || '-' }}
         </Button>

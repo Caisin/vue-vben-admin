@@ -474,19 +474,20 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
         <CustomGrid class="management-grid" table-title="钉钉自定义群机器人">
           <template #toolbar-tools>
             <Button
-              v-access:code="'notify:dingtalk-provider:write'"
               type="primary"
               @click="openCustom()"
+              v-access:code="'api:param.dingtalk.custom_robot.create'"
             >
-              <template #icon><Plus /></template>创建自定义机器人
+              <template #icon><Plus /></template>
+              创建自定义机器人
             </Button>
           </template>
           <template #customRobotName="{ row }">
             <Button
-              v-access:code="'notify:dingtalk-provider:write'"
               class="px-0"
               type="link"
               @click.stop="openCustom(row)"
+              v-access:code="'api:param.dingtalk.custom_robot.update'"
             >
               {{ row.robot_name }}
             </Button>
@@ -515,19 +516,20 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
         <GroupGrid class="management-grid" table-title="钉钉企业群机器人">
           <template #toolbar-tools>
             <Button
-              v-access:code="'notify:dingtalk-provider:write'"
               type="primary"
               @click="openGroup()"
+              v-access:code="'api:param.dingtalk.group_bot.create'"
             >
-              <template #icon><Plus /></template>创建企业群机器人
+              <template #icon><Plus /></template>
+              创建企业群机器人
             </Button>
           </template>
           <template #groupBotName="{ row }">
             <Button
-              v-access:code="'notify:dingtalk-provider:write'"
               class="px-0"
               type="link"
               @click.stop="openGroup(row)"
+              v-access:code="'api:param.dingtalk.group_bot.update'"
             >
               {{ row.bot_name }}
             </Button>
@@ -542,19 +544,20 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
         <KnowledgeGrid class="management-grid" table-title="钉钉知识库目标">
           <template #toolbar-tools>
             <Button
-              v-access:code="'notify:dingtalk-provider:write'"
               type="primary"
               @click="openKnowledge()"
+              v-access:code="'api:param.dingtalk.knowledge_target.create'"
             >
-              <template #icon><Plus /></template>创建知识库目标
+              <template #icon><Plus /></template>
+              创建知识库目标
             </Button>
           </template>
           <template #knowledgeTargetName="{ row }">
             <Button
-              v-access:code="'notify:dingtalk-provider:write'"
               class="px-0"
               type="link"
               @click.stop="openKnowledge(row)"
+              v-access:code="'api:param.dingtalk.knowledge_target.update'"
             >
               {{ row.target_name }}
             </Button>
@@ -567,10 +570,10 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
           </template>
           <template #knowledgeTargetOperation="{ row }">
             <Button
-              v-access:code="'notify:dingtalk-provider:write'"
               size="small"
               type="link"
               @click.stop="verifyKnowledge(row)"
+              v-access:code="'api:param.dingtalk.knowledge_target.verify'"
             >
               校验
             </Button>
@@ -863,7 +866,8 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
                 </template>
                 <template #description>
                   <div class="dingtalk-error-detail">
-                    <strong>钉钉返回：</strong>{{ knowledgeTreeErrorDetail }}
+                    <strong>钉钉返回：</strong>
+                    {{ knowledgeTreeErrorDetail }}
                   </div>
                 </template>
               </Alert>
@@ -873,7 +877,7 @@ async function verifyKnowledge(row: DingtalkKnowledgeTargetCfg) {
       </AForm>
       <template #footer>
         <Space>
-          <Button @click="drawerOpen = false"> 取消 </Button>
+          <Button @click="drawerOpen = false">取消</Button>
           <Button :loading="drawerSaving" type="primary" @click="save">
             保存
           </Button>

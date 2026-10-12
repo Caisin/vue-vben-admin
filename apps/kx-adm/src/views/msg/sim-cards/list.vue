@@ -136,19 +136,17 @@ const filterOptions = ref<SimCardFilterOptions>({
 });
 const route = useRoute();
 const { hasAccessByCodes } = useAccess();
-const canManageSimCards = computed(() =>
-  hasAccessByCodes(['sim_cards:manage']),
-);
+const canSimAction = (code: string) => hasAccessByCodes([`api:${code}`]);
 const canImportRealName = computed(() =>
   hasAccessByCodes(['sim_cards:import-real-name']),
 );
 const canDiscoverPhoneNumber = computed(() =>
-  hasAccessByCodes(['sim_cards:discover-phone-number']),
+  hasAccessByCodes(['api:msg.sim.discover_phone_number']),
 );
 const { message: locateMessage } = App.useApp();
 const canLocateDevice = computed(() => hasAccessByCodes(['devices:locate']));
 const canManagePhoneGroups = computed(() =>
-  hasAccessByCodes(['phone_groups:manage']),
+  hasAccessByCodes(['api:msg.group.sims.add_by_query']),
 );
 const canViewPhoneAccounts = computed(() =>
   hasAccessByCodes(['phone_accounts:view']),
@@ -952,42 +950,51 @@ onBeforeUnmount(clearOwnershipPoll);
             definition-code="msg.sim.export"
           />
         </span>
-        <Button v-if="canDiscoverPhoneNumber" @click="openDiscoverBatch">
-          <template #icon><MessageSquareCode /></template>批量查询号码
+        <Button
+          v-if="hasAccessByCodes(['api:msg.sim.discover_phone_numbers'])"
+          @click="openDiscoverBatch"
+        >
+          <template #icon><MessageSquareCode /></template>
+          批量查询号码
         </Button>
         <Button
           v-if="canManagePhoneGroups"
           :loading="addGroupLoading"
           @click="openAddCurrentQueryToGroup"
         >
-          <template #icon><Link2 /></template>加入分组
+          <template #icon><Link2 /></template>
+          加入分组
         </Button>
         <Button
-          v-access:code="['sim_cards:batch-ownership', 'sim_cards:manage']"
+          v-access:code="'sim_cards:batch-ownership'"
           @click="openOwnershipBatch"
         >
-          <template #icon><Settings /></template>批量修改归属
+          <template #icon><Settings /></template>
+          批量修改归属
         </Button>
         <Button
-          v-if="canManageSimCards"
+          v-if="canSimAction('msg.sim.refresh_balances')"
           :loading="balanceBatchLoading"
           @click="refreshAllBalances"
         >
-          <template #icon><RotateCw /></template>批量查询余额
+          <template #icon><RotateCw /></template>
+          批量查询余额
         </Button>
         <Button
-          v-if="canManageSimCards"
+          v-if="canSimAction('msg.sim.repair_phone_numbers')"
           :loading="repairLoading"
           @click="repairAllPhoneNumbers"
         >
-          <template #icon><RotateCw /></template>批量修复号码格式
+          <template #icon><RotateCw /></template>
+          批量修复号码格式
         </Button>
         <Button
-          v-if="canManageSimCards"
+          v-if="canSimAction('msg.sim.search_reindex')"
           :loading="searchReindexLoading"
           @click="reindexSearch"
         >
-          <template #icon><RotateCw /></template>更新全文索引
+          <template #icon><RotateCw /></template>
+          更新全文索引
         </Button>
       </Space>
     </header>
@@ -1017,7 +1024,7 @@ onBeforeUnmount(clearOwnershipPoll);
         <div class="inline-cell">
           <Tooltip title="更新设备卡片信息并通知设备同步修改">
             <Button
-              v-if="canManageSimCards"
+              v-if="canSimAction('msg.sim.update_device')"
               class="cell-edit-button inline-cell-value"
               type="link"
               @click="openUpdate(row)"
@@ -1041,7 +1048,10 @@ onBeforeUnmount(clearOwnershipPoll);
           <Tag v-if="hasAccountAlert(row)" color="error">
             {{ accountAlertLabel(row) }}
           </Tag>
-          <Tooltip v-if="canManageSimCards" title="使用该号码发送短信">
+          <Tooltip
+            v-if="canSimAction('msg.sim.send_sms')"
+            title="使用该号码发送短信"
+          >
             <Button
               aria-label="使用该号码发送短信"
               class="table-icon-button"
@@ -1116,7 +1126,10 @@ onBeforeUnmount(clearOwnershipPoll);
         <StatusTag :status="row.online_state" />
       </template>
       <template #appleDeveloper="{ row }">
-        <Tooltip v-if="canManageSimCards" title="编辑数据库号码资料">
+        <Tooltip
+          v-if="canSimAction('msg.sim.profile')"
+          title="编辑数据库号码资料"
+        >
           <Button
             class="cell-edit-button"
             type="link"
@@ -1135,7 +1148,10 @@ onBeforeUnmount(clearOwnershipPoll);
         </Tag>
       </template>
       <template #profileField="{ column, row }">
-        <Tooltip v-if="canManageSimCards" title="编辑实名、归属和备注">
+        <Tooltip
+          v-if="canSimAction('msg.sim.profile')"
+          title="编辑实名、归属和备注"
+        >
           <Button
             :aria-label="
               column.field === 'real_name'
@@ -1158,7 +1174,7 @@ onBeforeUnmount(clearOwnershipPoll);
       </template>
       <template #balance="{ row }">
         <div class="inline-cell">
-          <Tooltip v-if="canManageSimCards" title="点击修改余额">
+          <Tooltip v-if="canSimAction('msg.sim.balance')" title="点击修改余额">
             <Button
               aria-label="修改余额"
               class="cell-edit-button"
@@ -1180,7 +1196,10 @@ onBeforeUnmount(clearOwnershipPoll);
                 : '未知'
             }}
           </span>
-          <Tooltip v-if="canManageSimCards" title="查余额">
+          <Tooltip
+            v-if="canSimAction('msg.sim.refresh_balance')"
+            title="查余额"
+          >
             <Button
               aria-label="查余额"
               class="table-icon-button"
@@ -1195,7 +1214,7 @@ onBeforeUnmount(clearOwnershipPoll);
         </div>
       </template>
       <template #expiresAt="{ row }">
-        <Tooltip v-if="canManageSimCards" title="点击修改有效期">
+        <Tooltip v-if="canSimAction('msg.sim.expires')" title="点击修改有效期">
           <Button
             aria-label="修改有效期"
             class="cell-edit-button"
@@ -1208,7 +1227,10 @@ onBeforeUnmount(clearOwnershipPoll);
         <span v-else>{{ Times.formatUnix(row.expires_at) }}</span>
       </template>
       <template #lifecycleState="{ row }">
-        <Tooltip v-if="canManageSimCards" title="编辑数据库号码资料">
+        <Tooltip
+          v-if="canSimAction('msg.sim.profile')"
+          title="编辑数据库号码资料"
+        >
           <Button
             class="cell-edit-button"
             type="link"
@@ -1285,10 +1307,12 @@ onBeforeUnmount(clearOwnershipPoll);
             :loading="ownershipResultDownloading"
             @click="downloadOwnershipResult"
           >
-            <template #icon><Download /></template>下载逐条结果
+            <template #icon><Download /></template>
+            下载逐条结果
           </Button>
           <Button v-if="!ownershipBatchTerminal" @click="refreshOwnershipRun">
-            <template #icon><RotateCw /></template>刷新结果
+            <template #icon><RotateCw /></template>
+            刷新结果
           </Button>
         </Space>
       </template>
@@ -1440,9 +1464,9 @@ onBeforeUnmount(clearOwnershipPoll);
       <template v-if="selectedCard">
         <div class="drawer-actions">
           <div>
-            <strong>{{
-              selectedCard.phone_number || selectedCard.iccid
-            }}</strong>
+            <strong>
+              {{ selectedCard.phone_number || selectedCard.iccid }}
+            </strong>
             <div class="muted">{{ selectedCard.iccid }}</div>
           </div>
           <Space>
@@ -1460,30 +1484,35 @@ onBeforeUnmount(clearOwnershipPoll);
               定位所在设备
             </Button>
             <Button
-              v-if="canManageSimCards"
+              v-if="canSimAction('msg.sim.refresh_balance')"
               :loading="balanceRefreshingIccid === selectedCard.iccid"
               @click="refreshCardBalance(selectedCard)"
             >
               <template #icon><RotateCw /></template>
               查余额
             </Button>
-            <Button v-if="canManageSimCards" @click="openUpdate(selectedCard)">
+            <Button
+              v-if="canSimAction('msg.sim.update_device')"
+              @click="openUpdate(selectedCard)"
+            >
               <template #icon><Settings /></template>
               设备配置
             </Button>
             <Button
-              v-if="canManageSimCards"
+              v-if="canSimAction('msg.sim.send_sms')"
               type="primary"
               @click="openSms(selectedCard)"
             >
-              <template #icon><MessageSquareCode /></template>发短信
+              <template #icon><MessageSquareCode /></template>
+              发短信
             </Button>
             <Button
               v-if="canDiscoverPhoneNumber"
               :disabled="!selectedCard.device_code"
               @click="openDiscoverSingle(selectedCard)"
             >
-              <template #icon><RotateCw /></template>查号码
+              <template #icon><RotateCw /></template>
+              查号码
             </Button>
           </Space>
         </div>
@@ -1534,7 +1563,7 @@ onBeforeUnmount(clearOwnershipPoll);
               </DescriptionsItem>
               <DescriptionsItem label="余额">
                 <Button
-                  v-if="canManageSimCards"
+                  v-if="canSimAction('msg.sim.balance')"
                   type="link"
                   @click="openBalance(selectedCard)"
                 >
@@ -1554,15 +1583,15 @@ onBeforeUnmount(clearOwnershipPoll);
               </DescriptionsItem>
               <DescriptionsItem label="卡片有效期">
                 <Button
-                  v-if="canManageSimCards"
+                  v-if="canSimAction('msg.sim.expires')"
                   type="link"
                   @click="openExpiry(selectedCard)"
                 >
                   {{ Times.formatUnix(selectedCard.expires_at) }}
                 </Button>
-                <span v-else>{{
-                  Times.formatUnix(selectedCard.expires_at)
-                }}</span>
+                <span v-else>
+                  {{ Times.formatUnix(selectedCard.expires_at) }}
+                </span>
               </DescriptionsItem>
               <DescriptionsItem label="实名">
                 {{ displayValue(selectedCard.real_name) }}
@@ -1626,9 +1655,9 @@ onBeforeUnmount(clearOwnershipPoll);
                 >
                   {{ record.direction === 'inbound' ? '接收' : '发送' }}
                 </Tag>
-                <span v-else-if="column.key === 'received_at'">{{
-                  Times.formatUnix(record.received_at)
-                }}</span>
+                <span v-else-if="column.key === 'received_at'">
+                  {{ Times.formatUnix(record.received_at) }}
+                </span>
               </template>
             </Table>
           </TabPane>

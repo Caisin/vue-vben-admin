@@ -178,7 +178,10 @@ export function useColumns(
     },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: {
+          auth: 'api:asset.pay.item.update',
+          beforeChange: onEnabledChange,
+        },
         name: onEnabledChange ? 'CellSwitch' : 'CellTag',
         props: { checkedValue: true, unCheckedValue: false },
       },
@@ -220,7 +223,10 @@ export function useSkuColumns(
     },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: {
+          auth: 'api:asset.pay.sku.update',
+          beforeChange: onEnabledChange,
+        },
         name: onEnabledChange ? 'CellSwitch' : 'CellTag',
         props: { checkedValue: true, unCheckedValue: false },
       },

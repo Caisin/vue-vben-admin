@@ -206,7 +206,14 @@ onMounted(load);
     <header class="ocr-header">
       <h1>图片 OCR</h1>
       <Space wrap>
-        <Button :loading="saving" type="primary" @click="save">保存配置</Button>
+        <Button
+          :loading="saving"
+          type="primary"
+          @click="save"
+          v-access:code="'api:ocr.settings.save'"
+        >
+          保存配置
+        </Button>
       </Space>
     </header>
 
@@ -243,7 +250,7 @@ onMounted(load);
               {{ form.enabled ? '已启用' : '未启用' }}
             </Tag>
           </div>
-          <Checkbox v-model:checked="form.enabled"> 启用图片 OCR </Checkbox>
+          <Checkbox v-model:checked="form.enabled">启用图片 OCR</Checkbox>
         </section>
 
         <section v-if="form.mode === 'local'" class="ocr-section">
@@ -298,6 +305,7 @@ onMounted(load);
               :loading="downloading"
               type="primary"
               @click="downloadModels"
+              v-access:code="'api:ocr.model.download'"
             >
               {{
                 settings?.model_status.ready
@@ -305,7 +313,11 @@ onMounted(load);
                   : '保存并下载模型'
               }}
             </Button>
-            <Button :loading="checking" @click="checkModels">
+            <Button
+              :loading="checking"
+              @click="checkModels"
+              v-access:code="'api:ocr.model.check'"
+            >
               保存并重新检测
             </Button>
           </Space>

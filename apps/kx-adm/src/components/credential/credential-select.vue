@@ -349,6 +349,7 @@ defineExpose({ reload: loadCredentials });
           <component :is="menuNode" />
           <div
             v-if="props.allowCreate"
+            v-access:code="'api:credential.item.create'"
             class="credential-select-create"
             @mousedown.prevent.stop
           >
@@ -501,6 +502,7 @@ defineExpose({ reload: loadCredentials });
         <Button
           :loading="quickCreating"
           type="primary"
+          v-access:code="'api:credential.item.create'"
           @click="createCredential"
         >
           新增

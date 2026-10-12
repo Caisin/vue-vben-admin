@@ -11,8 +11,9 @@ import type {
 import type { BusinessContact } from '#/auth';
 import type { SelectedStorageFile } from '#/components/file-picker';
 
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page, useVbenModal } from '@vben/common-ui';
 import {
   Copy,
@@ -62,6 +63,16 @@ import ShareUploadField from './modules/share-upload-field.vue';
 
 type ExpiryPreset = 7 | 15 | 30 | 'custom';
 
+const { hasAccessByCodes } = useAccess();
+const canSetExpiry = computed(() =>
+  hasAccessByCodes(['api:storage.file_share.expiry']),
+);
+const canSetPolicy = computed(() =>
+  hasAccessByCodes(['api:storage.file_share.download_policy']),
+);
+const canSetContact = computed(() =>
+  hasAccessByCodes(['api:storage.file_share.business_contact']),
+);
 const shareSortFields = [
   'created_at',
   'download_count',
@@ -136,6 +147,7 @@ const rowContextMenu = useVxeRowContextMenu<FileShareView>(
   (key, row) => {
     if (key === 'delete') confirmDelete(row);
   },
+  { delete: 'api:storage.file_share.delete' },
 );
 
 const [CreateModal, createModalApi] = useVbenModal({
@@ -363,6 +375,14 @@ async function saveSettings() {
     return;
   }
 
+  if (
+    (expiryChanged && !canSetExpiry.value) ||
+    (policyChanged && !canSetPolicy.value) ||
+    (contactChanged && !canSetContact.value)
+  ) {
+    messageApi.warning('没有保存对应设置的权限');
+    return;
+  }
   settingsSaving.value = true;
   let updated = share;
   let generatedPassword: string | undefined;
@@ -413,6 +433,7 @@ async function saveSettings() {
 }
 
 async function addDownloads(row: FileShareView, count: number) {
+  if (!hasAccessByCodes(['api:storage.file_share.downloads.extend'])) return;
   const updated = await StorageFileShareApi.addDownloads(row.id, count);
   if (editingShare.value?.id === row.id) {
     editingShare.value = updated;
@@ -749,6 +770,7 @@ function disablePastDate(current: Dayjs) {
                 size="small"
                 type="link"
                 @click="configureBusinessContact"
+                v-access:code="'api:storage.file_share.business_contact'"
               >
                 配置
               </Button>
@@ -837,6 +859,7 @@ function disablePastDate(current: Dayjs) {
                   size="small"
                   type="link"
                   @click="showSharePassword(editingShare)"
+                  v-access:code="'api:storage.file_share.password.reveal'"
                 >
                   <Eye class="size-4" />
                   查看密码
@@ -847,6 +870,7 @@ function disablePastDate(current: Dayjs) {
                   size="small"
                   type="link"
                   @click="resetSharePassword(editingShare)"
+                  v-access:code="'api:storage.file_share.download_policy'"
                 >
                   重置随机密码
                 </Button>
@@ -943,9 +967,9 @@ function disablePastDate(current: Dayjs) {
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.dataIndex === 'file_name'">
-                <span class="file-name-full">{{
-                  displayFileName(record)
-                }}</span>
+                <span class="file-name-full">
+                  {{ displayFileName(record) }}
+                </span>
               </template>
               <template v-else-if="column.dataIndex === 'size'">
                 {{ formatBytes(record.size) }}
@@ -973,6 +997,7 @@ function disablePastDate(current: Dayjs) {
               <div class="setting-row">
                 <DatePicker
                   v-model:value="editingExpiry"
+                  :disabled="!canSetExpiry"
                   class="min-w-0 flex-1"
                   :disabled-date="disablePastDate"
                   format="YYYY-MM-DD HH:mm"
@@ -986,17 +1011,24 @@ function disablePastDate(current: Dayjs) {
               <div class="two-fields">
                 <div class="form-field">
                   <span class="field-label">立即允许下载</span>
-                  <Switch v-model:checked="policyImmediate" />
+                  <Switch
+                    v-model:checked="policyImmediate"
+                    :disabled="!canSetPolicy"
+                  />
                 </div>
                 <div class="form-field">
                   <span class="field-label">不限下载次数</span>
-                  <Switch v-model:checked="policyUnlimited" />
+                  <Switch
+                    v-model:checked="policyUnlimited"
+                    :disabled="!canSetPolicy"
+                  />
                 </div>
               </div>
               <div v-if="!policyImmediate" class="form-field mt-4">
                 <span class="field-label">开始下载时间</span>
                 <DatePicker
                   v-model:value="policyStart"
+                  :disabled="!canSetPolicy"
                   class="w-full"
                   format="YYYY-MM-DD HH:mm"
                   show-time
@@ -1007,6 +1039,7 @@ function disablePastDate(current: Dayjs) {
                   <span class="field-label">总下载次数</span>
                   <InputNumber
                     v-model:value="policyLimit"
+                    :disabled="!canSetPolicy"
                     class="w-full"
                     :min="Number(editingShare?.download_count || 1)"
                   />
@@ -1022,6 +1055,7 @@ function disablePastDate(current: Dayjs) {
                     />
                     <Button
                       :disabled="!editingShare"
+                      v-access:code="'api:storage.file_share.downloads.extend'"
                       @click="
                         editingShare &&
                         addDownloads(editingShare, addDownloadCount)
@@ -1038,6 +1072,7 @@ function disablePastDate(current: Dayjs) {
               <h3>下载密码</h3>
               <Segmented
                 v-model:value="policyPasswordAction"
+                :disabled="!canSetPolicy"
                 :options="[
                   { label: '保持不变', value: 'keep' },
                   { label: '重新生成', value: 'reset' },
@@ -1052,6 +1087,7 @@ function disablePastDate(current: Dayjs) {
                 <span class="field-label">新下载密码</span>
                 <Input
                   v-model:value="policyCustomPassword"
+                  :disabled="!canSetPolicy"
                   :maxlength="32"
                   placeholder="输入 6–32 个字符"
                 />
@@ -1063,39 +1099,61 @@ function disablePastDate(current: Dayjs) {
                 <h3>商务联系卡片</h3>
                 <div class="inline-control">
                   <span class="field-label">公开展示</span>
-                  <Switch v-model:checked="editShowBusinessContact" />
+                  <Switch
+                    v-model:checked="editShowBusinessContact"
+                    :disabled="!canSetContact"
+                  />
                 </div>
               </div>
               <div class="two-fields">
                 <div class="form-field">
                   <span class="field-label">公司</span>
-                  <Input v-model:value="editBusinessContact.company" />
+                  <Input
+                    v-model:value="editBusinessContact.company"
+                    :disabled="!canSetContact"
+                  />
                 </div>
                 <div class="form-field">
                   <span class="field-label">联系人</span>
-                  <Input v-model:value="editBusinessContact.contact_name" />
+                  <Input
+                    v-model:value="editBusinessContact.contact_name"
+                    :disabled="!canSetContact"
+                  />
                 </div>
                 <div class="form-field">
                   <span class="field-label">职位</span>
-                  <Input v-model:value="editBusinessContact.title" />
+                  <Input
+                    v-model:value="editBusinessContact.title"
+                    :disabled="!canSetContact"
+                  />
                 </div>
                 <div class="form-field">
                   <span class="field-label">电话</span>
-                  <Input v-model:value="editBusinessContact.phone" />
+                  <Input
+                    v-model:value="editBusinessContact.phone"
+                    :disabled="!canSetContact"
+                  />
                 </div>
                 <div class="form-field">
                   <span class="field-label">邮箱</span>
-                  <Input v-model:value="editBusinessContact.email" />
+                  <Input
+                    v-model:value="editBusinessContact.email"
+                    :disabled="!canSetContact"
+                  />
                 </div>
                 <div class="form-field">
                   <span class="field-label">微信</span>
-                  <Input v-model:value="editBusinessContact.wechat" />
+                  <Input
+                    v-model:value="editBusinessContact.wechat"
+                    :disabled="!canSetContact"
+                  />
                 </div>
               </div>
               <div class="form-field mt-4">
                 <span class="field-label">网站</span>
                 <Input
                   v-model:value="editBusinessContact.website"
+                  :disabled="!canSetContact"
                   placeholder="https://example.com"
                 />
               </div>
@@ -1106,6 +1164,7 @@ function disablePastDate(current: Dayjs) {
                 type="primary"
                 :loading="settingsSaving"
                 @click="saveSettings"
+                v-if="canSetExpiry || canSetPolicy || canSetContact"
               >
                 保存设置
               </Button>
@@ -1207,16 +1266,25 @@ function disablePastDate(current: Dayjs) {
               :loading="copyingShareIds.has(String(row.id))"
               size="small"
               @click.stop="copySharePassword(row)"
+              v-access:code="'api:storage.file_share.password.reveal'"
             >
               <Copy class="size-3.5" />
               有密码
             </Button>
           </Tooltip>
           <template v-if="Number(row.download_limit) > 0">
-            <Button size="small" @click.stop="addDownloads(row, 10)">
+            <Button
+              size="small"
+              @click.stop="addDownloads(row, 10)"
+              v-access:code="'api:storage.file_share.downloads.extend'"
+            >
               +10
             </Button>
-            <Button size="small" @click.stop="addDownloads(row, 100)">
+            <Button
+              size="small"
+              @click.stop="addDownloads(row, 100)"
+              v-access:code="'api:storage.file_share.downloads.extend'"
+            >
               +100
             </Button>
           </template>
@@ -1295,7 +1363,11 @@ function disablePastDate(current: Dayjs) {
 
       <template #toolbar-tools>
         <Space size="small">
-          <Button type="primary" @click="openCreate">
+          <Button
+            type="primary"
+            @click="openCreate"
+            v-access:code="'api:storage.file_share.create'"
+          >
             <Plus class="size-4" />
             新增分享
           </Button>

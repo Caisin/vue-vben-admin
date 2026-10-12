@@ -271,6 +271,7 @@ async function remove(uid: number | string) {
         :loading="saving"
         :disabled="!form.uids.length || treeLoading || !!treeError"
         @click="save"
+        v-access:code="'api:res.admin.res.download_permissions.put'"
       >
         保存授权{{ form.uids.length ? `（${form.uids.length} 人）` : '' }}
       </Button>
@@ -299,14 +300,19 @@ async function remove(uid: number | string) {
       "
     >
       <template #bodyCell="{ column, record }">
-        <span v-if="column.key === 'valid_from'">{{
-          formatTime(record.valid_from, '立即生效')
-        }}</span>
-        <span v-if="column.key === 'valid_until'">{{
-          formatTime(record.valid_until, '永久有效')
-        }}</span>
+        <span v-if="column.key === 'valid_from'">
+          {{ formatTime(record.valid_from, '立即生效') }}
+        </span>
+        <span v-if="column.key === 'valid_until'">
+          {{ formatTime(record.valid_until, '永久有效') }}
+        </span>
         <template v-if="column.key === 'action'">
-          <Button type="link" :disabled="saving" @click="edit(record)">
+          <Button
+            type="link"
+            :disabled="saving"
+            @click="edit(record)"
+            v-access:code="'api:res.admin.res.download_permissions.put'"
+          >
             编辑
           </Button>
           <Button
@@ -314,6 +320,7 @@ async function remove(uid: number | string) {
             type="link"
             :disabled="saving"
             @click="remove(record.uid)"
+            v-access:code="'api:res.admin.res.download_permissions.uid.delete'"
           >
             撤销
           </Button>

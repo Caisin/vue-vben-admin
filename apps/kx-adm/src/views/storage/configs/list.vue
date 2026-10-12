@@ -11,6 +11,7 @@ import type {
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer, useVbenModal } from '@vben/common-ui';
 import { Copy, ExternalLink, Plus } from '@vben/icons';
 
@@ -25,6 +26,8 @@ import { vxeSortParams } from '#/vxe-sort';
 import { useColumns, useFormSchema } from './data';
 import CopyForm from './modules/copy-form.vue';
 import ContentModal from './modules/modal.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const storageConfigSortFields = ['order_no', 'code', 'create_time'];
 
@@ -466,7 +469,12 @@ onMounted(async () => {
     <Grid class="management-grid" table-title="存储配置">
       <template #nameCell="{ row }">
         <Space wrap size="small">
-          <Button class="px-0" type="link" @click.stop="openEdit(row)">
+          <Button
+            class="px-0"
+            type="link"
+            @click.stop="openEdit(row)"
+            :disabled="!hasActionAccess(['api:storage.config.save'])"
+          >
             {{ row.storage_name }}
           </Button>
           <Button
@@ -477,7 +485,12 @@ onMounted(async () => {
           >
             <template #icon><Copy /></template>
           </Button>
-          <Button danger type="link" @click.stop="confirmDelete(row)">
+          <Button
+            danger
+            type="link"
+            @click.stop="confirmDelete(row)"
+            v-access:code="'api:storage.config.delete'"
+          >
             删除
           </Button>
         </Space>
@@ -515,7 +528,11 @@ onMounted(async () => {
             <ExternalLink class="size-4" />
             凭证中心
           </Button>
-          <Button type="primary" @click="openCreate">
+          <Button
+            type="primary"
+            @click="openCreate"
+            v-access:code="'api:storage.config.save'"
+          >
             <Plus class="size-4" />
             新建存储配置
           </Button>

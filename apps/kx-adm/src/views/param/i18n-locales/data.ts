@@ -23,7 +23,7 @@ export function useColumns(
     { field: 'name', title: '显示名称', width: 160 },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: { auth: 'api:param.i18n.save', beforeChange: onEnabledChange },
         name: onEnabledChange ? 'CellSwitch' : 'CellTag',
         props: { checkedValue: true, unCheckedValue: false },
       },

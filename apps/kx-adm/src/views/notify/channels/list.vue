@@ -11,6 +11,7 @@ import type {
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { Ellipsis, Plus } from '@vben/icons';
 
@@ -152,6 +153,8 @@ const providerConfigTarget = computed(() => {
   return { label: '打开参数管理', path: '/param/parameters', query: undefined };
 });
 
+const { hasAccessByCodes } = useAccess();
+
 const [Grid, gridApi] = useVbenVxeGrid<NotifyChannel>({
   formOptions: { schema: useFormSchema(), submitOnChange: true },
   gridEvents: {
@@ -160,7 +163,11 @@ const [Grid, gridApi] = useVbenVxeGrid<NotifyChannel>({
     },
   },
   gridOptions: {
-    columns: channelColumns(onStatusChange),
+    columns: channelColumns(
+      hasAccessByCodes(['api:notify.channel.update'])
+        ? onStatusChange
+        : undefined,
+    ),
     height: '100%',
     pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
     proxyConfig: {
@@ -400,16 +407,17 @@ function showChannelMessages(row: NotifyChannel) {
           <Grid class="management-grid" table-title="消息通道">
             <template #toolbar-tools>
               <Button
-                v-access:code="'notify:channel:write'"
+                v-access:code="'api:notify.channel.create'"
                 type="primary"
                 @click="openCreateFromToolbar"
               >
-                <template #icon><Plus /></template>创建通道
+                <template #icon><Plus /></template>
+                创建通道
               </Button>
             </template>
             <template #channelName="{ row }">
               <Button
-                v-access:code="'notify:channel:write'"
+                :disabled="!hasAccessByCodes(['api:notify.channel.update'])"
                 class="px-0"
                 type="link"
                 @click.stop="openEdit(row)"
@@ -450,7 +458,7 @@ function showChannelMessages(row: NotifyChannel) {
                         @confirm="removeChannel(row)"
                       >
                         <MenuItem
-                          v-access:code="'notify:channel:write'"
+                          v-access:code="'api:notify.channel.delete'"
                           danger
                           key="remove"
                         >
@@ -604,8 +612,17 @@ function showChannelMessages(row: NotifyChannel) {
       </AForm>
       <template #footer>
         <Space>
-          <Button @click="drawerOpen = false"> 取消 </Button>
-          <Button :loading="drawerSaving" type="primary" @click="saveChannel">
+          <Button @click="drawerOpen = false">取消</Button>
+          <Button
+            :loading="drawerSaving"
+            type="primary"
+            @click="saveChannel"
+            v-access:code="
+              editingId
+                ? 'api:notify.channel.update'
+                : 'api:notify.channel.create'
+            "
+          >
             保存
           </Button>
         </Space>

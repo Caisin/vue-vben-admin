@@ -137,7 +137,13 @@ watch(
     @ok="submit"
   >
     <Space class="mb-3" wrap>
-      <Button :loading="saving" @click="translateAll">按分类名称翻译</Button>
+      <Button
+        :loading="saving"
+        @click="translateAll"
+        v-access:code="'api:res.admin.trans.text.post'"
+      >
+        按分类名称翻译
+      </Button>
     </Space>
     <Form layout="vertical">
       <div v-if="loading" class="py-8 text-center text-muted-foreground">

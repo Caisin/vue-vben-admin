@@ -366,7 +366,7 @@ onMounted(load);
             </Space>
           </div>
           <Button
-            v-access:code="'msg_settings:manage'"
+            v-access:code="'api:msg.config.s2.save'"
             type="primary"
             :loading="s2Saving"
             @click="saveS2"
@@ -394,7 +394,11 @@ onMounted(load);
               刷新状态
             </Button>
             <Switch
-              v-access:code="'msg_settings:manage'"
+              v-access:code="
+                runtimeState?.runtime.running
+                  ? 'api:msg.config.s2.runtime.stop'
+                  : 'api:msg.config.s2.runtime.start'
+              "
               :checked="runtimeState?.runtime.running ?? false"
               :loading="runtimeLoading"
               checked-children="监听中"
@@ -522,7 +526,7 @@ onMounted(load);
               </Button>
             </Tooltip>
             <Button
-              v-access:code="'msg_settings:manage'"
+              v-access:code="'api:msg.config.voice.save'"
               type="primary"
               :loading="voiceSaving"
               @click="saveVoice"
@@ -597,7 +601,7 @@ onMounted(load);
               </Checkbox>
               <Space class="field-actions" wrap>
                 <Button
-                  v-access:code="'msg_settings:manage'"
+                  v-access:code="'api:msg.config.voice.save'"
                   size="small"
                   @click="generateVoiceAccessKey"
                 >
@@ -613,7 +617,7 @@ onMounted(load);
                   "
                 >
                   <Button
-                    v-access:code="'msg_settings:manage'"
+                    v-access:code="'api:msg.config.voice.save'"
                     :disabled="!typedVoiceAccessKey"
                     size="small"
                     @click="copyText('访问密钥', typedVoiceAccessKey)"

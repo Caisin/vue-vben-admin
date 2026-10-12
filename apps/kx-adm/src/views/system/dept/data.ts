@@ -125,12 +125,18 @@ export function useColumns(
         options: [
           {
             code: 'append',
+            auth: 'api:auth.dept.create',
             show: (row: DepartmentRow) => !row.isCompany,
             text: '新增下级',
           },
-          { code: 'edit', show: (row: DepartmentRow) => !row.isCompany },
           {
-            code: 'delete', // 默认的删除按钮
+            code: 'edit',
+            auth: 'api:auth.dept.update',
+            show: (row: DepartmentRow) => !row.isCompany,
+          },
+          {
+            code: 'delete',
+            auth: 'api:auth.dept.delete', // 默认的删除按钮
             show: (row: DepartmentRow) => !row.isCompany,
             disabled: (row: SystemDept) => {
               return !!(row.children && row.children.length > 0);

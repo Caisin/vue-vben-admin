@@ -5,6 +5,7 @@ import type {
 } from '#/adapter/vxe-table';
 import type { MallCategory, MallProductStatus } from '#/api/mall';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -15,6 +16,8 @@ import { MallAdminApi } from '#/api/mall';
 
 import { useColumns, useFormSchema } from './data';
 import Form from './modules/form.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const [FormDrawer, formDrawerApi] = useVbenDrawer({
   connectedComponent: Form,
@@ -104,11 +107,12 @@ function onDelete(row: MallCategory) {
     <Grid class="management-grid" table-title="商城类目">
       <template #toolbar-tools>
         <Button
-          v-access:code="'mall:category:write'"
           type="primary"
           @click="onCreate"
+          v-access:code="'api:mall.admin.categories.create'"
         >
-          <Plus class="size-5" />新建类目
+          <Plus class="size-5" />
+          新建类目
         </Button>
       </template>
       <template #nameCell="{ row }">
@@ -117,6 +121,7 @@ function onDelete(row: MallCategory) {
           size="small"
           type="link"
           @click.stop="onEdit(row)"
+          :disabled="!hasActionAccess(['api:mall.admin.categories.update'])"
         >
           {{ row.name || '-' }}
         </Button>

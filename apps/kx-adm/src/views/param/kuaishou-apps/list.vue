@@ -4,6 +4,7 @@ import type { KuaishouAppConfig, KuaishouAppWrite } from '#/api/param';
 
 import { nextTick, ref } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -12,6 +13,8 @@ import { Button, message, Modal, Tag } from 'antdv-next';
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { KuaishouAppApi } from '#/api/param';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const editing = ref<KuaishouAppConfig>();
 const boundCredentialCodes = ref<string[]>([]);
@@ -167,12 +170,22 @@ function remove(row: KuaishouAppConfig) {
     </EditModal>
     <Grid class="management-grid" table-title="快手应用">
       <template #toolbar-tools>
-        <Button type="primary" @click="openCreate">
-          <Plus class="size-4" />新建
+        <Button
+          type="primary"
+          @click="openCreate"
+          v-access:code="'api:param.app.kuaishou.create'"
+        >
+          <Plus class="size-4" />
+          新建
         </Button>
       </template>
       <template #name="{ row }">
-        <Button class="px-0" type="link" @click="openEdit(row)">
+        <Button
+          class="px-0"
+          type="link"
+          @click="openEdit(row)"
+          :disabled="!hasActionAccess(['api:param.app.kuaishou.update'])"
+        >
           {{ row.app_name }}
         </Button>
       </template>
@@ -182,7 +195,14 @@ function remove(row: KuaishouAppConfig) {
         </Tag>
       </template>
       <template #operation="{ row }">
-        <Button danger type="link" @click="remove(row)">删除</Button>
+        <Button
+          danger
+          type="link"
+          @click="remove(row)"
+          v-access:code="'api:param.app.kuaishou.delete'"
+        >
+          删除
+        </Button>
       </template>
     </Grid>
   </Page>

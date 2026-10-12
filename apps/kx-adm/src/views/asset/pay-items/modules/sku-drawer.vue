@@ -10,6 +10,7 @@ import type {
 
 import { computed, ref } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -25,6 +26,8 @@ import {
 import { vxeSortParams } from '#/vxe-sort';
 
 import { skuProviderOptions, useSkuColumns } from '../data';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const currentItem = ref<PayItem>();
 const editingSku = ref<PaySku>();
@@ -219,8 +222,15 @@ async function onSkuEnabledChange(enabled: boolean, row: PaySku) {
     <div class="mx-4 flex flex-col gap-4">
       <Form />
       <Space>
-        <Button type="primary" @click="submitSku">
-          <Plus class="size-4" />{{ editingSku ? '保存 SKU' : '新增 SKU' }}
+        <Button
+          type="primary"
+          v-access:code="
+            editingSku ? 'api:asset.pay.sku.update' : 'api:asset.pay.sku.create'
+          "
+          @click="submitSku"
+        >
+          <Plus class="size-4" />
+          {{ editingSku ? '保存 SKU' : '新增 SKU' }}
         </Button>
         <Button @click="resetForm">清空表单</Button>
       </Space>
@@ -231,6 +241,7 @@ async function onSkuEnabledChange(enabled: boolean, row: PaySku) {
             size="small"
             type="link"
             @click.stop="editSku(row)"
+            :disabled="!hasActionAccess(['api:asset.pay.sku.update'])"
           >
             {{ row.product_name || '-' }}
           </Button>
@@ -243,7 +254,11 @@ async function onSkuEnabledChange(enabled: boolean, row: PaySku) {
           </span>
         </template>
         <template #skuActionCell="{ row }">
-          <Popconfirm title="确认删除该 SKU？" @confirm="removeSku(row)">
+          <Popconfirm
+            title="确认删除该 SKU？"
+            @confirm="removeSku(row)"
+            v-access:code="'api:asset.pay.sku.delete'"
+          >
             <Button danger size="small">删除</Button>
           </Popconfirm>
         </template>

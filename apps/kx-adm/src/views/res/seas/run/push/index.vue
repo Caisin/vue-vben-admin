@@ -162,7 +162,11 @@ function toRecord(record: Record<string, any>) {
             placeholder="Notify Push 通道 ID"
           />
           <Button @click="refreshCache">刷新缓存</Button>
-          <Button type="primary" @click="openCreate">
+          <Button
+            type="primary"
+            @click="openCreate"
+            v-access:code="'api:res.admin.app_push.post'"
+          >
             <Plus class="size-5" />
             新增推送
           </Button>
@@ -189,6 +193,7 @@ function toRecord(record: Record<string, any>) {
               icon: 'lucide:edit',
               onClick: () => openEdit(row),
               text: '编辑',
+              auth: 'api:res.admin.app_push.post',
             },
           ]"
           :dropdown-actions="[
@@ -196,6 +201,7 @@ function toRecord(record: Record<string, any>) {
               icon: 'lucide:send',
               onClick: () => openTest(row),
               text: '测试推送',
+              auth: 'api:res.admin.app_push.send_test.id.uid.post',
             },
             {
               disabled: row.state === 1,
@@ -205,6 +211,7 @@ function toRecord(record: Record<string, any>) {
                 title: '确认发送该推送？',
               },
               text: '发送',
+              auth: 'api:res.admin.app_push.send.id.post',
             },
             {
               icon: 'lucide:history',

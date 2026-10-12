@@ -243,11 +243,12 @@ onMounted(async () => {
       <template #toolbar-tools>
         <Space>
           <Button
-            v-access:code="'developer-account:tiktok-mini-app-sync'"
+            v-access:code="'api:developer_account.tiktok.mini_app.sync'"
             :loading="Boolean(activeSyncTaskId)"
             @click="openSync"
           >
-            <RotateCw class="size-4" />同步小程序
+            <RotateCw class="size-4" />
+            同步小程序
           </Button>
           <span
             v-access:code="'developer-account:tiktok-mini-app-whitelist-import'"
@@ -268,14 +269,16 @@ onMounted(async () => {
             />
           </span>
           <Button @click="showWhitelists()">
-            <List class="size-4" />全部加白明细
+            <List class="size-4" />
+            全部加白明细
           </Button>
           <Button
             v-access:code="'developer-account:tiktok-mini-app-create'"
             type="primary"
             @click="edit()"
           >
-            <Plus class="size-4" />新增小程序
+            <Plus class="size-4" />
+            新增小程序
           </Button>
         </Space>
       </template>

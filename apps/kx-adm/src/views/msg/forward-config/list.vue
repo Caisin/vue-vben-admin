@@ -480,8 +480,12 @@ onMounted(loadInitialData);
         <p>按最新设备快照批量刷新、预览并下发 S2 消息转发配置</p>
       </div>
       <Space wrap>
-        <Button @click="openBatchEditor">
-          <template #icon><Settings /></template>批量编辑
+        <Button
+          v-access:code="'msg_forward_config:apply'"
+          @click="openBatchEditor"
+        >
+          <template #icon><Settings /></template>
+          批量编辑
         </Button>
         <Button
           v-access:code="'msg_forward_config:refresh'"
@@ -495,7 +499,8 @@ onMounted(loadInitialData);
           :loading="actionLoading === 'refresh-all'"
           @click="refreshForwardConfig(false)"
         >
-          <template #icon><RotateCw /></template>刷新全部
+          <template #icon><RotateCw /></template>
+          刷新全部
         </Button>
       </Space>
     </header>
@@ -600,7 +605,8 @@ onMounted(loadInitialData);
                 @select="(value) => insertPlaceholder(String(value))"
               />
               <Button @click="copyText('当前脱敏配置', rawConfig)">
-                <template #icon><Copy /></template>复制 JSON
+                <template #icon><Copy /></template>
+                复制 JSON
               </Button>
             </Space>
           </div>
@@ -788,7 +794,8 @@ onMounted(loadInitialData);
               :loading="previewLoading"
               @click="previewChanges"
             >
-              <template #icon><Eye /></template>预览变更
+              <template #icon><Eye /></template>
+              预览变更
             </Button>
             <Button
               v-access:code="'msg_forward_config:apply'"
@@ -796,7 +803,8 @@ onMounted(loadInitialData);
               type="primary"
               @click="applyChanges"
             >
-              <template #icon><MessageSquareCode /></template>下发配置
+              <template #icon><MessageSquareCode /></template>
+              下发配置
             </Button>
           </Space>
         </div>

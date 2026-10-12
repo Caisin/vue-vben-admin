@@ -148,7 +148,7 @@ async function save() {
             "
           />
           <Button
-            v-if="hasAccessByCodes(['res:content:manage'])"
+            v-if="hasAccessByCodes(['api:res.admin.res.codes.create'])"
             @click="codeManageOpen = true"
           >
             维护编号

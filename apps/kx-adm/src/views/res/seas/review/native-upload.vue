@@ -148,17 +148,26 @@ onBeforeUnmount(() => {
       v-if="!desktop"
       type="info"
       message="请在 Tauri 客户端打开此作品上传文件。网页可以维护文字、审核意见和交付清单。"
-    /><template v-else>
+    />
+    <template v-else>
       <div class="flex flex-wrap gap-2">
-        <Button type="primary" :disabled="disabled || busy" @click="pick">
+        <Button
+          type="primary"
+          :disabled="disabled || busy"
+          @click="pick"
+          v-access:code="'api:res.delivery.transfer.prepare'"
+        >
           选择文件并上传
-</Button><Button
+        </Button>
+        <Button
           v-if="job && job.files.some((f) => !f.file_id)"
           :disabled="disabled || busy"
           @click="run"
+          v-access:code="'api:res.delivery.transfer.prepare'"
         >
           继续 / 重试
-</Button><Button v-if="busy" @click="nativeDelivery.pause()">暂停</Button>
+        </Button>
+        <Button v-if="busy" @click="nativeDelivery.pause()">暂停</Button>
       </div>
       <Select
         v-if="jobs.length"
@@ -181,18 +190,20 @@ onBeforeUnmount(() => {
           :key="index"
           class="transfer-file"
         >
-          <strong>{{ file.name }}</strong><span>{{ file.status }}</span><Progress
+          <strong>{{ file.name }}</strong>
+          <span>{{ file.status }}</span>
+          <Progress
             :percent="
               file.file_id
                 ? 100
                 : Math.min(99, Math.round((file.bytes * 100) / file.size))
             "
-          /><small v-if="file.error" class="text-red-600">{{
-            file.error
-          }}</small>
+          />
+          <small v-if="file.error" class="text-red-600">{{ file.error }}</small>
         </div>
       </div>
-</template><Alert v-if="errorText" type="error" :message="errorText" class="mt-3" />
+    </template>
+    <Alert v-if="errorText" type="error" :message="errorText" class="mt-3" />
   </div>
 </template>
 <style scoped>

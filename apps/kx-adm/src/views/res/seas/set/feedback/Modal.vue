@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import { computed, reactive, ref, watch } from 'vue';
 
+import { useAccess } from '@vben/access';
+
 import {
   Button,
   Form,
@@ -20,12 +22,12 @@ const props = defineProps<{
   open: boolean;
   thread?: { info?: Record<string, any>; items?: Record<string, any>[] };
 }>();
-
 const emit = defineEmits<{
   submit: [value: Record<string, any>];
   'update:open': [value: boolean];
 }>();
-
+const { hasAccessByCodes } = useAccess();
+const canReply = computed(() => hasAccessByCodes(['api:feedback.admin.reply']));
 const sending = ref(false);
 const form = reactive({
   email: '',
@@ -67,6 +69,7 @@ function contentImgs(record: any): string[] {
 }
 
 async function beforeUpload(file: File) {
+  if (!hasAccessByCodes(['api:feedback.admin.upload.image'])) return false;
   const result = await uploadImg({ file }, () => {});
   const urls = (Array.isArray(result) ? result : [])
     .map((item) => item.url)
@@ -77,6 +80,7 @@ async function beforeUpload(file: File) {
 }
 
 async function submit() {
+  if (!canReply.value) return;
   if (!form.msg.trim() && form.imgs.length === 0) {
     message.warning('请输入回复内容或上传图片');
     return;
@@ -100,6 +104,7 @@ async function submit() {
     title="反馈线程"
     width="860px"
     :confirm-loading="sending"
+    :ok-button-props="{ disabled: !canReply }"
     @cancel="emit('update:open', false)"
     @ok="submit"
   >
@@ -130,7 +135,7 @@ async function submit() {
         </Space>
       </div>
 
-      <Form layout="vertical">
+      <Form v-if="canReply" layout="vertical">
         <FormItem label="反馈类型">
           <Input v-model:value="form.feed_back_type" allow-clear />
         </FormItem>
@@ -146,7 +151,9 @@ async function submit() {
             :show-upload-list="false"
             accept="image/*"
           >
-            <Button>上传图片</Button>
+            <Button v-access:code="'api:feedback.admin.upload.image'">
+              上传图片
+            </Button>
           </Upload>
           <Space v-if="form.imgs.length" class="mt-2" wrap>
             <Image v-for="url in form.imgs" :key="url" :src="url" :width="72" />

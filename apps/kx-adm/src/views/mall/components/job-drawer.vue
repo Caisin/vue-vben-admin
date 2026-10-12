@@ -64,6 +64,15 @@ const [Drawer, drawerApi] = useVbenDrawer<JobDrawerData>({
   },
 });
 
+const jobPermission = computed(
+  () =>
+    ({
+      product_import: 'mall:product:import',
+      virtual_code_import: 'mall:inventory:import',
+      shipment_import: 'mall:shipment:import',
+      order_export: 'mall:order:export',
+    })[data.value?.job_type ?? 'product_import'],
+);
 const title = computed(() => data.value?.title ?? '商城批量任务');
 const needSku = computed(() => data.value?.job_type === 'virtual_code_import');
 const needInputFile = computed(() => data.value?.job_type !== 'order_export');
@@ -142,10 +151,10 @@ async function submit() {
         placeholder="虚拟码目标 SKU ID"
       />
       <Button
-        v-access:code="'mall:job:run'"
         :loading="submitting"
         type="primary"
         @click="submit"
+        v-access:code="jobPermission"
       >
         提交任务
       </Button>

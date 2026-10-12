@@ -92,11 +92,12 @@ const drawerTitle = computed(() => `SKU 管理 - ${product.value?.name ?? ''}`);
     <Grid table-title="SKU 列表">
       <template #toolbar-tools>
         <Button
-          v-access:code="'mall:product:write'"
           type="primary"
           @click="onCreateSku"
+          v-access:code="'api:mall.admin.skus.create'"
         >
-          <Plus class="size-5" />新建 SKU
+          <Plus class="size-5" />
+          新建 SKU
         </Button>
       </template>
       <template #skuNameCell="{ row }">
@@ -105,6 +106,7 @@ const drawerTitle = computed(() => `SKU 管理 - ${product.value?.name ?? ''}`);
           size="small"
           type="link"
           @click.stop="onEditSku(row)"
+          v-access:code="'api:mall.admin.skus.update'"
         >
           {{ row.name || '-' }}
         </Button>

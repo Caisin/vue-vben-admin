@@ -7,6 +7,7 @@ import type {
 
 import { ref } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -19,6 +20,8 @@ import Modal from './Modal.vue';
 import ModalItem from './ModalItem.vue';
 import ModalVipItem from './ModalVipItem.vue';
 import TmpReviewModal from './TmpReviewModal.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const editOpen = ref(false);
 const itemOpen = ref(false);
@@ -123,7 +126,11 @@ function openModal(kind: 'item' | 'preview' | 'vip', record: any) {
   >
     <Grid class="management-grid" table-title="支付模板库">
       <template #toolbar-tools>
-        <Button type="primary" @click="openEdit({ enabled: true })">
+        <Button
+          type="primary"
+          @click="openEdit({ enabled: true })"
+          :disabled="!hasActionAccess(['api:res.admin.pay_cfg.tmp.post'])"
+        >
           <Plus class="size-5" />
           新增
         </Button>
@@ -142,6 +149,7 @@ function openModal(kind: 'item' | 'preview' | 'vip', record: any) {
               icon: 'lucide:list',
               onClick: () => openModal('item', row),
               text: '模板项',
+              auth: 'api:res.admin.pay_cfg.tmp.tmp_id.post',
             },
           ]"
           :dropdown-actions="[
@@ -149,6 +157,7 @@ function openModal(kind: 'item' | 'preview' | 'vip', record: any) {
               icon: 'lucide:badge-dollar-sign',
               onClick: () => openModal('vip', row),
               text: 'VIP',
+              auth: 'api:res.admin.pay_cfg.vip_tmp.tmp_id.post',
             },
             {
               icon: 'lucide:eye',

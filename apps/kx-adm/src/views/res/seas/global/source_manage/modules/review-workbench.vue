@@ -402,7 +402,9 @@ async function rebaseUpload() {
   <section class="review-workbench" aria-label="作品审核工作台">
     <header v-if="!compact" class="review-header">
       <div>
-        <span class="text-xs tracking-widest text-muted-foreground">作品审核</span>
+        <span class="text-xs tracking-widest text-muted-foreground">
+          作品审核
+        </span>
         <h2>{{ name }}</h2>
         <p>上传交片 · 审片修改 · 确认定版 · 上架</p>
       </div>
@@ -470,24 +472,37 @@ async function rebaseUpload() {
               "
             >
               {{ reviewLabels[version.review_state] }}
-</Tag><strong>{{ view.detail.items.length }} /
-              {{ version.planned_episodes || '未设置' }}</strong><span> 已上传</span>
+            </Tag>
+            <strong>
+              {{ view.detail.items.length }} /
+              {{ version.planned_episodes || '未设置' }}
+            </strong>
+            <span>已上传</span>
           </div>
           <div>
-            <strong>{{ pending.length }}</strong><span> 条建议待完成</span>
+            <strong>{{ pending.length }}</strong>
+            <span>条建议待完成</span>
           </div>
           <div
             v-if="view.can_edit && version.review_state === 'draft'"
             class="flex items-center gap-2"
           >
-            <span>计划集数</span><InputNumber
+            <span>计划集数</span>
+            <InputNumber
               v-model:value="planned"
               :min="1"
               :max="1000"
               :precision="0"
               :disabled="busy"
               class="w-24"
-            /><Button :disabled="busy" @click="state('draft')">保存计划</Button>
+            />
+            <Button
+              :disabled="busy"
+              @click="state('draft')"
+              v-access:code="'res:review:plan'"
+            >
+              保存计划
+            </Button>
           </div>
           <div class="ml-auto flex flex-wrap gap-2">
             <ReviewBatchUpload
@@ -504,6 +519,7 @@ async function rebaseUpload() {
               v-if="view.can_edit"
               :disabled="busy"
               @click="newVersion(false)"
+              v-access:code="'api:res.review.create'"
             >
               全新版本
             </Button>
@@ -511,6 +527,7 @@ async function rebaseUpload() {
               v-if="view.can_edit"
               :disabled="busy"
               @click="newVersion(true)"
+              v-access:code="'api:res.review.copy'"
             >
               复制版本修改
             </Button>
@@ -518,6 +535,7 @@ async function rebaseUpload() {
               v-if="view.can_edit && version.review_state === 'draft'"
               title="全部分集已上传，确认交片并进入审片修改？已有建议可以在交片后继续处理。"
               @confirm="state('reviewing')"
+              v-access:code="'res:review:submit'"
             >
               <Button
                 type="primary"
@@ -534,6 +552,7 @@ async function rebaseUpload() {
               v-if="view.can_manage && version.review_state === 'reviewing'"
               title="确认本轮修改已全部完成？定版后将固定此版本的成片，后续修改需复制新版本。"
               @confirm="state('final')"
+              v-access:code="'res:review:finalize'"
             >
               <Button
                 type="primary"
@@ -550,8 +569,9 @@ async function rebaseUpload() {
               "
               title="此成片已定版，确认标记为已上架？"
               @confirm="state('published')"
+              v-access:code="'res:review:publish'"
             >
-              <Button type="primary" :disabled="busy"> 确认上架 </Button>
+              <Button type="primary" :disabled="busy">确认上架</Button>
             </Popconfirm>
           </div>
         </div>
@@ -589,7 +609,8 @@ async function rebaseUpload() {
             @click="reviewTab = 'episodes'"
           >
             逐集审核
-</Button><Button
+          </Button>
+          <Button
             :type="reviewTab === 'chat' ? 'primary' : 'default'"
             @click="reviewTab = 'chat'"
           >
@@ -621,7 +642,8 @@ async function rebaseUpload() {
         <div v-else class="review-columns">
           <aside class="episode-panel" aria-label="分集列表">
             <div class="panel-heading">
-              <strong>分集</strong><span>{{ count }} 集</span>
+              <strong>分集</strong>
+              <span>{{ count }} 集</span>
             </div>
             <Input
               v-model:value="search"
@@ -648,19 +670,26 @@ async function rebaseUpload() {
                 :class="{ selected: seq === row.no }"
                 @click="seq = row.no"
               >
-                <span class="episode-number">{{
-                  String(row.no).padStart(2, '0')
-                }}</span><span class="min-w-0 flex-1"><strong>{{ row.title }}</strong><small>{{
-                    row.uploaded
-                      ? row.pending
-                        ? `${row.pending} 条待处理`
-                        : view.detail.items.find(
-                              (i) => Number(i.seq_no) === row.no,
-                            )?.finalized_at
-                          ? '已定稿'
-                          : '已上传'
-                      : '等待上传'
-                  }}</small></span><span
+                <span class="episode-number">
+                  {{ String(row.no).padStart(2, '0') }}
+                </span>
+                <span class="min-w-0 flex-1">
+                  <strong>{{ row.title }}</strong>
+                  <small>
+                    {{
+                      row.uploaded
+                        ? row.pending
+                          ? `${row.pending} 条待处理`
+                          : view.detail.items.find(
+                                (i) => Number(i.seq_no) === row.no,
+                              )?.finalized_at
+                            ? '已定稿'
+                            : '已上传'
+                        : '等待上传'
+                    }}
+                  </small>
+                </span>
+                <span
                   v-if="row.pending"
                   class="pending-dot"
                   aria-label="有待处理建议"
@@ -696,6 +725,7 @@ async function rebaseUpload() {
                 :disabled="busy"
                 type="primary"
                 @click="upload()"
+                v-access:code="'api:res.review.episode'"
               >
                 {{ item ? '替换这一集' : '上传这一集' }}
               </Button>
@@ -716,7 +746,8 @@ async function rebaseUpload() {
             <div v-else class="player-empty">
               <Empty
                 :description="item ? '视频加载中' : `第 ${seq} 集尚未上传`"
-              /><Button v-if="item" @click="play()">重新加载视频</Button>
+              />
+              <Button v-if="item" @click="play()">重新加载视频</Button>
             </div>
             <Alert
               v-if="mediaError"
@@ -725,9 +756,14 @@ async function rebaseUpload() {
               class="mt-3"
             />
             <div class="player-controls">
-              <Button :disabled="seq <= 1 || busy" @click="seq--">上一集</Button><span>{{ seq }} / {{ count }}</span><Button :disabled="seq >= count || busy" @click="seq++">
+              <Button :disabled="seq <= 1 || busy" @click="seq--">
+                上一集
+              </Button>
+              <span>{{ seq }} / {{ count }}</span>
+              <Button :disabled="seq >= count || busy" @click="seq++">
                 下一集
-</Button><Button :disabled="!item" @click="play()">刷新视频</Button>
+              </Button>
+              <Button :disabled="!item" @click="play()">刷新视频</Button>
             </div>
             <Alert
               v-if="item?.finalized_at"
@@ -737,7 +773,8 @@ async function rebaseUpload() {
             />
             <div v-if="editable && item" class="comment-composer">
               <div class="panel-heading">
-                <strong>留下审核意见</strong><Button size="small" @click="capture">
+                <strong>留下审核意见</strong>
+                <Button size="small" @click="capture">
                   标记当前时间 {{ time(draft.position_ms) }}
                 </Button>
               </div>
@@ -761,7 +798,10 @@ async function rebaseUpload() {
                 placeholder="描述这一集需要调整的内容，例如：00:23 转场太快，建议多保留两秒人物反应。"
               />
               <div class="mt-4 flex items-center justify-between gap-2">
-                <small class="text-muted-foreground">切换分集会保留未发送草稿</small><Button
+                <small class="text-muted-foreground">
+                  切换分集会保留未发送草稿
+                </small>
+                <Button
                   type="primary"
                   :loading="busy"
                   :disabled="
@@ -769,6 +809,7 @@ async function rebaseUpload() {
                     (Boolean(item.finalized_at) && draft.kind === 'suggestion')
                   "
                   @click="addNote"
+                  v-access:code="'api:res.review.notes.add'"
                 >
                   {{
                     draft.kind === 'suggestion' ? '提交修改建议' : '发表评论'
@@ -779,7 +820,8 @@ async function rebaseUpload() {
           </main>
           <aside class="notes-panel" aria-label="当前集审核意见">
             <div class="panel-heading">
-              <strong>第 {{ seq }} 集审核意见</strong><span>{{ notes.length }} 条</span>
+              <strong>第 {{ seq }} 集审核意见</strong>
+              <span>{{ notes.length }} 条</span>
             </div>
             <Select
               v-model:value="noteFilter"
@@ -793,7 +835,8 @@ async function rebaseUpload() {
             <div class="note-list">
               <article v-for="note in notes" :key="note.id" class="review-note">
                 <div class="flex items-center justify-between gap-2">
-                  <strong>{{ username(note.uid) }}</strong><Tag
+                  <strong>{{ username(note.uid) }}</strong>
+                  <Tag
                     :color="
                       note.kind === 'comment'
                         ? undefined
@@ -814,18 +857,25 @@ async function rebaseUpload() {
                     @click="seek(note)"
                   >
                     {{ time(note.position_ms) }}
-</Button><small class="text-muted-foreground">{{
-                    new Date(Number(note.created_at) * 1000).toLocaleString()
-                  }}</small>
+                  </Button>
+                  <small class="text-muted-foreground">
+                    {{
+                      new Date(Number(note.created_at) * 1000).toLocaleString()
+                    }}
+                  </small>
                 </div>
                 <small
                   v-if="note.media_link !== item?.link"
                   class="text-amber-600"
-                  >针对替换前的视频，请核对修订结果</small>
+                >
+                  针对替换前的视频，请核对修订结果
+                </small>
                 <p class="note-body">{{ note.body }}</p>
                 <div v-if="note.resolution" class="resolution">
-                  <strong>{{ username(note.resolved_by) }} ·
-                    {{ noteLabels[note.state] }}</strong>
+                  <strong>
+                    {{ username(note.resolved_by) }} ·
+                    {{ noteLabels[note.state] }}
+                  </strong>
                   <p>{{ note.resolution }}</p>
                 </div>
                 <details v-if="note.history.length > 1" class="mt-2 text-sm">
@@ -853,21 +903,26 @@ async function rebaseUpload() {
                     size="small"
                     :disabled="busy"
                     @click="process(note, 'processing')"
+                    v-access:code="'api:res.review.notes.status'"
                   >
                     开始处理
-</Button><Button
+                  </Button>
+                  <Button
                     v-if="note.state !== 'resolved'"
                     size="small"
                     type="primary"
                     :disabled="busy"
                     @click="process(note, 'resolved')"
+                    v-access:code="'api:res.review.notes.status'"
                   >
                     完成建议
-</Button><Button
+                  </Button>
+                  <Button
                     v-else
                     size="small"
                     :disabled="busy"
                     @click="process(note, 'open')"
+                    v-access:code="'api:res.review.notes.status'"
                   >
                     重新打开
                   </Button>
@@ -905,12 +960,8 @@ async function rebaseUpload() {
         :rows="4"
         :maxlength="4000"
         placeholder="说明修改了什么；无需改片时也请说明原因"
-      /><Alert
-        v-if="errorText"
-        :message="errorText"
-        type="error"
-        class="mt-3"
       />
+      <Alert v-if="errorText" :message="errorText" type="error" class="mt-3" />
     </Modal>
     <Modal
       v-model:open="versionDialog"
@@ -932,12 +983,8 @@ async function rebaseUpload() {
         v-model:value="newName"
         placeholder="例如：导演修订版 02"
         :maxlength="100"
-      /><Alert
-        v-if="errorText"
-        :message="errorText"
-        type="error"
-        class="mt-3"
       />
+      <Alert v-if="errorText" :message="errorText" type="error" class="mt-3" />
     </Modal>
     <Modal
       v-model:open="uploadOpen"
@@ -961,18 +1008,20 @@ async function rebaseUpload() {
         type="info"
         class="mb-4"
       />
-      <label class="upload-field">分集标题<Input
-          v-model:value="uploadTitle"
-          :maxlength="200"
-          :disabled="busy"
-      /></label>
-      <label class="upload-field">本次修改说明<TextArea
+      <label class="upload-field">
+        分集标题
+        <Input v-model:value="uploadTitle" :maxlength="200" :disabled="busy" />
+      </label>
+      <label class="upload-field">
+        本次修改说明
+        <TextArea
           v-model:value="uploadReason"
           :rows="2"
           :maxlength="4000"
           :disabled="busy"
           placeholder="说明本次上传或替换修改了什么，将保留在历史记录中"
-      /></label>
+        />
+      </label>
       <NativeUpload
         v-if="Number(res) < 0 && version && uploadOpen"
         :scope="res"
@@ -983,12 +1032,15 @@ async function rebaseUpload() {
         @busy="busy = $event"
         @uploaded="savedFile = $event[0]?.file_id"
       />
-      <label v-else class="upload-field">选择视频<input
+      <label v-else class="upload-field">
+        选择视频
+        <input
           type="file"
           accept=".mp4,.mov,.m4v,.webm,.avi,.mpeg,.mpg"
           :disabled="busy"
           @change="chooseFile"
-      /></label>
+        />
+      </label>
       <p v-if="uploadFile">
         {{ uploadFile.name }} ·
         {{ (uploadFile.size / 1024 / 1024).toFixed(1) }} MB

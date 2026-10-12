@@ -32,7 +32,7 @@ import LoginModal from './modules/login-modal.vue';
 const route = useRoute();
 const { hasAccessByCodes, hasAccessByRoles } = useAccess();
 const canAssign = computed(() =>
-  hasAccessByCodes(['cookie-manager:assign', 'cookie-manager:manage']),
+  hasAccessByCodes(['api:cookie_mgr.assignment.update']),
 );
 const canManageScope = computed(() => hasAccessByRoles(['admin']));
 const scopeManager = ref('');
@@ -48,7 +48,7 @@ watch(scopeManager, () => {
 const scopeLoading = ref(false);
 const logging = ref(false);
 const canLogin = computed(() =>
-  hasAccessByCodes(['cookie-manager:manage', 'cookie-manager:login']),
+  hasAccessByCodes(['api:cookie_mgr.login.start']),
 );
 const siteId = ref<string>();
 const site = ref<Site>();
@@ -359,6 +359,7 @@ onMounted(async () => {
           :disabled="scopeVersion === undefined"
           :loading="scopeLoading"
           @click="saveScope"
+          v-access:code="'api:cookie_mgr.assignment.scope.save'"
         >
           保存范围
         </Button>
@@ -531,6 +532,7 @@ onMounted(async () => {
                   type="primary"
                   :disabled="blocked"
                   @click="openAdd"
+                  v-access:code="'api:cookie_mgr.assignment.update'"
                 >
                   添加使用用户
                 </Button>
@@ -655,6 +657,7 @@ onMounted(async () => {
                   :loading="saving"
                   :disabled="blocked || userLoading || selected.length === 0"
                   @click="change(selected, [])"
+                  v-access:code="'api:cookie_mgr.assignment.update'"
                 >
                   添加所选用户
                 </Button>

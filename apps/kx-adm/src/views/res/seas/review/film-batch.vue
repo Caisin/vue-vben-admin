@@ -100,7 +100,14 @@ async function submit() {
 onBeforeUnmount(() => clearTimeout(timer));
 </script>
 <template>
-  <Button :disabled="disabled" @click="open = true">成片整版 / 补集上传</Button><Modal
+  <Button
+    :disabled="disabled"
+    @click="open = true"
+    v-access:code="'api:res.review.imports.submit'"
+  >
+    成片整版 / 补集上传
+  </Button>
+  <Modal
     v-model:open="open"
     title="成片整版 / 补集上传"
     width="min(960px,96vw)"
@@ -111,14 +118,16 @@ onBeforeUnmount(() => clearTimeout(timer));
     <Alert
       type="info"
       message="客户端多选视频上传后，核对集数再提交后台登记；已有分集不覆盖，替换请进入逐集审片。每批最多30个文件，可分批补集。"
-    /><NativeUpload
+    />
+    <NativeUpload
       :scope="res"
       :version="version"
       kind="film"
       :seq="target"
       @busy="busy = $event"
       @uploaded="uploaded"
-    /><Table
+    />
+    <Table
       :data-source="entries"
       row-key="file_id"
       :pagination="false"
@@ -136,27 +145,32 @@ onBeforeUnmount(() => clearTimeout(timer));
           :max="planned"
           :precision="0"
           :disabled="busy"
-        /><Input
+        />
+        <Input
           v-else-if="column.key === 'title'"
           v-model:value="record.title"
           :maxlength="200"
           :disabled="busy"
         />
       </template>
-</Table><Alert
+    </Table>
+    <Alert
       v-if="entries.length && !valid"
       type="warning"
       message="请填写计划内、不重复且尚未上传的集数与标题。"
       class="mt-3"
-    /><Button
+    />
+    <Button
       class="mt-3"
       type="primary"
       :loading="busy"
       :disabled="!valid"
       @click="submit"
+      v-access:code="'api:res.review.imports.submit'"
     >
       提交分集登记
-</Button><Button v-if="task" class="ml-2" @click="refresh">刷新登记结果</Button>
+    </Button>
+    <Button v-if="task" class="ml-2" @click="refresh">刷新登记结果</Button>
     <div v-if="task" class="mt-3">
       <Tag>{{ task.task_run?.status || '等待调度' }}</Tag>
       <p v-if="task.dispatch_error">{{ task.dispatch_error }}</p>

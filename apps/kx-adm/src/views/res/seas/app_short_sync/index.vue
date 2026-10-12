@@ -47,7 +47,7 @@ import { requestErrorMessage } from '#/request-errors';
 
 const { hasAccessByCodes } = useAccess();
 const canMigrate = computed(() =>
-  hasAccessByCodes(['res:app-short-sync:migrate']),
+  hasAccessByCodes(['api:res.admin.app_short_sync.videos.migrate']),
 );
 const canScan = computed(() => hasAccessByCodes(['res:app-short-sync:run']));
 const summaries = ref<AppShortSyncResourceSummary[]>([]);
@@ -649,7 +649,10 @@ onBeforeUnmount(closeSyncLogs);
           :max="32"
           :precision="0"
           :disabled="
-            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+            !hasAccessByCodes(['api:res.admin.app_short_sync.settings.save']) ||
+            !settingsReady ||
+            settingsLoading ||
+            settingsSaving
           "
           aria-label="同时同步集数"
         />
@@ -661,7 +664,10 @@ onBeforeUnmount(closeSyncLogs);
           :max="32"
           :precision="0"
           :disabled="
-            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+            !hasAccessByCodes(['api:res.admin.app_short_sync.settings.save']) ||
+            !settingsReady ||
+            settingsLoading ||
+            settingsSaving
           "
           aria-label="单集分片并发数"
         />
@@ -674,7 +680,10 @@ onBeforeUnmount(closeSyncLogs);
           :precision="0"
           aria-label="封面并发数"
           :disabled="
-            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+            !hasAccessByCodes(['api:res.admin.app_short_sync.settings.save']) ||
+            !settingsReady ||
+            settingsLoading ||
+            settingsSaving
           "
         />
         <label for="video-timeout">单集超时（秒）</label>
@@ -686,7 +695,10 @@ onBeforeUnmount(closeSyncLogs);
           :precision="0"
           aria-label="单集超时（秒）"
           :disabled="
-            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+            !hasAccessByCodes(['api:res.admin.app_short_sync.settings.save']) ||
+            !settingsReady ||
+            settingsLoading ||
+            settingsSaving
           "
         />
         <label for="cover-timeout">封面超时（秒）</label>
@@ -698,14 +710,22 @@ onBeforeUnmount(closeSyncLogs);
           :precision="0"
           aria-label="封面超时（秒）"
           :disabled="
-            !canMigrate || !settingsReady || settingsLoading || settingsSaving
+            !hasAccessByCodes(['api:res.admin.app_short_sync.settings.save']) ||
+            !settingsReady ||
+            settingsLoading ||
+            settingsSaving
           "
         />
         <Button
-          v-if="canMigrate"
+          v-if="
+            hasAccessByCodes([
+              'api:res.admin.app_short_sync.videos.migrate.status',
+            ])
+          "
           type="primary"
           :loading="settingsSaving"
           :disabled="!settingsReady || settingsLoading"
+          v-access:code="'api:res.admin.app_short_sync.settings.save'"
           @click="saveSettings"
         >
           保存同步配置
@@ -767,13 +787,22 @@ onBeforeUnmount(closeSyncLogs);
     <Card title="按剧同步进度">
       <template #extra>
         <Space wrap>
-          <template v-if="canMigrate">
+          <template
+            v-if="
+              hasAccessByCodes([
+                'api:res.admin.app_short_sync.videos.migrate.status',
+              ])
+            "
+          >
             <template v-for="(label, index) in batchLabels" :key="label">
               <Button
                 v-if="taskActive(batchTasks[index])"
                 danger
                 :loading="batchBusy[index]"
                 :disabled="!!batchTasks[index]?.cancel_requested_at"
+                v-access:code="
+                  'api:res.admin.app_short_sync.videos.migrate.stop'
+                "
                 @click="operateBatch(index, true)"
               >
                 {{ batchTasks[index]?.cancel_requested_at ? '正在停止' : '停止'
@@ -783,6 +812,7 @@ onBeforeUnmount(closeSyncLogs);
                 v-else
                 :loading="batchBusy[index]"
                 :disabled="!batchReady"
+                v-access:code="'api:res.admin.app_short_sync.videos.migrate'"
                 @click="operateBatch(index)"
               >
                 {{ label }}
@@ -790,15 +820,29 @@ onBeforeUnmount(closeSyncLogs);
             </template>
           </template>
           <Button
-            v-if="canMigrate"
+            v-if="
+              hasAccessByCodes([
+                'api:res.admin.app_short_sync.videos.migrate.status',
+              ])
+            "
             aria-label="清理视频失败次数"
+            v-access:code="
+              'api:res.admin.app_short_sync.videos.migrate.clear_failures'
+            "
             @click="clearFailures(false)"
           >
             清理视频失败次数
           </Button>
           <Button
-            v-if="canMigrate"
+            v-if="
+              hasAccessByCodes([
+                'api:res.admin.app_short_sync.videos.migrate.status',
+              ])
+            "
             aria-label="清理封面失败次数"
+            v-access:code="
+              'api:res.admin.app_short_sync.videos.migrate.clear_failures'
+            "
             @click="clearFailures(true)"
           >
             清理封面失败次数
@@ -968,6 +1012,7 @@ onBeforeUnmount(closeSyncLogs);
               size="small"
               danger
               :loading="busyIds.includes(record.res_id)"
+              v-access:code="'api:res.admin.app_short_sync.resources.stop'"
               @click="operate(record, 'stop')"
             >
               停止
@@ -992,9 +1037,9 @@ onBeforeUnmount(closeSyncLogs);
             </div>
           </template>
           <template v-else-if="column.key === 'create_time'">
-            <span>{{
-              record.create_time ? time(record.create_time) : '未记录'
-            }}</span>
+            <span>
+              {{ record.create_time ? time(record.create_time) : '未记录' }}
+            </span>
           </template>
           <template v-else-if="column.key === 'progress'">
             <Progress :percent="percent(record)" size="small" />
@@ -1004,9 +1049,9 @@ onBeforeUnmount(closeSyncLogs);
             {{ record.failed }} / {{ record.conflict }}
           </template>
           <template v-else-if="column.key === 'error'">
-            <span class="break-words">{{
-              record.failure_reasons.join('；') || '-'
-            }}</span>
+            <span class="break-words">
+              {{ record.failure_reasons.join('；') || '-' }}
+            </span>
           </template>
         </template>
       </Table>

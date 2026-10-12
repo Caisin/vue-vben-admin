@@ -108,10 +108,14 @@ export function useColumns(
         name: 'CellOperation',
         options: [
           { code: 'preview', text: '预览' },
-          { code: 'publish', text: '发布' },
+          { code: 'publish', auth: 'api:article.publish', text: '发布' },
           { code: 'history', text: '发布记录' },
-          { code: 'unpublish', text: '取消发布' },
-          { code: 'delete', text: '删除' },
+          {
+            code: 'unpublish',
+            auth: 'api:article.unpublish',
+            text: '取消发布',
+          },
+          { code: 'delete', auth: 'api:article.delete', text: '删除' },
         ],
       },
       field: 'operation',

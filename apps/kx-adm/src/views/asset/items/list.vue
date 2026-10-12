@@ -2,6 +2,7 @@
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { AssetItem, AssetItemPageQuery } from '#/api/asset/asset';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -13,6 +14,8 @@ import { vxeSortParams } from '#/vxe-sort';
 
 import { useColumns, useGridFormSchema } from './data';
 import Form from './modules/form.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const assetSortFields = ['id', 'code', 'spend_priority', 'created_at'];
 
@@ -85,8 +88,13 @@ async function onEnabledChange(enabled: boolean, row: AssetItem) {
     <FormDrawer @success="onRefresh" />
     <Grid class="management-grid" table-title="资产目录">
       <template #toolbar-tools>
-        <Button type="primary" @click="onCreate">
-          <Plus class="size-5" />新建资产
+        <Button
+          type="primary"
+          @click="onCreate"
+          v-access:code="'api:asset.item.create'"
+        >
+          <Plus class="size-5" />
+          新建资产
         </Button>
       </template>
       <template #nameCell="{ row }">
@@ -95,6 +103,7 @@ async function onEnabledChange(enabled: boolean, row: AssetItem) {
           size="small"
           type="link"
           @click.stop="onEdit(row)"
+          :disabled="!hasActionAccess(['api:asset.item.update'])"
         >
           {{ row.name || '-' }}
         </Button>

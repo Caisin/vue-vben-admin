@@ -71,13 +71,13 @@ const modalOpen = ref(false);
 const [messageApi, MessageHolder] = useMessage();
 const { hasAccessByCodes } = useAccess();
 const canUpdateAccount = computed(() =>
-  hasAccessByCodes(['developer-account:update']),
+  hasAccessByCodes(['api:developer_account.account.update']),
 );
 const canImportApple = computed(() =>
   hasAccessByCodes(['developer-account:import-apple']),
 );
 const canManageAccess = computed(() =>
-  hasAccessByCodes(['developer_account_access:manage']),
+  hasAccessByCodes(['api:developer_account.access.account.replace']),
 );
 const saving = ref(false);
 const reindexingSearch = ref(false);
@@ -711,7 +711,8 @@ async function loadAccessUserOptions() {
             :loading="reindexingSearch"
             @click="reindexSearch"
           >
-            <RotateCw class="size-4" />重建搜索索引
+            <RotateCw class="size-4" />
+            重建搜索索引
           </Button>
           <span v-if="canImportApple">
             <BusinessImport
@@ -721,11 +722,12 @@ async function loadAccessUserOptions() {
             />
           </span>
           <Button
-            v-access:code="'developer-account:create'"
+            v-access:code="'api:developer_account.account.create'"
             type="primary"
             @click="openCreate"
           >
-            <Plus class="size-4" />新增账户
+            <Plus class="size-4" />
+            新增账户
           </Button>
         </Space>
       </template>
@@ -933,6 +935,7 @@ async function loadAccessUserOptions() {
                       block
                       :loading="subjectQuickSaving"
                       type="primary"
+                      v-access:code="'api:developer_account.subject.create'"
                       @click="createSubjectQuick(complete)"
                     >
                       新增并选择
@@ -968,6 +971,7 @@ async function loadAccessUserOptions() {
                       block
                       :loading="certifierQuickSaving"
                       type="primary"
+                      v-access:code="'api:developer_account.certifier.create'"
                       @click="createCertifierQuick(complete)"
                     >
                       新增并选择
@@ -1072,6 +1076,7 @@ async function loadAccessUserOptions() {
                       block
                       :loading="certifierQuickSaving"
                       type="primary"
+                      v-access:code="'api:developer_account.certifier.create'"
                       @click="createCertifierQuick(complete)"
                     >
                       新增并选择
@@ -1109,7 +1114,13 @@ async function loadAccessUserOptions() {
           </TabPane>
           <TabPane key="devices" tab="关联设备">
             <div class="mb-3 flex justify-end">
-              <Button type="primary" @click="openDeviceEdit()">新增设备</Button>
+              <Button
+                type="primary"
+                v-access:code="'api:developer_account.apple_device.create'"
+                @click="openDeviceEdit()"
+              >
+                新增设备
+              </Button>
             </div>
             <div
               v-for="device in detail?.devices ?? form.devices"
@@ -1125,7 +1136,11 @@ async function loadAccessUserOptions() {
                 <div>截图文件：{{ device.screenshot_file_id ?? '-' }}</div>
               </div>
               <div class="mt-2 text-right">
-                <Button type="link" @click="openDeviceEdit(device)">
+                <Button
+                  type="link"
+                  v-access:code="'api:developer_account.apple_device.update'"
+                  @click="openDeviceEdit(device)"
+                >
                   编辑设备
                 </Button>
               </div>
@@ -1351,7 +1366,7 @@ async function loadAccessUserOptions() {
         <div class="flex justify-end gap-2">
           <Button @click="accessDrawerOpen = false">取消</Button>
           <Button
-            v-access:code="'developer_account_access:manage'"
+            v-access:code="'api:developer_account.access.account.replace'"
             :loading="accessSaving"
             type="primary"
             @click="saveAccountAccess"
@@ -1371,18 +1386,20 @@ async function loadAccessUserOptions() {
       <template #extra>
         <Space>
           <Button
-            v-access:code="'developer-account:delete'"
+            v-access:code="'api:developer_account.account.delete'"
             danger
             @click="removeAccount(detail)"
           >
-            <IconifyIcon class="size-4" icon="lucide:trash-2" />删除
+            <IconifyIcon class="size-4" icon="lucide:trash-2" />
+            删除
           </Button>
           <Button
-            v-access:code="'developer-account:update'"
+            v-access:code="'api:developer_account.account.update'"
             type="primary"
             @click="openDetailEdit"
           >
-            <IconifyIcon class="size-4" icon="lucide:edit" />编辑
+            <IconifyIcon class="size-4" icon="lucide:edit" />
+            编辑
           </Button>
         </Space>
       </template>

@@ -19,7 +19,13 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ finished: [] }>();
 const { hasAccessByCodes } = useAccess();
-const allowed = computed(() => hasAccessByCodes(['data-sync:execute']));
+const allowed = computed(() =>
+  hasAccessByCodes([
+    props.database || props.databaseId
+      ? 'api:data_sync.database.reconcile'
+      : 'api:data_sync.job.reconcile',
+  ]),
+);
 const busy = ref(false);
 const mounted = ref(false);
 const panel = ref<InstanceType<typeof OperationsPanel>>();

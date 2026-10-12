@@ -99,7 +99,12 @@ onMounted(load);
         />
       </div>
       <Space>
-        <Button :loading="loading" type="primary" @click="save">
+        <Button
+          :loading="loading"
+          type="primary"
+          @click="save"
+          v-access:code="'api:article.settings.storage.save'"
+        >
           保存设置
         </Button>
         <Button :loading="loading" @click="load">重新加载</Button>

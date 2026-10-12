@@ -128,10 +128,13 @@ async function send() {
         </Avatar>
         <div class="chat-bubble">
           <header>
-            <strong>{{ username(Number(message.uid)) }}</strong><span>{{ time(message.created_at) }}</span><Tag v-if="message.kind === 'suggestion'" color="orange">
+            <strong>{{ username(Number(message.uid)) }}</strong>
+            <span>{{ time(message.created_at) }}</span>
+            <Tag v-if="message.kind === 'suggestion'" color="orange">
               修改建议 ·
               {{ message.state === 'resolved' ? '已完成' : '待处理' }}
-</Tag><Tag v-else>评论</Tag>
+            </Tag>
+            <Tag v-else>评论</Tag>
           </header>
           <button
             v-if="message.seq_no"
@@ -145,17 +148,21 @@ async function send() {
           </div>
           <p class="chat-body">{{ message.body }}</p>
           <div v-if="message.media_link" class="chat-source">
-            <span>原片信息：{{
+            <span>
+              原片信息：{{
                 message.media_link.startsWith('storage:file:')
                   ? '当前视频文件'
                   : '历史/外部视频引用'
-              }}</span><Button
+              }}
+            </span>
+            <Button
               size="small"
               type="link"
               @click="emit('select', message.seq_no)"
             >
               查看原片
-</Button><Button
+            </Button>
+            <Button
               v-if="message.seq_no"
               size="small"
               type="link"
@@ -167,9 +174,12 @@ async function send() {
           <footer>
             <Button size="small" type="link" @click="quoteMessage(message)">
               引用回复
-</Button><span v-if="message.resolution" class="resolution">{{ username(Number(message.resolved_by)) }}：{{
+            </Button>
+            <span v-if="message.resolution" class="resolution">
+              {{ username(Number(message.resolved_by)) }}：{{
                 message.resolution
-              }}</span>
+              }}
+            </span>
           </footer>
         </div>
       </article>
@@ -194,7 +204,8 @@ async function send() {
             )
           "
           class="w-32"
-        /><Select
+        />
+        <Select
           v-model:value="kind"
           :options="[
             { value: 'comment', label: '自由评论' },
@@ -224,11 +235,13 @@ async function send() {
         @keydown.ctrl.enter="send"
       />
       <footer>
-        <small>Ctrl / ⌘ + Enter 发送 · 消息会同步到对应集的审核记录</small><Button
+        <small>Ctrl / ⌘ + Enter 发送 · 消息会同步到对应集的审核记录</small>
+        <Button
           type="primary"
           :loading="busy"
           :disabled="!body.trim()"
           @click="send"
+          v-access:code="'api:res.review.chat.add'"
         >
           发送消息
         </Button>

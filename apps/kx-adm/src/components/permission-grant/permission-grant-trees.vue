@@ -7,14 +7,12 @@ import { computed, ref } from 'vue';
 import { Tree } from '@vben/common-ui';
 import { IconifyIcon } from '@vben/icons';
 
-import { Button, InputSearch, Space, Spin, TabPane, Tabs } from 'antdv-next';
+import { Button, InputSearch, Space, Spin, Tag } from 'antdv-next';
 
 import {
-  buildApiGrantTree,
   buildPermissionGrantTree,
   filterGrantTreeByIds,
   filterPermissionGrantTree,
-  mergeSearchedGrantSelection,
   mergeVisibleGrantSelection,
   selectableGrantIds,
 } from './tree';
@@ -25,160 +23,159 @@ const props = withDefaults(
     loading?: boolean;
     menus: SystemMenu[];
     readonly?: boolean;
+    refreshable?: boolean;
   }>(),
   { loading: false, readonly: false },
 );
-
+const emit = defineEmits<{ refresh: [] }>();
 const permissionIds = defineModel<string[]>('permissionIds', {
   default: () => [],
 });
-const apiIds = defineModel<string[]>('apiIds', { default: () => [] });
-
-const menuSearch = ref('');
-const apiSearch = ref('');
-const menuNodes = computed(() => buildPermissionGrantTree(props.menus));
-const apiNodes = computed(() =>
-  buildApiGrantTree(props.apis, { includeBound: true }),
+const search = ref('');
+const showApis = ref(false);
+const nodes = computed(() =>
+  buildPermissionGrantTree(props.menus, props.apis, true),
 );
-const visibleMenuNodes = computed(() => {
-  const nodes = props.readonly
-    ? filterGrantTreeByIds(menuNodes.value, permissionIds.value)
-    : menuNodes.value;
-  return filterPermissionGrantTree(nodes, menuSearch.value);
+const catalogueIds = computed(() => selectableGrantIds(nodes.value));
+const assignedCount = computed(
+  () =>
+    permissionIds.value.filter((id) => catalogueIds.value.has(String(id)))
+      .length,
+);
+const visibleNodes = computed(() => {
+  const tree = props.readonly
+    ? filterGrantTreeByIds(nodes.value, permissionIds.value)
+    : nodes.value;
+  return filterPermissionGrantTree(tree, search.value);
 });
-const visibleApiNodes = computed(() => {
-  const nodes = props.readonly
-    ? filterGrantTreeByIds(apiNodes.value, apiIds.value)
-    : apiNodes.value;
-  return filterPermissionGrantTree(nodes, apiSearch.value);
-});
-
-function visibleSelectionModel(
-  selected: { value: string[] },
-  visibleNodes: { value: ReturnType<typeof buildPermissionGrantTree> },
-  search: { value: string },
-) {
-  return computed({
-    get: () => {
-      const visibleIds = selectableGrantIds(visibleNodes.value);
-      return selected.value.filter((id) => visibleIds.has(String(id)));
-    },
-    set: (next: Array<number | string>) => {
-      if (props.readonly) return;
-      if (search.value.trim()) {
-        selected.value = mergeSearchedGrantSelection(selected.value, next);
-        return;
-      }
-      selected.value = mergeVisibleGrantSelection(
-        selected.value,
+const selected = computed({
+  get: () =>
+    permissionIds.value.filter((id) =>
+      visibleSelectableIds.value.has(String(id)),
+    ),
+  set: (next: Array<number | string>) => {
+    if (!props.readonly)
+      permissionIds.value = mergeVisibleGrantSelection(
+        permissionIds.value,
         next,
         visibleNodes.value,
       );
-    },
-  });
-}
-
-const visiblePermissionIds = visibleSelectionModel(
-  permissionIds,
-  visibleMenuNodes,
-  menuSearch,
+  },
+});
+const visibleSelectableIds = computed(() =>
+  selectableGrantIds(visibleNodes.value),
 );
-const visibleApiIds = visibleSelectionModel(apiIds, visibleApiNodes, apiSearch);
-
-function selectAllApis() {
-  apiIds.value = [...selectableGrantIds(apiNodes.value)];
+const apiById = computed(
+  () => new Map(props.apis.map((api) => [String(api.id), api])),
+);
+const effectiveApis = computed(() => {
+  const granted = new Set(permissionIds.value);
+  const ids = new Set<string>();
+  function visit(items: ReturnType<typeof buildPermissionGrantTree>) {
+    for (const item of items) {
+      if (granted.has(item.id) && !item.disabled)
+        for (const id of item.apiIds ?? []) ids.add(id);
+      visit(item.children ?? []);
+    }
+  }
+  visit(nodes.value);
+  return [...ids].flatMap((id) => {
+    const api = apiById.value.get(id);
+    return api?.enabled ? [api] : [];
+  });
+});
+function selectVisible() {
+  selected.value = [...visibleSelectableIds.value];
 }
-
-function clearAllApis() {
-  apiIds.value = [];
+function clearVisible() {
+  selected.value = [];
 }
 </script>
 
 <template>
   <Spin :spinning="loading" :classes="{ root: 'w-full' }">
-    <Tabs size="small">
-      <TabPane key="permissions" :tab="`菜单权限 ${permissionIds.length}`">
-        <InputSearch
-          v-model:value="menuSearch"
-          allow-clear
-          placeholder="搜索菜单、按钮、权限码或路径"
-        />
-        <div class="grant-tree-scroll">
-          <Tree
-            v-model="visiblePermissionIds"
-            bordered
-            check-strictly
-            :default-expanded-level="2"
-            icon-field="icon"
-            label-field="label"
-            multiple
-            :tree-data="visibleMenuNodes"
-            value-field="id"
+    <div class="mb-3 text-sm text-muted-foreground">
+      按菜单功能分配权限，关联 API 自动生效。选择菜单不会自动选择功能按钮。
+    </div>
+    <InputSearch
+      v-model:value="search"
+      allow-clear
+      placeholder="搜索菜单、功能、权限码或报错中的 API 编码"
+    />
+    <Space class="my-2" wrap>
+      <Button
+        v-if="refreshable"
+        size="small"
+        :loading="loading"
+        @click="emit('refresh')"
+      >
+        刷新权限目录
+      </Button>
+      <Tag>
+        {{ assignedCount }} 项节点 / {{ effectiveApis.length }} 个关联 API
+      </Tag>
+      <template v-if="!readonly">
+        <Button size="small" @click="selectVisible">
+          全选当前结果（含按钮）
+        </Button>
+        <Button size="small" @click="clearVisible">清空当前结果</Button>
+      </template>
+    </Space>
+    <div class="grant-tree-scroll">
+      <Tree
+        v-model="selected"
+        class="min-w-max max-w-none"
+        :auto-check-parent="false"
+        bordered
+        check-strictly
+        :default-expanded-level="2"
+        :disabled="readonly"
+        icon-field="icon"
+        label-field="label"
+        multiple
+        :tree-data="visibleNodes"
+        value-field="id"
+      >
+        <template #node="{ value }">
+          <IconifyIcon v-if="value.icon" :icon="value.icon" />
+          <span class="whitespace-nowrap">{{ value.label }}</span>
+          <Tag v-if="value.permissionType === 'button'" size="small">功能</Tag>
+          <span
+            v-if="value.apiIds?.length"
+            class="text-xs text-muted-foreground"
           >
-            <template #node="{ value }">
-              <IconifyIcon v-if="value.icon" :icon="value.icon" />
-              <span>{{ value.label }}</span>
-            </template>
-          </Tree>
+            {{ value.apiIds.length }} API
+          </span>
+        </template>
+      </Tree>
+    </div>
+    <details
+      v-if="effectiveApis.length"
+      class="mt-3 text-sm"
+      @toggle="showApis = ($event.target as HTMLDetailsElement).open"
+    >
+      <summary class="cursor-pointer">
+        查看自动关联的 API（{{ effectiveApis.length }}）
+      </summary>
+      <div v-if="showApis" class="grant-tree-scroll">
+        <div v-for="api in effectiveApis" :key="api.id" class="py-1">
+          {{ api.api_name }}
+          <code>{{ api.api_method }} {{ api.api_path }}</code>
         </div>
-      </TabPane>
-      <TabPane key="apis" :tab="`API 权限 ${apiIds.length}`">
-        <div class="grant-toolbar">
-          <InputSearch
-            v-model:value="apiSearch"
-            allow-clear
-            placeholder="搜索 API 名称、方法、路径或编码"
-          />
-          <Space v-if="!readonly">
-            <Button size="small" @click="selectAllApis">选择全部 API</Button>
-            <Button size="small" @click="clearAllApis">取消全部 API</Button>
-          </Space>
-        </div>
-        <div class="grant-tree-scroll">
-          <Tree
-            v-model="visibleApiIds"
-            bordered
-            check-strictly
-            :default-expanded-level="1"
-            label-field="label"
-            multiple
-            :show-icon="false"
-            :tree-data="visibleApiNodes"
-            value-field="id"
-          >
-            <template #node="{ value }">
-              <span v-if="value.method" class="api-method">
-                {{ value.method }}
-              </span>
-              <span>{{ value.label }}</span>
-            </template>
-          </Tree>
-        </div>
-      </TabPane>
-    </Tabs>
+      </div>
+    </details>
   </Spin>
 </template>
-
 <style scoped>
 .grant-tree-scroll {
-  min-height: 220px;
-  max-height: 360px;
-  margin-top: 8px;
+  min-height: 80px;
+  max-height: calc(100dvh - 230px);
   overflow: auto;
 }
 
-.grant-toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.api-method {
-  display: inline-block;
-  width: 48px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+code {
   font-size: 11px;
   color: hsl(var(--muted-foreground));
+  overflow-wrap: anywhere;
 }
 </style>

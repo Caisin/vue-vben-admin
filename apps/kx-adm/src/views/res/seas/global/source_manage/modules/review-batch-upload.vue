@@ -183,7 +183,11 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <Button :disabled="disabled" @click="open = true">
+  <Button
+    :disabled="disabled"
+    @click="open = true"
+    v-access:code="'api:res.review.imports.submit'"
+  >
     {{ pending ? '上传登记中…' : '整版 / 补集上传' }}
   </Button>
   <Modal
@@ -207,14 +211,17 @@ onBeforeUnmount(() => {
       class="mb-3"
     />
     <Alert v-if="errorText" :message="errorText" type="error" class="mb-3" />
-    <label class="mb-4 block">选择视频（文件名以集数结尾可自动识别）<input
+    <label class="mb-4 block">
+      选择视频（文件名以集数结尾可自动识别）
+      <input
         class="mt-2 block"
         type="file"
         multiple
         accept=".mp4,.mov,.m4v,.webm,.avi,.mpeg,.mpg"
         :disabled="busy || pending || !planned"
         @change="select"
-    /></label>
+      />
+    </label>
     <Table
       v-if="rows.length"
       :data-source="rows"
@@ -247,9 +254,10 @@ onBeforeUnmount(() => {
           <Progress
             :percent="record.progress"
             :status="record.error ? 'exception' : undefined"
-          /><small>{{
-            record.error || (record.fileId ? '已上传，等待登记' : '')
-          }}</small>
+          />
+          <small>
+            {{ record.error || (record.fileId ? '已上传，等待登记' : '') }}
+          </small>
         </div>
       </template>
     </Table>
@@ -269,10 +277,17 @@ onBeforeUnmount(() => {
     </Button>
     <section v-if="job" class="mt-5 border-t pt-4">
       <div class="mb-3 flex items-center justify-between">
-        <strong>最近一次登记 · {{ job.results.length }} /
-          {{ job.entries.length }} 集</strong>
+        <strong>
+          最近一次登记 · {{ job.results.length }} / {{ job.entries.length }} 集
+        </strong>
         <div class="flex gap-2">
-          <Button :disabled="busy" @click="refresh">刷新进度</Button><Button v-if="!pending" :disabled="busy" @click="retry">
+          <Button :disabled="busy" @click="refresh">刷新进度</Button>
+          <Button
+            v-if="!pending"
+            :disabled="busy"
+            @click="retry"
+            v-access:code="'api:res.review.imports.submit'"
+          >
             重试未成功集
           </Button>
         </div>

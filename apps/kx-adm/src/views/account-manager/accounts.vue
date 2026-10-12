@@ -43,7 +43,18 @@ import DynamicFields from './modules/dynamic-fields.vue';
 import Reveal from './modules/reveal.vue';
 
 const { hasAccessByCodes } = useAccess();
-const canWrite = computed(() => hasAccessByCodes(['account-manager:write']));
+const canCreate = computed(() =>
+  hasAccessByCodes(['api:account_mgr.account.create']),
+);
+const canUpdate = computed(() =>
+  hasAccessByCodes(['api:account_mgr.account.update']),
+);
+const canDelete = computed(() =>
+  hasAccessByCodes(['api:account_mgr.account.delete']),
+);
+const canWrite = computed(
+  () => canCreate.value || canUpdate.value || canDelete.value,
+);
 const canReveal = computed(() => hasAccessByCodes(['account-manager:reveal']));
 const types = ref<AccountType[]>([]);
 const rows = ref<ManagedAccount[]>([]);
@@ -147,7 +158,11 @@ function changeType(id: unknown) {
   values.value = initialFieldValues(selectedType.value);
 }
 async function save() {
-  if (!selectedType.value || !canWrite.value) return;
+  if (
+    !selectedType.value ||
+    !(editing.value ? canUpdate.value : canCreate.value)
+  )
+    return;
   saving.value = true;
   errorMessage.value = '';
   try {
@@ -240,7 +255,7 @@ onMounted(async () => {
       />
       <Button @click="load(true)">查询</Button>
       <Button :loading="loading" @click="load()">刷新</Button>
-      <Button v-if="canWrite" type="primary" @click="create">新增账户</Button>
+      <Button v-if="canCreate" type="primary" @click="create">新增账户</Button>
     </Space>
     <Alert
       v-if="!canWrite"
@@ -272,18 +287,20 @@ onMounted(async () => {
       "
     >
       <template #bodyCell="{ column, record }">
-        <span v-if="column.key === 'type'">{{
-          types.find((type) => type.id === record.type_id)?.name ?? '未知类型'
-        }}</span>
-        <span v-else-if="column.key === 'updated'">{{
-          Times.formatUnix(record.updated_at)
-        }}</span>
+        <span v-if="column.key === 'type'">
+          {{
+            types.find((type) => type.id === record.type_id)?.name ?? '未知类型'
+          }}
+        </span>
+        <span v-else-if="column.key === 'updated'">
+          {{ Times.formatUnix(record.updated_at) }}
+        </span>
         <Space v-else-if="column.key === 'actions'">
           <Button type="link" @click="show(record)">详情</Button>
-          <Button v-if="canWrite" type="link" @click="edit(record)">
+          <Button v-if="canUpdate" type="link" @click="edit(record)">
             编辑
           </Button>
-          <Button v-if="canWrite" type="link" danger @click="remove(record)">
+          <Button v-if="canDelete" type="link" danger @click="remove(record)">
             删除
           </Button>
         </Space>
@@ -359,11 +376,13 @@ onMounted(async () => {
           >
             <Tag v-if="!field.enabled">已停用</Tag>
             <template v-if="field.sensitive">
-              <span>{{
-                details.configured_secrets.includes(field.key)
-                  ? '已设置'
-                  : '未设置'
-              }}</span>
+              <span>
+                {{
+                  details.configured_secrets.includes(field.key)
+                    ? '已设置'
+                    : '未设置'
+                }}
+              </span>
               <Button
                 v-if="
                   canReveal && details.configured_secrets.includes(field.key)
@@ -382,9 +401,9 @@ onMounted(async () => {
                   : ''
               "
             />
-            <span v-else class="break-all whitespace-pre-wrap">{{
-              display(details.values[field.key])
-            }}</span>
+            <span v-else class="break-all whitespace-pre-wrap">
+              {{ display(details.values[field.key]) }}
+            </span>
           </DescriptionsItem>
         </Descriptions>
       </template>

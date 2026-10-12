@@ -68,6 +68,7 @@ export interface AssetWrite {
 }
 const base = (scope: Id, version: Id) =>
   `/adm/res/delivery/${scope}/${version}`;
+const projectBase = (scope: Id) => `/adm/res/delivery/${scope}`;
 export const deliveryApi = {
   list: (keyword: string, stage: string, page: number, size = 20) =>
     requestClient.get<{ items: DeliveryProject[]; total: number }>(
@@ -127,6 +128,8 @@ export const deliveryApi = {
     requestClient.get<DeliveryDownloadGrant[]>(
       `${base(scope, version)}/download-permissions`,
     ),
+  transferOwner: (scope: Id, uid: Id) =>
+    requestClient.put(`${projectBase(scope)}/owner`, { uid }),
   saveGrants: (scope: Id, version: Id, grants: DeliveryDownloadGrant[]) =>
     requestClient.put(
       `${base(scope, version)}/download-permissions`,

@@ -67,7 +67,12 @@ async function loadDuplicateUsers() {
 <template>
   <Drawer :open="open" title="发票详情" size="min(920px, 100vw)" @close="close">
     <template v-if="invoice && canUpdate" #extra>
-      <a @click="emit('edit', invoice)">维护字段</a>
+      <a
+        v-access:code="'api:invoice.item.update'"
+        @click="emit('edit', invoice)"
+      >
+        维护字段
+      </a>
     </template>
 
     <Empty v-if="!invoice" description="请选择发票" />

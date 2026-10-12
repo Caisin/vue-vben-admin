@@ -34,7 +34,7 @@ export function useColumns(
       cellRender: {
         attrs: { nameField: 'group_name', onClick: onActionClick },
         name: 'CellOperation',
-        options: ['delete'],
+        options: [{ code: 'delete', auth: 'api:storage.group.delete' }],
       },
       field: 'operation',
       fixed: 'right',

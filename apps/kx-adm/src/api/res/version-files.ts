@@ -26,6 +26,13 @@ export function versionVideoAdapter(
     return `${base}/${encodeURIComponent(code)}`;
   };
   return {
+    permissions: {
+      upload: ['api:res.admin.res.versions.files.upload'],
+      direct: [
+        'api:res.admin.res.versions.files.prepare',
+        'api:res.admin.res.versions.files.complete',
+      ],
+    },
     list: (params) => requestClient.get<Page<UploadFile>>(base, { params }),
     detail: StorageFileApi.detail,
     urls: StorageFileApi.urls,

@@ -4,6 +4,7 @@ import type { DataSourceView } from '#/api/system/data-source';
 
 import { computed, ref, watch } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Plus } from '@vben/icons';
 
 import {
@@ -46,6 +47,7 @@ const emit = defineEmits<{
   saved: [number];
   'update:open': [boolean];
 }>();
+const { hasAccessByCodes } = useAccess();
 const form = ref(jobForm());
 const saving = ref(false);
 const submitted = ref(false);
@@ -97,6 +99,12 @@ watch(
   { immediate: true },
 );
 async function save() {
+  if (
+    !hasAccessByCodes([
+      props.detail ? 'api:data_sync.job.update' : 'api:data_sync.job.create',
+    ])
+  )
+    return;
   form.value.config.receipt_database =
     form.value.config.receipt_database?.trim() || null;
   submitted.value = true;
@@ -141,6 +149,11 @@ function addSource() {
     :z-index="2200"
     ok-text="保存配置"
     :confirm-loading="saving"
+    :ok-button-props="{
+      disabled: !hasAccessByCodes([
+        detail ? 'api:data_sync.job.update' : 'api:data_sync.job.create',
+      ]),
+    }"
     @ok="save"
     @cancel="emit('update:open', false)"
   >
@@ -155,8 +168,13 @@ function addSource() {
       />
       <h3>任务与目标</h3>
       <div class="form-grid">
-        <label>任务名称<Input v-model:value="form.name" :maxlength="128" /></label>
-        <label>Databend 数据源<Select
+        <label>
+          任务名称
+          <Input v-model:value="form.name" :maxlength="128" />
+        </label>
+        <label>
+          Databend 数据源
+          <Select
             v-model:value="form.target_ds_code"
             aria-label="Databend 数据源"
             :options="targets"
@@ -167,8 +185,11 @@ function addSource() {
               form.target_database = '';
               form.warehouse = null;
             "
-        /></label>
-        <label>目标数据库<MetadataSelect
+          />
+        </label>
+        <label>
+          目标数据库
+          <MetadataSelect
             v-model:value="form.target_database"
             label="目标数据库"
             :context-key="targetKey"
@@ -182,8 +203,14 @@ function addSource() {
                   keyword,
                 })
             "
-        /></label>
-        <label ref="targetTableField"><span>目标表 <span class="text-red-500" aria-hidden="true">*</span></span><Input
+          />
+        </label>
+        <label ref="targetTableField">
+          <span>
+            目标表
+            <span class="text-red-500" aria-hidden="true">*</span>
+          </span>
+          <Input
             v-model:value="form.target_table"
             placeholder="新建目标表名"
             aria-label="目标表"
@@ -191,36 +218,59 @@ function addSource() {
             :aria-invalid="targetTableMissing"
             :status="targetTableMissing ? 'error' : undefined"
             :disabled="!!detail"
-          /><span
+          />
+          <span
             v-if="targetTableMissing"
             class="text-xs text-red-500"
             role="alert"
-            >请填写目标表名</span></label>
-        <label>回执数据库<Input
+          >
+            请填写目标表名
+          </span>
+        </label>
+        <label>
+          回执数据库
+          <Input
             v-model:value="form.config.receipt_database"
             placeholder="_kx_sync_meta"
-        /></label>
-        <label>计算仓库<WarehouseSelect
+          />
+        </label>
+        <label>
+          计算仓库
+          <WarehouseSelect
             v-model:value="form.warehouse"
             :ds-code="form.target_ds_code"
             :allow-insecure="form.allow_insecure"
             :active="open"
-        /></label>
-        <label>私有批次存储<Select
+          />
+        </label>
+        <label>
+          私有批次存储
+          <Select
             v-model:value="form.config.storage_code"
             :options="stores"
             show-search
             option-filter-prop="label"
-        /></label>
-        <label class="check"><Checkbox v-model:checked="form.allow_insecure">允许不加密的目标连接</Checkbox></label>
+          />
+        </label>
+        <label class="check">
+          <Checkbox v-model:checked="form.allow_insecure">
+            允许不加密的目标连接
+          </Checkbox>
+        </label>
       </div>
       <StrategyFields
         v-model:config="form.config"
         :disabled="!!detail?.active"
       />
       <h3 class="section-heading">
-        源实例<Button type="link" @click="emit('instance')">
-          <Plus class="size-4" />新增实例
+        源实例
+        <Button
+          type="link"
+          @click="emit('instance')"
+          v-access:code="'api:data_sync.instance.create'"
+        >
+          <Plus class="size-4" />
+          新增实例
         </Button>
       </h3>
       <Tabs
@@ -246,45 +296,69 @@ function addSource() {
           />
         </TabPane>
       </Tabs>
-      <Button @click="addSource"><Plus class="size-4" />添加源绑定</Button>
+      <Button @click="addSource">
+        <Plus class="size-4" />
+        添加源绑定
+      </Button>
       <h3>读取与增量策略</h3>
       <div class="form-grid">
-        <label v-if="['id_append', 'id_and_time'].includes(form.config.mode)">同表 ID 拉取并发数<InputNumber
+        <label v-if="['id_append', 'id_and_time'].includes(form.config.mode)">
+          同表 ID 拉取并发数
+          <InputNumber
             v-model:value="form.config.limits.id_concurrency"
             :precision="0"
             :min="1"
             :max="8"
-        /></label>
-        <label v-if="['id_append', 'id_and_time'].includes(form.config.mode)">ID 区间跨度<InputNumber
+          />
+        </label>
+        <label v-if="['id_append', 'id_and_time'].includes(form.config.mode)">
+          ID 区间跨度
+          <InputNumber
             v-model:value="form.config.limits.id_span"
             :min="1"
             :max="1000000"
-        /></label>
-        <label>每批最多行数<InputNumber
+          />
+        </label>
+        <label>
+          每批最多行数
+          <InputNumber
             v-model:value="form.config.limits.max_rows"
             :min="1"
             :max="1000000"
-        /></label>
-        <label>每批字节上限<InputNumber
+          />
+        </label>
+        <label>
+          每批字节上限
+          <InputNumber
             v-model:value="form.config.limits.max_bytes"
             :min="1024"
             :max="67108864"
-        /></label>
-        <label>源实例并发数<InputNumber
+          />
+        </label>
+        <label>
+          源实例并发数
+          <InputNumber
             v-model:value="form.config.limits.source_concurrency"
             :min="1"
             :max="8"
-        /></label>
-        <label>时间重叠窗口（秒）<InputNumber
+          />
+        </label>
+        <label>
+          时间重叠窗口（秒）
+          <InputNumber
             v-model:value="form.config.limits.overlap_seconds"
             :min="0"
             :max="2678400"
-        /></label>
-        <label>提交等待窗口（秒）<InputNumber
+          />
+        </label>
+        <label>
+          提交等待窗口（秒）
+          <InputNumber
             v-model:value="form.config.limits.settle_delay_seconds"
             :min="0"
             :max="86400"
-        /></label>
+          />
+        </label>
       </div>
     </div>
   </Modal>

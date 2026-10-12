@@ -162,6 +162,7 @@ async function finish(record: any) {
           v-if="!row.is_done"
           title="确认完结该反馈？"
           @confirm="finish(row)"
+          v-access:code="'api:feedback.admin.done'"
         >
           <Button size="small" type="link">完结</Button>
         </Popconfirm>

@@ -8,8 +8,7 @@ import { computed, nextTick, ref, shallowRef } from 'vue';
 import { useVbenDrawer } from '@vben/common-ui';
 
 import { useVbenForm } from '#/adapter/form';
-import { ApiPermissionApi } from '#/api/system/api-permission';
-import { SystemMenuApi } from '#/api/system/menu';
+import { loadPermissionCatalog } from '#/api/system/permission-catalog';
 import { SystemRoleApi } from '#/api/system/role';
 import { PermissionGrantTrees } from '#/components/permission-grant';
 import { $t } from '#/locales';
@@ -21,16 +20,26 @@ const emits = defineEmits(['success']);
 
 const formData = ref<SystemRole>();
 const permissionMenus = shallowRef<SystemMenu[]>([]);
-const apiPermissions = ref<ApiPermission[]>([]);
+const apiPermissions = shallowRef<ApiPermission[]>([]);
 const selectedPermissionIds = ref<string[]>([]);
-const selectedApiIds = ref<string[]>([]);
 
 function resolveHomeOptions(values: Readonly<SystemRole>) {
   return homePageOptions(permissionMenus.value, values.permissions ?? []);
 }
 
 const [Form, formApi] = useVbenForm({
-  schema: useFormSchema(resolveHomeOptions),
+  schema: useFormSchema(resolveHomeOptions).map((field) => ({
+    ...field,
+    ...(field.fieldName === 'permissions'
+      ? {
+          hideLabel: true,
+          formItemClass:
+            'min-w-0 items-start xl:col-start-2 xl:row-start-1 xl:row-span-8',
+        }
+      : { formItemClass: 'min-w-0 xl:col-start-1' }),
+  })),
+  wrapperClass:
+    'grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(28rem,36rem)_minmax(0,1fr)]',
   showDefaultActions: false,
 });
 
@@ -47,7 +56,7 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemRole>({
     );
     const payload = {
       ...values,
-      apiIds: selectedApiIds.value,
+      apiIds: [],
       homePermId:
         values.homePermId && validHomeIds.has(String(values.homePermId))
           ? String(values.homePermId)
@@ -73,20 +82,20 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemRole>({
       const data = drawerApi.getData();
       formApi.reset();
 
-      if (data?.id) {
-        const detail = await SystemRoleApi.detail(data.id);
+      const [detail] = await Promise.all([
+        data?.id ? SystemRoleApi.detail(data.id) : Promise.resolve(undefined),
+        loadPermissionGrants(),
+      ]);
+      if (detail) {
         formData.value = detail;
         id.value = detail.id;
-        selectedApiIds.value = [...(detail.apiIds ?? [])];
         selectedPermissionIds.value = [...(detail.permissions ?? [])];
       } else {
         formData.value = undefined;
         id.value = undefined;
-        selectedApiIds.value = [];
         selectedPermissionIds.value = [];
       }
 
-      await loadPermissionGrants();
       // Wait for Vue to flush DOM updates (form fields mounted)
       await nextTick();
       if (formData.value) {
@@ -97,13 +106,10 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemRole>({
   },
 });
 
-async function loadPermissionGrants() {
+async function loadPermissionGrants(refresh = false) {
   loadingGrants.value = true;
   try {
-    const [menus, apis] = await Promise.all([
-      SystemMenuApi.list(),
-      ApiPermissionApi.allGrantOptions(),
-    ]);
+    const { menus, apis } = await loadPermissionCatalog(refresh);
     permissionMenus.value = menus;
     apiPermissions.value = apis;
   } finally {
@@ -123,16 +129,16 @@ async function updatePermissionIds(ids: string[]) {
 }
 </script>
 <template>
-  <Drawer :title="getDrawerTitle">
+  <Drawer class="w-screen max-w-none" :title="getDrawerTitle">
     <Form>
       <template #permissions>
         <PermissionGrantTrees
-          :api-ids="selectedApiIds"
           :apis="apiPermissions"
           :loading="loadingGrants"
+          refreshable
+          @refresh="loadPermissionGrants(true)"
           :menus="permissionMenus"
           :permission-ids="selectedPermissionIds"
-          @update:api-ids="selectedApiIds = $event"
           @update:permission-ids="updatePermissionIds"
         />
       </template>

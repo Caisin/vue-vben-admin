@@ -43,7 +43,10 @@ export function useCodeColumns(
     },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: {
+          auth: 'api:param.dic.code.save',
+          beforeChange: onEnabledChange,
+        },
         name: 'CellSwitch',
         props: { checkedValue: true, unCheckedValue: false },
       },
@@ -85,7 +88,10 @@ export function useDataColumns(
     },
     {
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: {
+          auth: 'api:param.dic.data.update',
+          beforeChange: onEnabledChange,
+        },
         name: 'CellSwitch',
         props: { checkedValue: true, unCheckedValue: false },
       },

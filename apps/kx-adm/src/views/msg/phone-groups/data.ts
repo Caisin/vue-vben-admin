@@ -56,7 +56,7 @@ export function useColumns(
     {
       cellRender: {
         attrs: {
-          auth: 'phone_groups:manage',
+          auth: 'api:msg.group.update',
           beforeChange: onEnabledChange,
         },
         name: onEnabledChange ? 'CellSwitch' : 'CellTag',

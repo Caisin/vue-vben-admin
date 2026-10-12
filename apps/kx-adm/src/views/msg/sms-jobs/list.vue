@@ -282,14 +282,16 @@ onMounted(async () => {
       </div>
       <Space wrap>
         <Button
-          v-access:code="'sms_messages:reprocess'"
+          v-access:code="'api:msg.sms.reprocess'"
           :loading="reprocessLoading"
           @click="reprocessSmsBusinessData"
         >
-          <template #icon><RotateCw /></template>重跑短信补数据
+          <template #icon><RotateCw /></template>
+          重跑短信补数据
         </Button>
         <Button v-if="canManageSmsJobs" type="primary" @click="openSend">
-          <template #icon><MessageSquareCode /></template>发送短信
+          <template #icon><MessageSquareCode /></template>
+          发送短信
         </Button>
       </Space>
     </header>
@@ -298,7 +300,7 @@ onMounted(async () => {
       <MessagesGrid class="management-grid" table-title="短信记录">
         <template #toolbar-tools>
           <Button
-            v-access:code="'sms_messages:reprocess'"
+            v-access:code="'api:msg.sms.reprocess_selected'"
             :loading="selectedReprocessLoading"
             @click="reprocessSelectedMessages"
           >
@@ -317,9 +319,9 @@ onMounted(async () => {
           {{ displayValue(row.device_code) }}
         </template>
         <template #messageContent="{ row }">
-          <span class="sms-content-cell" :title="row.content">{{
-            row.content
-          }}</span>
+          <span class="sms-content-cell" :title="row.content">
+            {{ row.content }}
+          </span>
         </template>
         <template #receivedAt="{ row }">
           {{ Times.formatUnix(row.received_at) }}
@@ -338,7 +340,7 @@ onMounted(async () => {
             </Tooltip>
             <Tooltip title="重跑本条短信补数据">
               <Button
-                v-access:code="'sms_messages:reprocess'"
+                v-access:code="'api:msg.sms.reprocess_one'"
                 aria-label="重跑本条短信"
                 :loading="messageReprocessingKey === row.dedupe_key"
                 size="small"

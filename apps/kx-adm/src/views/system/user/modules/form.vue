@@ -4,7 +4,7 @@ import type { SystemMenu } from '#/api/system/menu';
 import type { SystemRole } from '#/api/system/role';
 import type { SystemUser } from '#/api/system/user';
 
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, shallowRef } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { useVbenDrawer } from '@vben/common-ui';
@@ -13,8 +13,7 @@ import { useUserStore } from '@vben/stores';
 import { message } from 'antdv-next';
 
 import { useVbenForm } from '#/adapter/form';
-import { ApiPermissionApi } from '#/api/system/api-permission';
-import { SystemMenuApi } from '#/api/system/menu';
+import { loadPermissionCatalog } from '#/api/system/permission-catalog';
 import { SystemRoleApi } from '#/api/system/role';
 import { SystemUserApi } from '#/api/system/user';
 import { PermissionGrantTrees } from '#/components/permission-grant';
@@ -34,17 +33,18 @@ const { hasAccessByCodes } = useAccess();
 const userStore = useUserStore();
 const delegatedRoleMode = computed(
   () =>
-    hasAccessByCodes(['users:delegate-roles']) &&
-    !hasAccessByCodes(['AC_100100']),
+    hasAccessByCodes([
+      formData.value?.id ? 'users:delegate-update' : 'users:delegate-create',
+    ]) &&
+    !hasAccessByCodes([formData.value?.id ? 'users:update' : 'users:create']),
 );
 const canAssignAllRoles = computed(() => userStore.userRoles.includes('admin'));
 
 const formData = ref<SystemUser>();
-const permissionMenus = ref<SystemMenu[]>([]);
-const apiPermissions = ref<ApiPermission[]>([]);
+const permissionMenus = shallowRef<SystemMenu[]>([]);
+const apiPermissions = shallowRef<ApiPermission[]>([]);
 const roles = ref<SystemRole[]>([]);
 const selectedPermissionIds = ref<string[]>([]);
-const selectedApiIds = ref<string[]>([]);
 const immutableRoleIds = ref<string[]>([]);
 
 function resolveHomeOptions(values: Readonly<SystemUser>) {
@@ -62,7 +62,18 @@ function normalizeRoleIds(value: string | string[] | undefined) {
 }
 
 const [Form, formApi] = useVbenForm({
-  schema: useFormSchema(resolveHomeOptions),
+  schema: useFormSchema(resolveHomeOptions).map((field) => ({
+    ...field,
+    ...(field.fieldName === 'permissions'
+      ? {
+          hideLabel: true,
+          formItemClass:
+            'min-w-0 items-start xl:col-start-2 xl:row-start-1 xl:row-span-8',
+        }
+      : { formItemClass: 'min-w-0 xl:col-start-1' }),
+  })),
+  wrapperClass:
+    'grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(28rem,36rem)_minmax(0,1fr)]',
   showDefaultActions: false,
 });
 
@@ -96,7 +107,7 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
       }
       const payload = {
         ...values,
-        apiIds: selectedApiIds.value,
+        apiIds: [],
         deptId: values.deptId || 0,
         homePermId,
         permissions: selectedPermissionIds.value,
@@ -130,13 +141,11 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemUser>({
       if (data) {
         formData.value = data;
         id.value = data.id;
-        selectedApiIds.value = [...(data.apiIds ?? [])];
         selectedPermissionIds.value = [...(data.permissions ?? [])];
         immutableRoleIds.value = [];
       } else {
         formData.value = undefined;
         id.value = undefined;
-        selectedApiIds.value = [];
         selectedPermissionIds.value = [];
         immutableRoleIds.value = [];
       }
@@ -210,13 +219,10 @@ async function loadRoles() {
   }
 }
 
-async function loadPermissionGrants() {
+async function loadPermissionGrants(refresh = false) {
   loadingGrants.value = true;
   try {
-    const [menus, apis] = await Promise.all([
-      SystemMenuApi.list(),
-      ApiPermissionApi.unboundOptions(),
-    ]);
+    const { menus, apis } = await loadPermissionCatalog(refresh);
     permissionMenus.value = menus;
     apiPermissions.value = apis;
   } finally {
@@ -236,18 +242,18 @@ async function updatePermissionIds(ids: string[]) {
 }
 </script>
 <template>
-  <Drawer :title="getDrawerTitle">
+  <Drawer class="w-screen max-w-none" :title="getDrawerTitle">
     <Form>
       <template #permissions>
         <PermissionGrantTrees
           v-if="!delegatedRoleMode"
-          :api-ids="selectedApiIds"
           :apis="apiPermissions"
           :loading="loadingGrants"
+          refreshable
+          @refresh="loadPermissionGrants(true)"
           :menus="permissionMenus"
           :permission-ids="selectedPermissionIds"
           :readonly="editingSelf"
-          @update:api-ids="selectedApiIds = $event"
           @update:permission-ids="updatePermissionIds"
         />
       </template>

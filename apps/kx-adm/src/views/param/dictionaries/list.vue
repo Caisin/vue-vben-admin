@@ -8,6 +8,7 @@ import type { DicCode, DicCodeWrite } from '#/api';
 
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { useSortable } from '@vben/hooks';
 import { GripVertical, Plus } from '@vben/icons';
@@ -28,6 +29,8 @@ import {
   toEditableDicDataRows,
 } from './dictionary-data-edit';
 import ContentModal from './modules/modal.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const dicCodeSortFields = ['code', 'dic_name', 'created_at'];
 
@@ -52,12 +55,14 @@ const codeRowContextMenu = useVxeRowContextMenu<DicCode>(
     }
     if (key === 'delete') confirmDeleteCode(row);
   },
+  { delete: 'api:param.dic.code.delete' },
 );
 const dataRowContextMenu = useVxeRowContextMenu<EditableDicData>(
   dataContextMenuItems,
   (key, row) => {
     if (key === 'delete') confirmDeleteDataRow(row);
   },
+  { delete: 'api:param.dic.data.delete' },
 );
 
 const [CodeForm, codeFormApi] = useVbenForm({
@@ -425,7 +430,12 @@ async function initSortable() {
   const body = dataGridApi.grid.$el?.querySelector(
     '.vxe-table--body tbody',
   ) as HTMLElement | null;
-  if (!body || !selectedCode.value) return;
+  if (
+    !body ||
+    !selectedCode.value ||
+    !hasActionAccess(['api:param.dic.data.reorder'])
+  )
+    return;
 
   const { initializeSortable } = useSortable(body, {
     handle: '.dictionary-drag-handle',
@@ -507,6 +517,7 @@ onUnmounted(() => {
               size="small"
               type="link"
               @click.stop="openDataEdit(row)"
+              :disabled="!hasActionAccess(['api:param.dic.data.update'])"
             >
               {{ row.label || '-' }}
             </Button>
@@ -518,6 +529,7 @@ onUnmounted(() => {
               type="link"
               :title="compactJsonValue(row)"
               @click.stop="openDataEdit(row)"
+              :disabled="!hasActionAccess(['api:param.dic.data.update'])"
             >
               {{ compactJsonValue(row) }}
             </Button>
@@ -532,7 +544,12 @@ onUnmounted(() => {
           <template #toolbar-tools>
             <Space size="small">
               <Button size="small" @click="loadDataRows">刷新</Button>
-              <Button size="small" type="primary" @click="openDataCreate">
+              <Button
+                size="small"
+                type="primary"
+                @click="openDataCreate"
+                v-access:code="'api:param.dic.data.create'"
+              >
                 <Plus class="size-4" />
                 新增字典项
               </Button>
@@ -573,12 +590,17 @@ onUnmounted(() => {
           size="small"
           type="link"
           @click.stop="openCodeEdit(row)"
+          :disabled="!hasActionAccess(['api:param.dic.code.save'])"
         >
           {{ row.dic_name }}
         </Button>
       </template>
       <template #toolbar-tools>
-        <Button type="primary" @click="openCodeCreate">
+        <Button
+          type="primary"
+          @click="openCodeCreate"
+          v-access:code="'api:param.dic.code.save'"
+        >
           <Plus class="size-4" />
           新建
         </Button>

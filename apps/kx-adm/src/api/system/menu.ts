@@ -10,6 +10,7 @@ import type { JsonValue } from '#/api/request';
 
 import { requestClient } from '#/api/request';
 
+import { invalidatePermissionCatalog } from './permission-catalog-cache';
 import { enabledFromStatus, statusFromEnabled } from './shared';
 
 export const SystemMenuBadgeVariants = [
@@ -55,6 +56,7 @@ export interface SystemMenuMeta extends Record<string, JsonValue | undefined> {
 }
 
 export interface SystemMenu {
+  apiIds?: string[];
   authCode: string;
   children?: SystemMenu[];
   component?: string;
@@ -134,6 +136,7 @@ function toSystemMenu(permission: AdminPermission): SystemMenu {
   const meta = camelMeta(permission.meta);
   meta.title = permission.title || meta.title || permission.name;
   return {
+    apiIds: permission.api_ids?.map(String) ?? [],
     authCode: permission.auth_code,
     component: permission.component,
     id: String(permission.id),
@@ -150,6 +153,7 @@ function toSystemMenu(permission: AdminPermission): SystemMenu {
 function toPermissionWrite(menu: SystemMenuWrite): AdminPermissionWrite {
   const meta = snakeMeta(menu.meta);
   return {
+    api_ids: menu.apiIds?.map(Number),
     auth_code: menu.authCode ?? '',
     component: menu.component ?? '',
     enabled: enabledFromStatus(menu.status),
@@ -211,6 +215,7 @@ export const SystemMenuApi = {
       '/auth/menu',
       toPermissionWrite(data),
     );
+    invalidatePermissionCatalog();
     return toSystemMenu(permission);
   },
   async update(id: string, data: SystemMenuWrite) {
@@ -218,10 +223,14 @@ export const SystemMenuApi = {
       `/auth/menu/${id}`,
       toPermissionWrite(data),
     );
+    invalidatePermissionCatalog();
     return toSystemMenu(permission);
   },
-  remove: (id: string, cascade = false) =>
-    requestClient.delete<boolean>(`/auth/menu/${id}`, {
+  async remove(id: string, cascade = false) {
+    const result = await requestClient.delete<boolean>(`/auth/menu/${id}`, {
       params: { cascade },
-    }),
+    });
+    invalidatePermissionCatalog();
+    return result;
+  },
 };

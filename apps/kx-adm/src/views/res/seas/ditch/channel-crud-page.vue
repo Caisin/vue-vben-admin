@@ -8,6 +8,7 @@ import type {
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -41,6 +42,13 @@ type CheckboxGrid = { getCheckboxRecords: () => any[] };
 
 const props = defineProps<{ kind: PageKind }>();
 const router = useRouter();
+const { hasAccessByCodes } = useAccess();
+const writeCode = computed(() => {
+  if (props.kind === 'team') return 'api:res.admin.channel.group.post';
+  if (props.kind === 'user') return 'api:res.admin.channel.user.post';
+  if (props.kind === 'set-channel') return 'api:res.admin.channel.put';
+  return 'api:res.admin.channel.post';
+});
 
 const statusOptions = [
   { label: '启用', value: 1 },
@@ -469,13 +477,18 @@ loadCurrentUser();
   >
     <Grid class="management-grid" :table-title="title">
       <template #toolbar-tools>
-        <Button v-if="canCreate()" type="primary" @click="openCreate">
+        <Button
+          v-if="canCreate() && hasAccessByCodes([writeCode])"
+          type="primary"
+          @click="openCreate"
+        >
           <Plus class="size-5" />
           新增
         </Button>
         <Button
           v-if="props.kind === 'channel'"
           :disabled="selectedKeys.length === 0"
+          v-access:code="'api:res.admin.channel.res.post'"
           @click="goBatchAuth"
         >
           去授权{{ selectedKeys.length || '' }}
@@ -483,6 +496,7 @@ loadCurrentUser();
         <Button
           v-if="props.kind === 'set-channel'"
           :disabled="selectedKeys.length === 0"
+          v-access:code="'api:res.admin.channel.res.post'"
           @click="goBatchAuth"
         >
           批量授权{{ selectedKeys.length || '' }}
@@ -507,12 +521,14 @@ loadCurrentUser();
               icon: 'lucide:edit',
               onClick: () => openEdit(row),
               text: '编辑',
+              auth: writeCode,
             },
             {
               ifShow: props.kind === 'channel' || props.kind === 'set-channel',
               icon: 'lucide:key-round',
               onClick: () => goAuth(row),
               text: '授权资源',
+              auth: 'api:res.admin.channel.res.post',
             },
           ]"
           align="center"

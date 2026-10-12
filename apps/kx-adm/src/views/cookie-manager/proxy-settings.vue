@@ -50,27 +50,32 @@ onMounted(load);
       type="warning"
       show-icon
       message="修改监听地址或公网地址后需要重启 kx-adm；代理域名必须与后台域名分离。"
-    /><Form layout="vertical" class="max-w-3xl">
+    />
+    <Form layout="vertical" class="max-w-3xl">
       <FormItem label="代理公网地址">
         <Input
           v-model:value="form.cookie_proxy_public"
           placeholder="https://proxy.example.com"
         />
-</FormItem><FormItem label="系统认证回跳地址">
+      </FormItem>
+      <FormItem label="系统认证回跳地址">
         <Input
           v-model:value="form.cookie_proxy_admin"
           placeholder="https://admin.example.com/#/cookie-manager/my-sites"
         />
-</FormItem><FormItem label="代理监听地址">
+      </FormItem>
+      <FormItem label="代理监听地址">
         <Input
           v-model:value="form.cookie_proxy_listen"
           placeholder="127.0.0.1:18890"
         />
-</FormItem><Button
+      </FormItem>
+      <Button
         type="primary"
         :loading="saving"
         :disabled="loading"
         @click="save"
+        v-access:code="'api:param.system_settings.save'"
       >
         保存代理设置
       </Button>

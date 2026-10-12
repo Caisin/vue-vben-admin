@@ -185,14 +185,38 @@ function refund() {
         size="small"
       />
       <Space class="mt-4">
-        <Button v-if="canReview" type="primary" @click="review(true)">
+        <Button
+          v-if="canReview"
+          type="primary"
+          @click="review(true)"
+          v-access:code="'api:mall.admin.after-sales.approve'"
+        >
           审核通过
         </Button>
-        <Button v-if="canReview" danger @click="review(false)">拒绝</Button>
-        <Button v-if="canReceive" type="primary" @click="receive">
+        <Button
+          v-if="canReview"
+          danger
+          @click="review(false)"
+          v-access:code="'api:mall.admin.after-sales.reject'"
+        >
+          拒绝
+        </Button>
+        <Button
+          v-if="canReceive"
+          type="primary"
+          @click="receive"
+          v-access:code="'api:mall.admin.after-sales.receive'"
+        >
           确认收货
         </Button>
-        <Button v-if="canRefund" danger @click="refund">执行退款</Button>
+        <Button
+          v-if="canRefund"
+          danger
+          @click="refund"
+          v-access:code="'api:mall.admin.after-sales.refund'"
+        >
+          执行退款
+        </Button>
       </Space>
     </template>
   </Drawer>

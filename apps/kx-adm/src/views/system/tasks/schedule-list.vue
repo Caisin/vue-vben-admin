@@ -392,17 +392,18 @@ watch(runDrawerOpen, (open) => {
   <Grid class="management-grid" table-title="调度配置">
     <template #toolbar-tools>
       <Button
-        v-access:code="'tasks:schedule:manage'"
+        v-access:code="'api:task.schedule.create'"
         type="primary"
         @click="createSchedule"
       >
-        <Plus class="size-5" />新建调度
+        <Plus class="size-5" />
+        新建调度
       </Button>
     </template>
     <template #scheduleOperation="{ row }">
       <Space>
         <Button
-          v-access:code="'tasks:schedule:manage'"
+          v-access:code="'api:task.schedule.update'"
           size="small"
           type="link"
           @click="editSchedule(row)"
@@ -426,7 +427,7 @@ watch(runDrawerOpen, (open) => {
           @confirm="removeSchedule(row)"
         >
           <Button
-            v-access:code="'tasks:schedule:manage'"
+            v-access:code="'api:task.schedule.delete'"
             danger
             size="small"
             type="link"
@@ -446,14 +447,18 @@ watch(runDrawerOpen, (open) => {
   >
     <div class="schedule-form">
       <label>
-        执行器<Select
+        执行器
+        <Select
           v-model:value="form.executor_code"
           :disabled="Boolean(editingId)"
           :options="executorOptions"
           show-search
         />
       </label>
-      <label> 调度名称<Input v-model:value="form.schedule_name" /> </label>
+      <label>
+        调度名称
+        <Input v-model:value="form.schedule_name" />
+      </label>
       <label class="full-row">
         Cron 表达式
         <CronExpressionSelect
@@ -462,16 +467,15 @@ watch(runDrawerOpen, (open) => {
         />
       </label>
       <label>
-        状态<Select
-          v-model:value="form.status"
-          :options="scheduleStatusOptions"
-        />
+        状态
+        <Select v-model:value="form.status" :options="scheduleStatusOptions" />
       </label>
       <details class="full-row advanced-options">
         <summary>高级设置</summary>
         <div class="schedule-form nested-form">
           <label>
-            调度编码<Input
+            调度编码
+            <Input
               v-model:value="form.schedule_code"
               :disabled="
                 Boolean(editingId) ||
@@ -485,7 +489,8 @@ watch(runDrawerOpen, (open) => {
             />
           </label>
           <label>
-            实例键<Input
+            实例键
+            <Input
               v-model:value="form.instance_key"
               :disabled="
                 Boolean(editingId) ||
@@ -494,16 +499,21 @@ watch(runDrawerOpen, (open) => {
               placeholder="多实例调度用于区分参数实例"
             />
           </label>
-          <label> 业务键<Input v-model:value="form.biz_key" /> </label>
+          <label>
+            业务键
+            <Input v-model:value="form.biz_key" />
+          </label>
 
           <label>
-            重叠策略<Select
+            重叠策略
+            <Select
               v-model:value="form.overlap_policy"
               :options="overlapPolicyOptions"
             />
           </label>
           <label>
-            Misfire 策略<Select
+            Misfire 策略
+            <Select
               v-model:value="form.misfire_policy"
               :options="misfirePolicyOptions"
             />
@@ -595,7 +605,14 @@ watch(runDrawerOpen, (open) => {
     <template #footer>
       <Space>
         <Button @click="drawerOpen = false">取消</Button>
-        <Button :loading="drawerSaving" type="primary" @click="saveSchedule">
+        <Button
+          :loading="drawerSaving"
+          type="primary"
+          @click="saveSchedule"
+          v-access:code="
+            editingId ? 'api:task.schedule.update' : 'api:task.schedule.create'
+          "
+        >
           保存
         </Button>
       </Space>

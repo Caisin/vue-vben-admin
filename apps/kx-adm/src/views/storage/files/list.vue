@@ -56,6 +56,7 @@ const fileRowContextMenu = useVxeRowContextMenu<UploadFile>(
   (key, row) => {
     if (key === 'delete') confirmDeleteFile(row);
   },
+  { delete: 'api:storage.file.delete' },
 );
 
 const [RemoteForm, remoteFormApi] = useVbenForm({
@@ -302,11 +303,19 @@ onMounted(async () => {
             type="primary"
             :disabled="!storage_code"
             @click="openFilePicker"
+            v-access:code="[
+              'api:storage.file.upload',
+              'api:storage.file.presign-upload',
+            ]"
           >
             <Plus class="size-4" />
             选择 / 上传
           </Button>
-          <Button :disabled="!storage_code" @click="openRemoteModal">
+          <Button
+            :disabled="!storage_code"
+            @click="openRemoteModal"
+            v-access:code="'api:storage.file.convert-remote'"
+          >
             <Link2 class="size-4" />
             远程转存
           </Button>

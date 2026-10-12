@@ -1,5 +1,42 @@
+import type { TreeSelectProps } from 'antdv-next';
+
 import type { SystemMenu } from '#/api/system/menu';
 import type { SystemRole } from '#/api/system/role';
+
+export function homePageSelectProps(
+  placeholder: string,
+  treeData?: HomePageTreeOption[],
+) {
+  return {
+    allowClear: true,
+    class: 'w-full min-w-0',
+    placeholder,
+    showSearch: true,
+    treeData,
+    treeDefaultExpandAll: true,
+    treeNodeFilterProp: 'label',
+    popupMatchSelectWidth: 800,
+    styles: {
+      root: { height: 'auto', minHeight: '32px' },
+      content: {
+        height: 'auto',
+        minHeight: '32px',
+        whiteSpace: 'normal',
+        overflowWrap: 'anywhere',
+        lineHeight: '1.5',
+      },
+      itemContent: {
+        whiteSpace: 'normal',
+        overflowWrap: 'anywhere',
+        lineHeight: '1.5',
+      },
+      popup: {
+        root: { maxWidth: 'calc(100vw - 32px)' },
+        itemTitle: { whiteSpace: 'normal', overflowWrap: 'anywhere' },
+      },
+    },
+  } satisfies TreeSelectProps & { class: string };
+}
 
 export interface HomePageTreeOption {
   children?: HomePageTreeOption[];

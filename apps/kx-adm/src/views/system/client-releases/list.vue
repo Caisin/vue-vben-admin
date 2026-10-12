@@ -32,7 +32,12 @@ import { Times } from '#/times';
 import { parseReleaseBundle, platforms, validateRelease } from './release-form';
 
 const { hasAccessByCodes } = useAccess();
-const canEdit = computed(() => hasAccessByCodes(['client-releases:edit']));
+const canCreate = computed(() =>
+  hasAccessByCodes(['api:adm.client_release.create']),
+);
+const canEdit = computed(() =>
+  hasAccessByCodes(['api:adm.client_release.edit']),
+);
 const rows = ref<ClientRelease[]>([]);
 const loading = ref(false);
 const loadError = ref('');
@@ -66,7 +71,9 @@ const uploadStorages = computed(() =>
 const selected = ref<ClientRelease>();
 const form = ref<ReleaseWrite>({ version: '', notes: '', artifacts: [] });
 const readOnly = computed(
-  () => !canEdit.value || (selected.value && selected.value.status !== 'draft'),
+  () =>
+    !(selected.value ? canEdit.value : canCreate.value) ||
+    (selected.value && selected.value.status !== 'draft'),
 );
 const formError = ref('');
 const columns = [
@@ -104,7 +111,7 @@ function search() {
   void load();
 }
 function edit(row?: ClientRelease) {
-  if (canEdit.value)
+  if (row ? canEdit.value : canCreate.value)
     void ClientReleaseApi.storageOptions()
       .then((items) => {
         storages.value = items;
@@ -287,7 +294,7 @@ onMounted(load);
       />
       <Button @click="search">查询</Button>
       <Button :loading="loading" @click="load">刷新</Button>
-      <Button v-if="canEdit" type="primary" @click="edit()">新建版本</Button>
+      <Button v-if="canCreate" type="primary" @click="edit()">新建版本</Button>
     </Space>
     <Alert
       v-if="loadError"
@@ -338,7 +345,7 @@ onMounted(load);
           }}
         </template>
         <Space v-else-if="column.key === 'actions'">
-          <Button v-if="canEdit" type="link" @click="addPlatform(record)">
+          <Button v-if="canCreate" type="link" @click="addPlatform(record)">
             新增其它平台
           </Button>
           <Button
@@ -363,7 +370,10 @@ onMounted(load);
             撤回
           </Button>
           <Button
-            v-if="record.status === 'draft' && canEdit"
+            v-if="
+              record.status === 'draft' &&
+              hasAccessByCodes(['api:adm.client_release.delete'])
+            "
             type="link"
             danger
             @click="action(record, 'delete')"

@@ -41,7 +41,7 @@ export function useColumns(
     {
       align: 'center',
       cellRender: {
-        attrs: { beforeChange: onEnabledChange },
+        attrs: { auth: 'api:param.set', beforeChange: onEnabledChange },
         name: 'CellSwitch',
         props: { checkedValue: true, unCheckedValue: false },
       },

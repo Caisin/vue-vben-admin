@@ -7,6 +7,7 @@ import type {
 
 import { computed, nextTick, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
 import {
@@ -44,12 +45,21 @@ type Field = {
   type?: 'number' | 'select' | 'text';
 };
 type RowAction = {
+  apiCode?: string;
   confirm?: boolean;
   handler: (row: any) => Promise<any>;
   label: string;
 };
-type ExtraAction = { handler: (params: any) => Promise<any>; label: string };
+type ExtraAction = {
+  apiCode?: string;
+  handler: (params: any) => Promise<any>;
+  label: string;
+};
 type Config = {
+  createCode?: string;
+  saveCode?: string;
+  removeCode?: string;
+  uploadCode?: string;
   actions?: RowAction[];
   columns?: string[];
   detail?: (row: any, params: any) => Promise<any>;
@@ -67,6 +77,9 @@ const props = defineProps<{
   title?: string;
   variant?: string;
 }>();
+const { hasAccessByCodes } = useAccess();
+const canAction = (code?: string) =>
+  !!code && hasAccessByCodes([`api:${code}`]);
 
 const statusOptions = [
   { label: '启用', value: 1 },
@@ -123,6 +136,7 @@ const configs: Record<string, Config> = {
       { handler: ditch.getAuthSourceIdList, label: '已授权资源' },
     ],
     list: ditch.getPageList,
+    saveCode: 'res.admin.channel.post',
     save: ditch.savePage,
     search: [
       { label: '渠道名', name: 'name.contains' },
@@ -146,6 +160,7 @@ const configs: Record<string, Config> = {
             res_id: row.res_id ?? row.id,
           }),
         label: '授权',
+        apiCode: 'res.admin.channel.res.post',
       },
       {
         confirm: true,
@@ -155,6 +170,7 @@ const configs: Record<string, Config> = {
             res_id: row.res_id ?? row.id,
           }),
         label: '取消授权',
+        apiCode: 'res.admin.channel.res.delete',
       },
     ],
     columns: ['id', 'res_id', 'cid', 'title', 'name', 'state', 'lang'],
@@ -168,12 +184,14 @@ const configs: Record<string, Config> = {
   'ditch/team': cfg({
     columns: ['id', 'name', 'code', 'remark'],
     list: ditch.getTeamList,
+    saveCode: 'res.admin.channel.group.post',
     save: ditch.saveTeam,
     title: '渠道分组',
   }),
   'ditch/user': cfg({
     columns: ['id', 'uid', 'username', 'channel_id', 'state'],
     list: ditch.getUserList,
+    saveCode: 'res.admin.channel.user.post',
     save: ditch.saveUser,
     title: '渠道用户',
   }),
@@ -204,7 +222,9 @@ const configs: Record<string, Config> = {
     columns: ['id', 'name', 'link_url', 'channel', 'state', 'created_at'],
     extras: [{ handler: global.link.getAnalysisList, label: '付费分析' }],
     list: global.link.getList,
+    removeCode: 'res.admin.link.delete',
     remove: global.link.postDel,
+    saveCode: 'res.admin.link.post',
     save: global.link.postSave,
     title: '链接管理',
   }),
@@ -219,11 +239,13 @@ const configs: Record<string, Config> = {
         confirm: true,
         handler: (row) => global.order.refund(row.id),
         label: '退款',
+        apiCode: 'res.admin.order.refund.order_id.post',
       },
       {
         confirm: true,
         handler: (row) => global.order.recovery(row.id),
         label: '恢复订单',
+        apiCode: 'res.admin.order.recovery.order_id.post',
       },
     ],
     columns: [
@@ -246,10 +268,12 @@ const configs: Record<string, Config> = {
         handler: (row) =>
           global.page_manage.refreshPage(row.page_code ?? row.code ?? 'index'),
         label: '刷新缓存',
+        apiCode: 'res.admin.page.refresh.page_code.post',
       },
     ],
     columns: ['id', 'page_code', 'page_name', 'state', 'remark'],
     list: global.page_manage.getPageList,
+    saveCode: 'res.admin.page.page_code.post',
     save: global.page_manage.savePage,
     title: '页面管理',
   }),
@@ -259,6 +283,7 @@ const configs: Record<string, Config> = {
       { handler: global.page_module_manage.getSourceList, label: '模块资源' },
     ],
     list: global.page_module_manage.getList,
+    saveCode: 'res.admin.page.group.post',
     save: global.page_module_manage.postSave,
     title: '页面模块',
   }),
@@ -278,11 +303,13 @@ const configs: Record<string, Config> = {
         handler: (row) =>
           global.return_config.refreshPage(row.page_code ?? 'post_tmp'),
         label: '刷新缓存',
+        apiCode: 'res.admin.page.refresh.page_code.post',
       },
     ],
     columns: ['id', 'tmp_name', 'state', 'remark'],
     extras: [{ handler: global.return_config.getBackList, label: '模板列表' }],
     list: global.return_config.getPageList,
+    saveCode: 'res.admin.post_tmp.post',
     save: global.return_config.savePage,
     title: '回传模板',
   }),
@@ -295,6 +322,7 @@ const configs: Record<string, Config> = {
             row.state === 1 ? 0 : 1,
           ),
         label: '上下架',
+        apiCode: 'res.admin.res.chg_state.res_id.post',
       },
       {
         handler: (row) =>
@@ -325,8 +353,10 @@ const configs: Record<string, Config> = {
       { handler: global.source_manage.getCoinHistory, label: '金币历史' },
     ],
     list: global.source_manage.getList,
+    saveCode: 'res.admin.res.post',
     save: global.source_manage.postSave,
     title: '资源管理',
+    uploadCode: 'res.admin.res.parse_file.post',
     upload: global.source_manage.parse_file,
   }),
   'global/tmplate_lib': cfg({
@@ -337,6 +367,7 @@ const configs: Record<string, Config> = {
       { handler: global.tmplate_lib.getMoneyItemList, label: '资金科目' },
     ],
     list: global.tmplate_lib.getList,
+    saveCode: 'res.admin.pay_cfg.tmp.post',
     save: global.tmplate_lib.postSave,
     title: '支付模板库',
   }),
@@ -344,6 +375,7 @@ const configs: Record<string, Config> = {
     columns: ['id', 'code', 'lang', 'value', 'updated_at'],
     detail: (row) => global.i18n.getDetail(row.code),
     list: global.i18n.getList,
+    saveCode: 'res.admin.i18n.post',
     save: global.i18n.postSave,
     title: '多语言翻译',
   }),
@@ -396,6 +428,7 @@ const configs: Record<string, Config> = {
         confirm: true,
         handler: (row) => log.back.postReBack(row.id),
         label: '补回传',
+        apiCode: 'res.admin.log.fb_reback.log_id.post',
       },
     ],
     columns: ['id', 'uid', 'event_name', 'state', 'fbclid', 'created_at'],
@@ -449,6 +482,7 @@ const configs: Record<string, Config> = {
         handler: (row) =>
           report.day.postCost({ date: row.date, cost: row.cost }),
         label: '保存成本',
+        apiCode: 'res.admin.stat.set_stat_cost.post',
       },
     ],
     columns: ['date', 'uv', 'pay_user', 'pay_money', 'cost', 'roi'],
@@ -485,6 +519,7 @@ const configs: Record<string, Config> = {
             cost: row.cost,
           }),
         label: '保存成本',
+        apiCode: 'res.admin.stat.set_stat_cost.post',
       },
     ],
     columns: [
@@ -516,6 +551,7 @@ const configs: Record<string, Config> = {
             cost: row.cost,
           }),
         label: '保存成本',
+        apiCode: 'res.admin.stat.set_stat_cost.post',
       },
     ],
     columns: [
@@ -564,6 +600,7 @@ const configs: Record<string, Config> = {
             cost: row.cost,
           }),
         label: '保存成本',
+        apiCode: 'res.admin.stat.set_link_day_cost.post',
       },
     ],
     columns: ['date', 'link_id', 'uv', 'pay_user', 'pay_money', 'cost', 'roi'],
@@ -583,20 +620,24 @@ const configs: Record<string, Config> = {
       {
         handler: (row) => run.push.testPush({ id: row.id, uid: row.uid }),
         label: '测试推送',
+        apiCode: 'res.admin.app_push.send_test.id.uid.post',
       },
       {
         confirm: true,
         handler: (row) => run.push.sendPush(row.id),
         label: '发送推送',
+        apiCode: 'res.admin.app_push.send.id.post',
       },
       {
         handler: (row) => run.push.refreshPage(row.page_code ?? 'app_push'),
         label: '刷新缓存',
+        apiCode: 'res.admin.page.refresh.page_code.post',
       },
     ],
     columns: ['id', 'title', 'content', 'push_time', 'state', 'created_at'],
     extras: [{ handler: run.push.getLogList, label: '推送记录' }],
     list: run.push.getPageList,
+    saveCode: 'res.admin.app_push.post',
     save: run.push.savePage,
     title: '推送管理',
   }),
@@ -614,7 +655,9 @@ const configs: Record<string, Config> = {
       { handler: set.ad.getAreaList, label: '地区列表' },
     ],
     list: set.ad.getList,
+
     remove: (row) => set.ad.postDelete(row.id),
+    // 当前宿主未注册旧广告写接口，不提供不可用的写入口。
     save: set.ad.postSave,
     title: '广告设置',
   }),
@@ -624,8 +667,13 @@ const configs: Record<string, Config> = {
         handler: (row) =>
           set.category.refreshSourceCateList(row.id ?? row.cat_id),
         label: '刷新资源标签',
+        apiCode: 'res.admin.res.res_category.res_id.put',
       },
-      { handler: set.category.refreshAllCateList, label: '刷新全部标签' },
+      {
+        handler: set.category.refreshAllCateList,
+        label: '刷新全部标签',
+        apiCode: 'res.admin.res.update_all_tags.put',
+      },
     ],
     columns: ['id', 'name', 'lang', 'state', 'sort', 'created_at'],
     extras: [
@@ -636,13 +684,16 @@ const configs: Record<string, Config> = {
       },
     ],
     list: set.category.getList,
+    removeCode: 'res.admin.category.id.delete',
     remove: (row) => set.category.postDelete(row.id),
+    saveCode: 'res.admin.category.post',
     save: set.category.postSave,
     title: '分类标签',
   }),
   'set/def_tmplate_lib': cfg({
     columns: ['id', 'code', 'name', 'enabled', 'remark'],
     list: global.tmplate_lib.getList,
+    saveCode: 'res.admin.pay_cfg.tmp.post',
     save: global.tmplate_lib.postSave,
     title: '默认模板库',
   }),
@@ -660,6 +711,7 @@ const configs: Record<string, Config> = {
       { handler: set.fb.getEventList, label: '事件日志' },
     ],
     list: set.fb.getList,
+    saveCode: 'res.admin.facebook.pixel_cfg.post',
     save: set.fb.postSave,
     title: 'Facebook Pixel 设置',
   }),
@@ -668,14 +720,17 @@ const configs: Record<string, Config> = {
     detail: (row) => set.feedback.getReplyList(row.id),
     extras: [{ handler: set.feedback.getListNoPage, label: '反馈列表' }],
     list: set.feedback.getList,
+    saveCode: 'feedback.admin.reply',
     save: set.feedback.postSave,
     title: '用户反馈',
+    uploadCode: 'feedback.admin.upload.image',
     upload: set.feedback.uploadImg,
   }),
   'set/follow': cfg({
     columns: ['id', 'acct_id', 'name', 'page_id', 'state', 'created_at'],
     extras: [{ handler: set.follow.getListAll, label: '关注账号列表' }],
     list: set.follow.getList,
+    saveCode: 'res.admin.facebook.sub.acct_save.post',
     save: set.follow.postSave,
     title: 'Facebook 关注设置',
   }),
@@ -685,7 +740,10 @@ const configs: Record<string, Config> = {
       { handler: set.sku.android.getListNoPage, label: 'Android 商品列表' },
     ],
     list: set.sku.android.getList,
+    removeCode: 'asset.pay.sku.delete',
     remove: (row) => set.sku.android.postDelete(row.id),
+    createCode: 'asset.pay.sku.create',
+    saveCode: 'asset.pay.sku.update',
     save: set.sku.android.postSave,
     title: 'Android SKU',
   }),
@@ -693,7 +751,10 @@ const configs: Record<string, Config> = {
     columns: ['id', 'product_id', 'product_name', 'item_type', 'state'],
     extras: [{ handler: set.sku.ios.getListNoPage, label: 'iOS 商品列表' }],
     list: set.sku.ios.getList,
+    removeCode: 'asset.pay.sku.delete',
     remove: (row) => set.sku.ios.postDelete(row.id),
+    createCode: 'asset.pay.sku.create',
+    saveCode: 'asset.pay.sku.update',
     save: set.sku.ios.postSave,
     title: 'iOS SKU',
   }),
@@ -701,6 +762,7 @@ const configs: Record<string, Config> = {
     columns: ['id', 'task_type', 'title', 'reward', 'state', 'sort'],
     extras: [{ handler: set.task.getSignList, label: '签到设置' }],
     list: set.task.getList,
+    saveCode: 'res.admin.task_cfg.list.post',
     save: set.task.postSave,
     title: '任务设置',
   }),
@@ -887,7 +949,15 @@ function openEdit(record: any) {
 }
 
 async function save() {
-  if (!config.value.save) return;
+  if (
+    !config.value.save ||
+    !canAction(
+      editRecord.id
+        ? config.value.saveCode
+        : (config.value.createCode ?? config.value.saveCode),
+    )
+  )
+    return;
   saving.value = true;
   try {
     const payload = JSON.parse(JSON.stringify(editRecord));
@@ -901,13 +971,14 @@ async function save() {
 }
 
 async function remove(record: any) {
-  if (!config.value.remove) return;
+  if (!config.value.remove || !canAction(config.value.removeCode)) return;
   await config.value.remove(JSON.parse(JSON.stringify(record)));
   message.success('删除成功');
   await gridApi.query();
 }
 
 async function runRowAction(action: RowAction, record: any) {
+  if (action.apiCode && !canAction(action.apiCode)) return;
   const result = await action.handler(JSON.parse(JSON.stringify(record)));
   message.success(`${action.label}已提交`);
   if (result === undefined) {
@@ -955,7 +1026,7 @@ async function showDetail(title: string, value: any) {
 }
 
 async function beforeUpload(file: File) {
-  if (!config.value.upload) return false;
+  if (!config.value.upload || !canAction(config.value.uploadCode)) return false;
   await config.value.upload({ file }, () => {});
   message.success('上传成功');
   await gridApi.query();
@@ -973,11 +1044,17 @@ async function beforeUpload(file: File) {
     <Grid class="management-grid" :table-title="pageTitle">
       <template #toolbar-tools>
         <Space wrap>
-          <Button v-if="config.save" type="primary" @click="openCreate">
+          <Button
+            v-if="
+              config.save && canAction(config.createCode ?? config.saveCode)
+            "
+            type="primary"
+            @click="openCreate"
+          >
             新增
           </Button>
           <Upload
-            v-if="config.upload"
+            v-if="config.upload && canAction(config.uploadCode)"
             :before-upload="beforeUpload"
             :show-upload-list="false"
           >
@@ -986,6 +1063,7 @@ async function beforeUpload(file: File) {
           <Button
             v-for="item in config.extras"
             :key="item.label"
+            :disabled="item.apiCode ? !canAction(item.apiCode) : false"
             @click="loadExtra(item)"
           >
             {{ item.label }}
@@ -993,11 +1071,13 @@ async function beforeUpload(file: File) {
         </Space>
       </template>
       <template #value="{ row, column }">
-        <span>{{
-          typeof row[column.field] === 'object'
-            ? JSON.stringify(row[column.field])
-            : (row[column.field] ?? '-')
-        }}</span>
+        <span>
+          {{
+            typeof row[column.field] === 'object'
+              ? JSON.stringify(row[column.field])
+              : (row[column.field] ?? '-')
+          }}
+        </span>
       </template>
       <template #operation="{ row }">
         <VbenTableAction
@@ -1007,7 +1087,7 @@ async function beforeUpload(file: File) {
               onClick: () => showRowDetail(row),
               text: '详情',
             },
-            ...(config.save
+            ...(config.save && canAction(config.saveCode)
               ? [
                   {
                     icon: 'lucide:edit',
@@ -1020,6 +1100,7 @@ async function beforeUpload(file: File) {
           :dropdown-actions="[
             ...(config.actions ?? []).map((action) => ({
               text: action.label,
+              auth: action.apiCode ? `api:${action.apiCode}` : undefined,
               ...(action.confirm
                 ? {
                     popConfirm: {
@@ -1029,7 +1110,7 @@ async function beforeUpload(file: File) {
                   }
                 : { onClick: () => runRowAction(action, row) }),
             })),
-            ...(config.remove
+            ...(config.remove && canAction(config.removeCode)
               ? [
                   {
                     danger: true,

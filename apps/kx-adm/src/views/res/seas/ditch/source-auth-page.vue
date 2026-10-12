@@ -373,16 +373,23 @@ loadOptions();
           v-if="!props.manage"
           :disabled="selectedKeys.length === 0"
           type="primary"
+          v-access:code="'api:res.admin.channel.res.post'"
           @click="openAuthDialog()"
         >
           批量授权{{ selectedKeys.length || '' }}
         </Button>
-        <Button v-if="props.manage" type="primary" @click="openAuthDialog()">
+        <Button
+          v-if="props.manage"
+          type="primary"
+          v-access:code="'api:res.admin.channel.res.post'"
+          @click="openAuthDialog()"
+        >
           新增授权
         </Button>
         <Popconfirm
           v-if="props.manage"
           title="确认取消选中资源授权？"
+          v-access:code="'api:res.admin.channel.res.delete'"
           @confirm="unAuth(checkedRows())"
         >
           <Button danger :disabled="selectedKeys.length === 0">
@@ -419,6 +426,7 @@ loadOptions();
               icon: 'lucide:key-round',
               onClick: () => openAuthDialog([row]),
               text: '授权',
+              auth: 'api:res.admin.channel.res.post',
             },
           ]"
           :dropdown-actions="[
@@ -430,6 +438,7 @@ loadOptions();
                 title: '确认取消授权？',
               },
               text: '取消授权',
+              auth: 'api:res.admin.channel.res.delete',
             },
           ]"
           align="center"

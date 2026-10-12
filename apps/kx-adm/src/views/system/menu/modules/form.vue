@@ -14,6 +14,7 @@ import { getPopupContainer } from '@vben/utils';
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core';
 
 import { useVbenForm, z } from '#/adapter/form';
+import { ApiPermissionApi } from '#/api/system/api-permission';
 import { SystemMenuApi } from '#/api/system/menu';
 import { $t } from '#/locales';
 import { componentKeys } from '#/router/routes';
@@ -70,6 +71,32 @@ function decodeMenuFormValues(
 }
 
 const schema: VbenFormSchema<MenuFormValues>[] = [
+  {
+    component: 'ApiSelect',
+    componentProps: {
+      api: ApiPermissionApi.allGrantOptions,
+      afterFetch: (
+        apis: Awaited<ReturnType<typeof ApiPermissionApi.allGrantOptions>>,
+      ) =>
+        apis.map((api) => ({
+          label: `${api.api_name} · ${api.api_method} ${api.api_path}${api.enabled ? '' : '（停用）'}`,
+          value: String(api.id),
+        })),
+      mode: 'multiple',
+      showSearch: true,
+      optionFilterProp: 'label',
+      allowClear: true,
+      class: 'w-full',
+    },
+    dependencies: {
+      show: (values) => values.type !== 'catalog',
+      triggerFields: ['type'],
+    },
+    fieldName: 'apiIds',
+    label: '绑定 API',
+    help: '分配此节点即获得所选 API。菜单只绑定读取接口；功能按钮包含动作和弹窗所需接口。',
+    formItemClass: 'col-span-1 md:col-span-2',
+  },
   {
     component: 'RadioGroup',
     componentProps: {
@@ -507,6 +534,8 @@ const [Drawer, drawerApi] = useVbenDrawer<SystemMenu>({
   async onOpenChange(isOpen) {
     if (isOpen) {
       const data = drawerApi.getData();
+      formApi.reset();
+      formData.value = data;
       if (data) {
         formData.value = data;
         await formApi.setSubmitValues(data);
@@ -526,6 +555,7 @@ async function onSubmit() {
   if (valid) {
     drawerApi.lock();
     const data = await formApi.getValues();
+    if (data.type === 'catalog') data.apiIds = [];
     try {
       await (formData.value?.id
         ? SystemMenuApi.update(formData.value.id, data)

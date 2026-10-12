@@ -21,6 +21,12 @@ import { CredentialSelect, JsonFileInput } from '#/components/credential';
 const props = defineProps<{ channelType: NotifyChannelType }>();
 const emit = defineEmits<{ success: [providerCode: string] }>();
 
+const providerPermission = computed(() => {
+  if (props.channelType === 'push') return 'api:credential.item.create';
+  if (props.channelType === 'dingtalk_custom_robot')
+    return 'api:param.dingtalk.custom_robot.create';
+  return 'api:param.dingtalk.group_bot.create';
+});
 const saving = ref(false);
 const appsLoading = ref(false);
 const apps = ref<DingtalkAppOption[]>([]);
@@ -189,7 +195,14 @@ onMounted(loadApps);
       type="info"
     />
     <div v-if="isFirebase || isCustomRobot || isGroupBot" class="text-right">
-      <Button :loading="saving" type="primary" @click="save">新增</Button>
+      <Button
+        :loading="saving"
+        type="primary"
+        v-access:code="providerPermission"
+        @click="save"
+      >
+        新增
+      </Button>
     </div>
   </Form>
 </template>

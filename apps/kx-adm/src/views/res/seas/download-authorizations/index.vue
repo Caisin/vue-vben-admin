@@ -38,7 +38,7 @@ import UserTreeSelect from './modules/user-tree-select.vue';
 
 const { hasAccessByCodes } = useAccess();
 const canManage = computed(() =>
-  hasAccessByCodes(['res:download:authorize', 'res:content:manage']),
+  hasAccessByCodes(['api:res.admin.res.download_permissions.put']),
 );
 const rows = ref<DownloadGrant[]>([]);
 const userTree = ref<DownloadUserTreeNode[]>([]);
@@ -279,8 +279,25 @@ onMounted(async () => {
         </FormItem>
         <Button type="primary" :loading="loading" @click="query">查询</Button>
         <Button v-if="canManage" @click="create">新增授权</Button>
-        <Button v-if="canManage" @click="openBatch(false)">批量授权</Button>
-        <Button v-if="canManage" danger @click="openBatch(true)">
+        <Button
+          v-if="
+            hasAccessByCodes([
+              'api:res.admin.res.download_permissions.batch.save',
+            ])
+          "
+          @click="openBatch(false)"
+        >
+          批量授权
+        </Button>
+        <Button
+          v-if="
+            hasAccessByCodes([
+              'api:res.admin.res.download_permissions.batch.save',
+            ])
+          "
+          danger
+          @click="openBatch(true)"
+        >
           批量取消授权
         </Button>
       </Form>
@@ -307,15 +324,15 @@ onMounted(async () => {
           <div>{{ personName(record.user_name, record.uid) }}</div>
           <div class="text-muted-foreground text-xs">ID：{{ record.uid }}</div>
         </template>
-        <span v-if="column.key === 'updated_at'">{{
-          formatTime(record.updated_at, '未记录')
-        }}</span>
-        <span v-if="column.key === 'valid_from'">{{
-          formatTime(record.valid_from, '立即生效')
-        }}</span>
-        <span v-if="column.key === 'valid_until'">{{
-          formatTime(record.valid_until, '永久有效')
-        }}</span>
+        <span v-if="column.key === 'updated_at'">
+          {{ formatTime(record.updated_at, '未记录') }}
+        </span>
+        <span v-if="column.key === 'valid_from'">
+          {{ formatTime(record.valid_from, '立即生效') }}
+        </span>
+        <span v-if="column.key === 'valid_until'">
+          {{ formatTime(record.valid_until, '永久有效') }}
+        </span>
         <Button
           v-if="canManage && column.key === 'action'"
           type="link"
@@ -324,7 +341,11 @@ onMounted(async () => {
           编辑
         </Button>
         <Button
-          v-if="canManage && column.key === 'action'"
+          v-if="
+            hasAccessByCodes([
+              'api:res.admin.res.download_permissions.uid.delete',
+            ]) && column.key === 'action'
+          "
           danger
           type="link"
           @click="revoke(record)"

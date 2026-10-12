@@ -419,15 +419,17 @@ onBeforeUnmount(() => {
             @press-enter="query"
           />
           <Button type="primary" :loading="loading" @click="query">
-            <Search class="size-4" />查询
+            <Search class="size-4" />
+            查询
           </Button>
         </div>
         <Button
-          v-access:code="'developer-account:tiktok-account-create'"
+          v-access:code="'api:developer_account.tiktok.account.create'"
           :loading="Boolean(activeTaskId)"
           @click="openBatchImport"
         >
-          <ArrowUp class="size-4" />批量导入
+          <ArrowUp class="size-4" />
+          批量导入
         </Button>
       </div>
 
@@ -524,7 +526,7 @@ onBeforeUnmount(() => {
             show-search
           />
           <Button
-            v-access:code="'developer-account:tiktok-account-create'"
+            v-access:code="'api:developer_account.tiktok.account.import'"
             type="primary"
             :loading="saving"
             @click="saveAccount"
@@ -542,7 +544,8 @@ onBeforeUnmount(() => {
               :loading="reindexingSearch"
               @click="reindexSearch"
             >
-              <RotateCw class="size-4" />重建搜索索引
+              <RotateCw class="size-4" />
+              重建搜索索引
             </Button>
           </template>
           <template #registeredVia="{ row }">
@@ -638,7 +641,8 @@ onBeforeUnmount(() => {
             @change="importBatchFile"
           />
           <Button @click="batchFileInput?.click()">
-            <ArrowUp class="size-4" />上传文件
+            <ArrowUp class="size-4" />
+            上传文件
           </Button>
           <span class="text-muted-foreground">
             支持“地区,用户名”或单列用户名，首行表头可省略

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -23,7 +24,7 @@ describe('凭证中心类型分类', () => {
 
   it('查询表单不再重复提供类型和 Profile', () => {
     const source = readFileSync(
-      join(process.cwd(), 'src/views/credential/items/data.ts'),
+      join(dirname(fileURLToPath(import.meta.url)), 'data.ts'),
       'utf8',
     );
     const querySchema = source.slice(source.indexOf('function useFormSchema'));

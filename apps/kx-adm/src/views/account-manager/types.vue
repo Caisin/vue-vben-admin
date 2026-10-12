@@ -29,9 +29,13 @@ import { accountError, desktopWidthOptions, fieldKinds } from './data';
 type FieldDraft = AccountField & { optionsText: string; desktop_span: number };
 const { hasAccessByCodes } = useAccess();
 const formId = useId();
-const canWrite = computed(() =>
-  hasAccessByCodes(['account-manager:type-write']),
+const canCreate = computed(() =>
+  hasAccessByCodes(['api:account_mgr.type.create']),
 );
+const canUpdate = computed(() =>
+  hasAccessByCodes(['api:account_mgr.type.update']),
+);
+const canWrite = computed(() => canCreate.value || canUpdate.value);
 const rows = ref<AccountType[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -109,7 +113,7 @@ function move(index: number, delta: number) {
   form.fields.splice(index + delta, 0, field);
 }
 async function save() {
-  if (!canWrite.value) return;
+  if (!(editing.value ? canUpdate.value : canCreate.value)) return;
   saving.value = true;
   errorMessage.value = '';
   const data = {
@@ -170,7 +174,7 @@ onMounted(load);
       show-icon
     />
     <Space class="mb-4">
-      <Button v-if="canWrite" type="primary" @click="edit()">
+      <Button v-if="canCreate" type="primary" @click="edit()">
         新增账户类型
       </Button>
       <Button :loading="loading" @click="load">刷新</Button>
@@ -190,12 +194,14 @@ onMounted(load);
       :pagination="{ pageSize: 20 }"
     >
       <template #bodyCell="{ column, record }">
-        <span v-if="column.key === 'fields'">{{
-          record.fields
-            .filter((field: AccountField) => field.enabled)
-            .map((field: AccountField) => field.label)
-            .join('、')
-        }}</span>
+        <span v-if="column.key === 'fields'">
+          {{
+            record.fields
+              .filter((field: AccountField) => field.enabled)
+              .map((field: AccountField) => field.label)
+              .join('、')
+          }}
+        </span>
         <Tag
           v-else-if="column.key === 'enabled'"
           :color="record.enabled ? 'green' : 'default'"
@@ -203,7 +209,7 @@ onMounted(load);
           {{ record.enabled ? '启用' : '停用' }}
         </Tag>
         <Button
-          v-else-if="column.key === 'actions' && canWrite"
+          v-else-if="column.key === 'actions' && canUpdate"
           type="link"
           @click="edit(record)"
         >

@@ -237,11 +237,12 @@ async function showInstallations(row: SoftwareServer) {
           "
         />
         <Button
-          v-access:code="'software:server:edit'"
+          v-access:code="'api:software.server.create'"
           type="primary"
           @click="edit()"
         >
-          <Plus class="size-4" />新增服务器
+          <Plus class="size-4" />
+          新增服务器
         </Button>
       </template>
     </div>
@@ -289,13 +290,15 @@ async function showInstallations(row: SoftwareServer) {
         </dl>
         <footer>
           <Button
-            v-access:code="'software:server:probe'"
+            v-access:code="'api:software.server.probe'"
             size="small"
             @click="probe(row)"
           >
             连接测试
-</Button><Button size="small" @click="showInstallations(row)">已装应用</Button><Button
-            v-access:code="'software:server:edit'"
+          </Button>
+          <Button size="small" @click="showInstallations(row)">已装应用</Button>
+          <Button
+            v-access:code="'api:software.server.update'"
             size="small"
             @click="edit(row)"
           >
@@ -324,7 +327,7 @@ async function showInstallations(row: SoftwareServer) {
     >
       <template #toolbar-tools>
         <Button
-          v-access:code="'software:server:edit'"
+          v-access:code="'api:software.server.create'"
           type="primary"
           @click="edit()"
         >
@@ -355,7 +358,7 @@ async function showInstallations(row: SoftwareServer) {
         <VbenTableAction
           :actions="[
             {
-              auth: ['software:server:probe'],
+              auth: ['api:software.server.probe'],
               icon: 'lucide:plug-zap',
               onClick: () => probe(row),
               tooltip: row.access_kind === 'local' ? '环境探测' : '连接测试',
@@ -368,7 +371,7 @@ async function showInstallations(row: SoftwareServer) {
           ]"
           :dropdown-actions="[
             {
-              auth: ['software:server:edit'],
+              auth: ['api:software.server.update'],
               icon: 'lucide:edit',
               onClick: () => edit(row),
               text: '编辑',
@@ -447,7 +450,7 @@ async function showInstallations(row: SoftwareServer) {
       :size="820"
       @close="distributionServer = undefined"
     >
-      <div v-access:code="'software:server:probe'" class="mb-5">
+      <div v-access:code="'api:software.installation.detect'" class="mb-5">
         <DetectSoftware
           v-if="distributionServer"
           :server-id="distributionServer.id"

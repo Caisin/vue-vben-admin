@@ -126,10 +126,10 @@ onMounted(loadSettings);
           <div class="mt-4 flex justify-end gap-2">
             <Button @click="loadSettings">刷新</Button>
             <Button
-              v-access:code="'mall:settings:write'"
               type="primary"
               :loading="saving"
               @click="saveSettings"
+              v-access:code="'api:mall.admin.settings.update'"
             >
               保存设置
             </Button>

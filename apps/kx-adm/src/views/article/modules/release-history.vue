@@ -148,6 +148,7 @@ defineExpose({ open });
               v-if="record.state === 'published'"
               title="将该版本恢复为当前草稿？"
               @confirm="restore(record)"
+              v-access:code="'api:article.release.restore'"
             >
               <Button size="small" type="link">恢复</Button>
             </Popconfirm>

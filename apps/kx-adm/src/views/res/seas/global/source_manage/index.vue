@@ -54,7 +54,6 @@ import {
 import CreateResource from './modules/create-resource.vue';
 import ResourceCodeBinding from './modules/resource-code-binding.vue';
 import ResourceVersions from './modules/resource-versions.vue';
-import ReviewEntryActions from './modules/review-entry-actions.vue';
 
 const { hasAccessByCodes } = useAccess();
 const access = computed(() => resourceCapabilities(hasAccessByCodes));
@@ -614,9 +613,10 @@ async function reindexSearch() {
             :loading="reindexingSearch"
             @click="reindexSearch"
           >
-            <RotateCw class="size-4" />重建搜索索引
+            <RotateCw class="size-4" />
+            重建搜索索引
           </Button>
-          <Button v-if="access.manage" @click="refreshAllCategory">
+          <Button v-if="access.refreshCategory" @click="refreshAllCategory">
             刷新所有分类
           </Button>
           <RadioGroup v-model:value="mode" button-style="solid">
@@ -624,7 +624,7 @@ async function reindexSearch() {
             <RadioButton value="card">卡片</RadioButton>
           </RadioGroup>
           <Button
-            v-if="access.upload"
+            v-if="access.create"
             type="primary"
             @click="creatingResource = true"
           >
@@ -639,9 +639,10 @@ async function reindexSearch() {
         </Space>
       </template>
       <template #resourceCode="{ row }">
-        <Button v-if="access.manage" type="link" @click="bindCode(row)">
+        <Button v-if="access.bindCode" type="link" @click="bindCode(row)">
           {{ row.resource_code || '关联作品编号' }}
-</Button><span v-else>{{ row.resource_code || '—' }}</span>
+        </Button>
+        <span v-else>{{ row.resource_code || '—' }}</span>
       </template>
       <template #cover="{ row }">
         <Image
@@ -683,13 +684,13 @@ async function reindexSearch() {
             v-for="tag in row.ext_info?.tags ?? []"
             :key="tag.id ?? tag.name"
             :color="tag.color"
-            :closable="access.manage"
+            :closable="access.removeCategory"
             @close.prevent="removeCategory(row, tag)"
           >
             {{ tag.zh_name || tag.name?.zh || tag.name || tag.id }}
           </Tag>
           <Button
-            v-if="access.manage"
+            v-if="access.category"
             size="small"
             @click="openDialog('category', row)"
           >
@@ -702,41 +703,45 @@ async function reindexSearch() {
         {{ row.ad_cfg?.sleep_sec ?? '-' }}s
       </template>
       <template #operation="{ row }">
-        <ReviewEntryActions
-          :key="String(row.id)"
-          :resource="row"
-          :can-manage="access.manage || hasAccessByCodes(['res:review:manage'])"
-        />
         <VbenTableAction
-          v-if="access.manage"
           :actions="[
             {
               icon: 'lucide:edit',
               onClick: () => openDialog('edit', row),
+              auth: 'api:res.admin.res.update_res_info.post',
               tooltip: '编辑',
             },
             {
               icon: 'lucide:badge-dollar-sign',
               onClick: () => openDialog('price', row),
+              auth: 'api:res.admin.res.set_price.post',
               tooltip: '价格',
             },
           ]"
           :dropdown-actions="[
-            { onClick: () => bindCode(row), text: '关联作品编号' },
+            {
+              onClick: () => bindCode(row),
+              text: '关联作品编号',
+              auth: 'api:res.admin.res.resource_code.bind',
+            },
             {
               onClick: () => openDialog('tags', row),
               text: '标签',
+              auth: 'api:res.admin.tag.set_tags.post',
             },
             {
               onClick: () => refreshRecordCategory(row),
               text: '刷新分类',
+              auth: 'api:res.admin.res.res_category.res_id.put',
             },
             {
               onClick: () => openDialog('ad', row),
+              auth: 'api:res.admin.res.set_ad_cfg.post',
               text: '广告配置',
             },
             {
               onClick: () => openDialog('heat', row),
+              auth: 'api:res.admin.res.save_res_heat.post',
               text: '热度',
             },
             {
@@ -750,8 +755,10 @@ async function reindexSearch() {
             {
               onClick: () => downloadNovel(row),
               text: '下载',
+              auth: 'api:res.admin.res.download_novel.id.get',
             },
             {
+              auth: 'api:res.admin.res.chg_state.res_id.post',
               danger: row.state === 1,
               popConfirm: {
                 confirm: () => toggleState(row),
@@ -767,7 +774,7 @@ async function reindexSearch() {
 
     <div v-if="mode === 'card'" class="mb-3 flex justify-end gap-2">
       <Button
-        v-if="access.upload"
+        v-if="access.create"
         type="primary"
         @click="creatingResource = true"
       >
@@ -811,7 +818,7 @@ async function reindexSearch() {
                 </Tooltip>
                 <Space wrap>
                   <Button
-                    v-for="lang in access.manage ? langKeys(item) : []"
+                    v-for="lang in access.readContent ? langKeys(item) : []"
                     :key="lang"
                     size="small"
                     @click="
@@ -824,7 +831,7 @@ async function reindexSearch() {
                 </Space>
                 <Space wrap>
                   <Button
-                    v-if="access.manage"
+                    v-if="access.edit"
                     size="small"
                     type="link"
                     @click="openDialog('edit', item)"
@@ -832,7 +839,7 @@ async function reindexSearch() {
                     编辑
                   </Button>
                   <Button
-                    v-if="access.manage"
+                    v-if="access.price"
                     size="small"
                     type="link"
                     @click="openDialog('price', item)"
@@ -840,7 +847,7 @@ async function reindexSearch() {
                     价格
                   </Button>
                   <Button
-                    v-if="access.manage"
+                    v-if="access.bindCode"
                     size="small"
                     type="link"
                     @click="bindCode(item)"
@@ -850,12 +857,6 @@ async function reindexSearch() {
                   <Button size="small" type="link" @click="openVersions(item)">
                     版本与内容
                   </Button>
-                  <ReviewEntryActions
-                    :resource="item"
-                    :can-manage="
-                      access.manage || hasAccessByCodes(['res:review:manage'])
-                    "
-                  />
                 </Space>
               </Space>
             </template>
@@ -1026,9 +1027,7 @@ async function reindexSearch() {
               />
             </Col>
             <Col :span="3">
-              <Button danger @click="priceRanges.splice(index, 1)">
-                删除
-              </Button>
+              <Button danger @click="priceRanges.splice(index, 1)">删除</Button>
             </Col>
           </Row>
           <Button @click="priceRanges.push({})">新增区间</Button>
@@ -1101,7 +1100,9 @@ async function reindexSearch() {
             v-model:value="editForm.new_tag_name"
             placeholder="新增标签名称"
           />
-          <Button @click="addMarkTag">新增标签</Button>
+          <Button v-access:code="'api:res.admin.tag.post'" @click="addMarkTag">
+            新增标签
+          </Button>
         </Space>
         <div class="text-gray-500">
           当前后端只暴露标签新增与列表接口；资源绑定仍走分类接口。

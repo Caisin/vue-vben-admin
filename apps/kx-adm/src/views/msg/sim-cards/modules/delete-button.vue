@@ -13,7 +13,7 @@ import { requestErrorMessage } from '#/request-errors';
 const props = defineProps<{ card: SimCardView }>();
 const emit = defineEmits<{ deleted: [iccid: string] }>();
 const { hasAccessByCodes } = useAccess();
-const allowed = computed(() => hasAccessByCodes(['sim_cards:manage']));
+const allowed = computed(() => hasAccessByCodes(['api:msg.sim.delete']));
 const open = ref(false);
 const busy = ref(false);
 const errorMessage = ref('');

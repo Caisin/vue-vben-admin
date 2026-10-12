@@ -22,6 +22,7 @@ vi.mock('@vben/icons', async () => {
   const Icon = defineComponent({ setup: () => () => h('svg') });
   return { IconifyIcon: Icon, Plus: Icon };
 });
+vi.mock('./modules/members.vue', () => ({ default: { name: 'RoleMembers' } }));
 vi.mock('./modules/form.vue', () => ({ default: { name: 'RoleForm' } }));
 vi.mock('./modules/detail.vue', () => ({ default: { name: 'RoleDetail' } }));
 vi.mock('@vben/common-ui', async () => {
@@ -124,7 +125,12 @@ async function mount(codes: string[]) {
 
 describe('角色列表行内操作', () => {
   it('名称打开角色权限编辑，操作列使用带无障碍名称的图标', async () => {
-    await mount(['roles:manage', 'roles:copy']);
+    await mount([
+      'api:auth.role.create',
+      'api:auth.role.update',
+      'api:auth.role.delete',
+      'roles:copy',
+    ]);
     document
       .querySelector<HTMLButtonElement>(
         'button[aria-label="编辑角色及权限：资源查看"]',
@@ -159,5 +165,29 @@ describe('角色列表行内操作', () => {
     ]);
     actions[0]?.click();
     expect(state.opened).toEqual(['RoleDetail']);
+  });
+  it('新增和删除权限独立于编辑权限', async () => {
+    await mount(['api:auth.role.create']);
+    expect(document.querySelector('button[aria-label^="编辑角色"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="删除角色"]')).toBeNull();
+    unmount?.();
+    document.body.innerHTML = '';
+    state.codes.clear();
+    await mount(['api:auth.role.delete']);
+    expect(document.querySelector('button[aria-label^="编辑角色"]')).toBeNull();
+    expect(
+      document.querySelector('button[aria-label="删除角色"]'),
+    ).not.toBeNull();
+  });
+  it('成员入口携带当前角色，不要求角色资料编辑权限', async () => {
+    await mount(['api:auth.role_assignment.members']);
+    const entry = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="管理角色成员：资源查看"]',
+    );
+    expect(entry).not.toBeNull();
+    entry?.click();
+    expect(state.opened).toEqual(['RoleMembers']);
+    expect(state.selected.RoleMembers).toEqual(state.row);
+    expect(document.querySelector('button[aria-label^="编辑角色"]')).toBeNull();
   });
 });

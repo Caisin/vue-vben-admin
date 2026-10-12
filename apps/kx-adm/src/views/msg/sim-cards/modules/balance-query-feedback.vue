@@ -94,7 +94,12 @@ const polling = useTaskPolling({
 });
 
 async function start(card?: SimCardView) {
-  if (!hasAccessByCodes(['sim_cards:manage'])) return;
+  if (
+    !hasAccessByCodes([
+      card ? 'api:msg.sim.refresh_balance' : 'api:msg.sim.refresh_balances',
+    ])
+  )
+    return;
   open.value = true;
   if (busy.value) return;
   polling.stop();

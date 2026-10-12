@@ -13,6 +13,8 @@ import type {
 import { $t } from '#/locales';
 import { Times } from '#/times';
 
+import { homePageSelectProps } from '../home-page-options';
+
 export interface RolePermissionDetail {
   api_count: number;
   auth_code: string;
@@ -136,25 +138,13 @@ export function useFormSchema(
     },
     {
       component: 'TreeSelect',
-      componentProps: {
-        allowClear: true,
-        class: 'w-full',
-        placeholder: '未配置时不提供角色默认页',
-        showSearch: true,
-        treeDefaultExpandAll: true,
-        treeNodeFilterProp: 'label',
-      },
+      componentProps: homePageSelectProps('未配置时不提供角色默认页'),
       dependencies: {
         resolve: ({ values }) => ({
-          componentProps: {
-            allowClear: true,
-            class: 'w-full',
-            placeholder: '未配置时不提供角色默认页',
-            showSearch: true,
-            treeData: resolveHomeOptions(values),
-            treeDefaultExpandAll: true,
-            treeNodeFilterProp: 'label',
-          },
+          componentProps: homePageSelectProps(
+            '未配置时不提供角色默认页',
+            resolveHomeOptions(values),
+          ),
         }),
         triggerFields: ['permissions'],
       },
@@ -237,10 +227,10 @@ export function useColumns<T = SystemRole>(
       align: 'center',
       field: 'operation',
       fixed: 'right',
-      minWidth: 120,
+      minWidth: 190,
       slots: { default: 'action' },
       title: $t('system.role.operation'),
-      width: 120,
+      width: 190,
     },
   ];
 }

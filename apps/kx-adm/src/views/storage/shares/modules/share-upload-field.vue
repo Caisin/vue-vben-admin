@@ -5,6 +5,7 @@ import type { SelectedStorageFile } from '#/components/file-picker';
 
 import { computed, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { IconifyIcon, X } from '@vben/icons';
 
 import { Button, message, Progress, Upload } from 'antdv-next';
@@ -13,6 +14,10 @@ import { StorageFileShareApi } from '#/api/storage';
 import { filesFromDataTransfer } from '#/components/file-picker/internal/dropped-files';
 
 const emit = defineEmits<{ change: [files: SelectedStorageFile[]] }>();
+const { hasAccessByCodes } = useAccess();
+const canUpload = computed(() =>
+  hasAccessByCodes(['api:storage.file_share.picker.file.upload']),
+);
 const uploaded = ref<SelectedStorageFile[]>([]);
 const total = ref(0);
 const succeeded = ref(0);
@@ -36,7 +41,7 @@ function displayName(file: SelectedStorageFile) {
 }
 
 async function uploadFiles(files: File[]) {
-  if (files.length === 0) return;
+  if (!canUpload.value || files.length === 0) return;
   pending.value += files.length;
   total.value += files.length;
   for (const file of files) {
@@ -102,7 +107,7 @@ defineExpose({ isRunning: () => running.value, reset });
 </script>
 
 <template>
-  <div class="share-upload-field">
+  <div v-if="canUpload" class="share-upload-field">
     <div
       class="share-upload-drop"
       :class="{ active: dragging }"
@@ -121,7 +126,8 @@ defineExpose({ isRunning: () => running.value, reset });
           :show-upload-list="false"
         >
           <Button :disabled="running">
-            <IconifyIcon class="size-4" icon="lucide:upload" />选择文件
+            <IconifyIcon class="size-4" icon="lucide:upload" />
+            选择文件
           </Button>
         </Upload>
         <Upload
@@ -131,7 +137,8 @@ defineExpose({ isRunning: () => running.value, reset });
           :show-upload-list="false"
         >
           <Button :disabled="running">
-            <IconifyIcon class="size-4" icon="lucide:folder-up" />选择文件夹
+            <IconifyIcon class="size-4" icon="lucide:folder-up" />
+            选择文件夹
           </Button>
         </Upload>
       </div>

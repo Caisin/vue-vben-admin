@@ -5,6 +5,7 @@ import type {
   MembershipTypePageQuery,
 } from '#/api/asset/membership';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -16,6 +17,8 @@ import { vxeSortParams } from '#/vxe-sort';
 
 import { useColumns, useGridFormSchema } from './data';
 import Form from './modules/form.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const membershipTypeSortFields = ['id', 'code', 'created_at'];
 
@@ -85,8 +88,13 @@ async function onEnabledChange(enabled: boolean, row: MembershipType) {
     <FormDrawer @success="onRefresh" />
     <Grid class="management-grid" table-title="会员类型">
       <template #toolbar-tools>
-        <Button type="primary" @click="onCreate">
-          <Plus class="size-5" />新建会员类型
+        <Button
+          type="primary"
+          @click="onCreate"
+          v-access:code="'api:asset.membership.type.create'"
+        >
+          <Plus class="size-5" />
+          新建会员类型
         </Button>
       </template>
       <template #nameCell="{ row }">
@@ -95,6 +103,7 @@ async function onEnabledChange(enabled: boolean, row: MembershipType) {
           size="small"
           type="link"
           @click.stop="onEdit(row)"
+          :disabled="!hasActionAccess(['api:asset.membership.type.update'])"
         >
           {{ row.name || '-' }}
         </Button>

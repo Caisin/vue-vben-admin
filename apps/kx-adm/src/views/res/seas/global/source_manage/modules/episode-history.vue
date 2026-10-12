@@ -240,6 +240,7 @@ onBeforeUnmount(() => {
     v-if="canManage && reviewing && hasVideo"
     :disabled="disabled || busy || (!finalizedAt && Boolean(pending))"
     @click="beginState"
+    v-access:code="'api:res.review.episode.state'"
   >
     {{ finalizedAt ? '重新打开修改' : '本集定稿' }}
   </Button>
@@ -254,12 +255,8 @@ onBeforeUnmount(() => {
     :styles="{ body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' } }"
     @cancel="!busy && (open = false)"
   >
-    <Alert
-      v-if="errorText"
-      type="error"
-      :message="errorText"
-      class="mb-3"
-    /><Alert v-if="success" type="success" :message="success" class="mb-3" />
+    <Alert v-if="errorText" type="error" :message="errorText" class="mb-3" />
+    <Alert v-if="success" type="success" :message="success" class="mb-3" />
     <Alert
       v-if="!editable"
       type="info"
@@ -299,7 +296,8 @@ onBeforeUnmount(() => {
             <header>
               <strong>{{ row.title }}</strong>
               <div>
-                <Tag v-if="row.is_current" color="green">当前版本</Tag><Tag>{{ labels[row.action] || row.action }}</Tag>
+                <Tag v-if="row.is_current" color="green">当前版本</Tag>
+                <Tag>{{ labels[row.action] || row.action }}</Tag>
               </div>
             </header>
             <p class="history-meta">
@@ -323,7 +321,8 @@ onBeforeUnmount(() => {
                 @click="preview(row)"
               >
                 预览此版本
-</Button><Button
+              </Button>
+              <Button
                 v-if="
                   canRestore &&
                   row.restorable !== false &&
@@ -332,6 +331,7 @@ onBeforeUnmount(() => {
                 "
                 :disabled="busy || loading"
                 @click="beginRestore(row)"
+                v-access:code="'api:res.review.history.restore'"
               >
                 恢复为当前版本
               </Button>
@@ -341,7 +341,8 @@ onBeforeUnmount(() => {
             v-if="!loading && !view?.items.length"
             description="这一集暂无可保留的视频历史"
           />
-</Spin><Pagination
+        </Spin>
+        <Pagination
           v-if="view && Number(view.total) > 10"
           v-model:current="page"
           :total="Number(view.total)"
@@ -379,18 +380,21 @@ onBeforeUnmount(() => {
             @error="
               mediaError = '历史视频无法播放，请检查文件是否仍可用或重新加载。'
             "
-          ></video><Empty
+          ></video>
+          <Empty
             v-else
             :description="
               mediaLoading ? '正在读取历史视频…' : '选择一条历史记录进行预览'
             "
           />
-</Spin><Alert
+        </Spin>
+        <Alert
           v-if="mediaError"
           :message="mediaError"
           type="error"
           class="mt-3"
-        /><Button
+        />
+        <Button
           v-if="selected"
           class="mt-3"
           :disabled="mediaLoading"
@@ -429,7 +433,8 @@ onBeforeUnmount(() => {
       :maxlength="4000"
       placeholder="填写恢复原因，例如：本次调色不符合要求，恢复上一次确认的视频"
       :disabled="busy"
-    /><Alert v-if="errorText" :message="errorText" type="error" class="mt-3" />
+    />
+    <Alert v-if="errorText" :message="errorText" type="error" class="mt-3" />
   </Modal>
   <Modal
     :open="stateOpen"

@@ -38,11 +38,15 @@ const remark = ref('');
 const saving = ref(false);
 const saveError = ref('');
 const canCreate = computed(() =>
-  hasAccessByCodes(['developer-account:create', 'developer-account:update']),
+  hasAccessByCodes([
+    'api:developer_account.account.create',
+    'api:developer_account.account.update',
+  ]),
 );
 const canEdit = computed(
   () =>
-    hasAccessByCodes(['developer-account:update']) && current.value?.can_edit,
+    hasAccessByCodes(['api:developer_account.account.update']) &&
+    current.value?.can_edit,
 );
 async function load() {
   loading.value = true;

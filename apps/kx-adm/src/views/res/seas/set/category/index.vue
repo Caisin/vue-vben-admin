@@ -137,8 +137,17 @@ async function refreshAll() {
     <Grid class="management-grid" table-title="分类管理">
       <template #toolbar-tools>
         <Space>
-          <Button @click="refreshAll">刷新全部标签</Button>
-          <Button type="primary" @click="openCreate">
+          <Button
+            @click="refreshAll"
+            v-access:code="'api:res.admin.res.update_all_tags.put'"
+          >
+            刷新全部标签
+          </Button>
+          <Button
+            type="primary"
+            @click="openCreate"
+            v-access:code="'api:res.admin.category.post'"
+          >
             <Plus class="size-5" />
             新增分类
           </Button>
@@ -159,11 +168,13 @@ async function refreshAll() {
               icon: 'lucide:edit',
               onClick: () => openEdit(row),
               text: '编辑',
+              auth: 'api:res.admin.category.post',
             },
             {
               icon: 'lucide:list-plus',
               onClick: () => openSources(row),
               text: '选择资源',
+              auth: 'api:res.admin.category.set_res.id.post',
             },
           ]"
           :dropdown-actions="[
@@ -171,11 +182,13 @@ async function refreshAll() {
               icon: 'lucide:languages',
               onClick: () => openLanguage(row),
               text: '多语言',
+              auth: 'api:res.admin.category.post',
             },
             {
               icon: 'lucide:refresh-cw',
               onClick: () => refreshCategorySources(row),
               text: '刷新关联标签',
+              auth: 'api:res.admin.res.res_category.res_id.put',
             },
             {
               danger: true,
@@ -185,6 +198,7 @@ async function refreshAll() {
                 title: '是否确认删除？',
               },
               text: '删除',
+              auth: 'api:res.admin.category.id.delete',
             },
           ]"
           align="center"

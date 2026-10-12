@@ -5,6 +5,7 @@ import type {
 } from '#/adapter/vxe-table';
 import type { MallProduct, MallProductPageQuery } from '#/api/mall';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -18,6 +19,8 @@ import MallJobDrawer from '../components/job-drawer.vue';
 import { useColumns, useGridFormSchema } from './data';
 import Form from './modules/form.vue';
 import Skus from './modules/skus.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const productSortFields = [
   'id',
@@ -150,15 +153,19 @@ function onActionClick({ code, row }: OnActionClickParams<MallProduct>) {
     <Grid class="management-grid" table-title="商城商品">
       <template #toolbar-tools>
         <Space>
-          <Button v-access:code="'mall:product:write'" @click="onProductImport">
+          <Button
+            @click="onProductImport"
+            v-access:code="'mall:product:import'"
+          >
             商品导入
           </Button>
           <Button
-            v-access:code="'mall:product:write'"
             type="primary"
             @click="onCreate"
+            v-access:code="'api:mall.admin.products.create'"
           >
-            <Plus class="size-5" />新建商品
+            <Plus class="size-5" />
+            新建商品
           </Button>
         </Space>
       </template>
@@ -169,6 +176,7 @@ function onActionClick({ code, row }: OnActionClickParams<MallProduct>) {
             size="small"
             type="link"
             @click.stop="onEdit(row)"
+            :disabled="!hasActionAccess(['api:mall.admin.products.update'])"
           >
             {{ row.name || '-' }}
           </Button>

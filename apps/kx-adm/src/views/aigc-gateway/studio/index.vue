@@ -136,6 +136,13 @@ let epoch = 0;
 let searchEpoch = 0;
 let pending: undefined | { id: Id; request: GenerateWrite };
 const adapter: FilePickerAdapter = {
+  permissions: {
+    upload: ['api:storage.file.upload'],
+    direct: [
+      'api:storage.file.presign-upload',
+      'api:storage.file.presign-complete',
+    ],
+  },
   detail: StorageFileApi.detail,
   list: (query) =>
     StorageFileApi.list({ ...query, storage_code: storage.value }),
@@ -491,7 +498,8 @@ onBeforeUnmount(() => {
           showSettings = false;
         "
       >
-        <template #icon><IconifyIcon icon="lucide:history" /></template>历史
+        <template #icon><IconifyIcon icon="lucide:history" /></template>
+        历史
       </Button>
       <h2>{{ current?.title ?? names[kind] }}</h2>
       <Tooltip title="刷新">
@@ -534,7 +542,8 @@ onBeforeUnmount(() => {
     >
       <aside class="history-pane">
         <Button v-if="writable" block @click="createSession">
-          <template #icon><IconifyIcon icon="lucide:plus" /></template>{{ kind === 'chat' ? '新建对话' : '新建创作' }}
+          <template #icon><IconifyIcon icon="lucide:plus" /></template>
+          {{ kind === 'chat' ? '新建对话' : '新建创作' }}
         </Button>
         <Input
           v-model:value="keyword"
@@ -551,9 +560,12 @@ onBeforeUnmount(() => {
             :class="{ selected: String(session.id) === String(current?.id) }"
             @click="open(session)"
           >
-            <span>{{ session.title }}</span><small>{{
-              new Date(Number(session.updated_at) * 1000).toLocaleDateString()
-            }}</small>
+            <span>{{ session.title }}</span>
+            <small>
+              {{
+                new Date(Number(session.updated_at) * 1000).toLocaleDateString()
+              }}
+            </small>
           </button>
         </nav>
         <Empty
@@ -578,7 +590,8 @@ onBeforeUnmount(() => {
             :data-run-id="run.id"
           >
             <header>
-              <span>{{ run.upstream_model }}</span><Tag
+              <span>{{ run.upstream_model }}</span>
+              <Tag
                 :color="
                   run.state === 'succeeded'
                     ? 'success'
@@ -588,9 +601,10 @@ onBeforeUnmount(() => {
                 "
               >
                 {{ states[run.state] ?? run.state }}
-</Tag><time>{{
-                new Date(Number(run.created_at) * 1000).toLocaleString()
-              }}</time>
+              </Tag>
+              <time>
+                {{ new Date(Number(run.created_at) * 1000).toLocaleString() }}
+              </time>
             </header>
             <p class="user-prompt">{{ run.input.request.prompt }}</p>
             <div
@@ -635,7 +649,8 @@ onBeforeUnmount(() => {
                 </Button>
               </Tooltip>
               <Button size="small" @click="detailRun = run">
-                <template #icon><IconifyIcon icon="lucide:info" /></template>详情
+                <template #icon><IconifyIcon icon="lucide:info" /></template>
+                详情
               </Button>
               <Button
                 v-if="writable && !isActive(run.state)"
@@ -654,7 +669,8 @@ onBeforeUnmount(() => {
               >
                 <template #icon>
                   <IconifyIcon icon="lucide:rotate-cw" />
-</template>重新生成
+                </template>
+                重新生成
               </Button>
               <Button
                 v-if="writable && canResume(run)"
@@ -669,7 +685,8 @@ onBeforeUnmount(() => {
                 :disabled="run.cancel_requested"
                 @click="cancel(run)"
               >
-                <template #icon><IconifyIcon icon="lucide:square" /></template>{{ run.cancel_requested ? '正在停止' : '停止' }}
+                <template #icon><IconifyIcon icon="lucide:square" /></template>
+                {{ run.cancel_requested ? '正在停止' : '停止' }}
               </Button>
               <Button
                 v-if="writable && run.state === 'unknown'"
@@ -678,7 +695,9 @@ onBeforeUnmount(() => {
               >
                 结束待核实任务
               </Button>
-              <span v-if="run.usage.total_tokens">{{ run.usage.total_tokens }} tokens</span>
+              <span v-if="run.usage.total_tokens">
+                {{ run.usage.total_tokens }} tokens
+              </span>
             </footer>
           </article>
         </div>
@@ -691,9 +710,11 @@ onBeforeUnmount(() => {
               :options="modelOptions"
               placeholder="选择模型"
               @change="changeModel"
-            /><Tag v-if="model?.capabilities.includes('input_image')">
+            />
+            <Tag v-if="model?.capabilities.includes('input_image')">
               图片输入
-</Tag><Tag v-if="model?.capabilities.includes('input_video')">
+            </Tag>
+            <Tag v-if="model?.capabilities.includes('input_video')">
               视频输入
             </Tag>
           </div>
@@ -724,7 +745,9 @@ onBeforeUnmount(() => {
               >
                 <IconifyIcon icon="lucide:paperclip" />
               </Button>
-</Tooltip><span>{{ fileIds.length ? `${fileIds.length} 个素材` : '' }}</span><Button
+            </Tooltip>
+            <span>{{ fileIds.length ? `${fileIds.length} 个素材` : '' }}</span>
+            <Button
               type="primary"
               html-type="submit"
               :loading="sending"
@@ -734,41 +757,56 @@ onBeforeUnmount(() => {
                 <IconifyIcon
                   :icon="kind === 'chat' ? 'lucide:send' : 'lucide:sparkles'"
                 />
-</template>{{ kind === 'chat' ? '发送' : '生成' }}
+              </template>
+              {{ kind === 'chat' ? '发送' : '生成' }}
             </Button>
           </div>
         </form>
       </main>
       <aside class="settings-pane">
         <h3>生成参数</h3>
-        <label class="studio-field"><span>私有存储</span><Select
+        <label class="studio-field">
+          <span>私有存储</span>
+          <Select
             v-model:value="storage"
             aria-label="私有存储"
             :options="storageOptions"
             placeholder="选择结果与素材存储"
-        /></label>
+          />
+        </label>
         <template v-if="kind === 'chat'">
-          <label class="studio-field"><span>系统指令</span><TextArea
+          <label class="studio-field">
+            <span>系统指令</span>
+            <TextArea
               v-model:value="instructions"
               :maxlength="16000"
               :auto-size="{ minRows: 3, maxRows: 10 }"
-          /></label>
-          <label class="studio-field"><span>最大输出 Token</span><InputNumber
+            />
+          </label>
+          <label class="studio-field">
+            <span>最大输出 Token</span>
+            <InputNumber
               v-model:value="options.max_tokens"
               :min="1"
               :max="32768"
               :precision="0"
-          /></label>
-          <label class="studio-field"><span>温度</span><InputNumber
+            />
+          </label>
+          <label class="studio-field">
+            <span>温度</span>
+            <InputNumber
               v-model:value="options.temperature"
               :min="0"
               :max="2"
               :step="0.1"
               placeholder="模型默认"
-          /></label>
+            />
+          </label>
         </template>
         <template v-else-if="kind === 'image' && model?.protocol !== 'gemini'">
-          <label class="studio-field"><span>尺寸</span><Select
+          <label class="studio-field">
+            <span>尺寸</span>
+            <Select
               v-model:value="options.size"
               allow-clear
               placeholder="模型默认"
@@ -781,14 +819,20 @@ onBeforeUnmount(() => {
                   '1024x1792',
                 ].map((value) => ({ label: value, value }))
               "
-          /></label>
-          <label class="studio-field"><span>图片数量</span><InputNumber
+            />
+          </label>
+          <label class="studio-field">
+            <span>图片数量</span>
+            <InputNumber
               v-model:value="options.count"
               :min="1"
               :max="4"
               :precision="0"
-          /></label>
-          <label class="studio-field"><span>质量</span><Select
+            />
+          </label>
+          <label class="studio-field">
+            <span>质量</span>
+            <Select
               v-model:value="options.quality"
               allow-clear
               placeholder="模型默认"
@@ -799,10 +843,13 @@ onBeforeUnmount(() => {
                 { label: '标准', value: 'standard' },
                 { label: '高清', value: 'hd' },
               ]"
-          /></label>
+            />
+          </label>
         </template>
         <template v-else-if="kind === 'video'">
-          <label class="studio-field"><span>时长</span><Select
+          <label class="studio-field">
+            <span>时长</span>
+            <Select
               v-model:value="options.seconds"
               allow-clear
               placeholder="模型默认"
@@ -814,21 +861,27 @@ onBeforeUnmount(() => {
                     : [4, 8, 12]
                 ).map((value) => ({ label: `${value} 秒`, value }))
               "
-          /></label>
+            />
+          </label>
           <label
             v-if="
               model?.protocol === 'gemini' || model?.protocol.endsWith('jimeng')
             "
             class="studio-field"
-            ><span>画面比例</span><Select
+          >
+            <span>画面比例</span>
+            <Select
               v-model:value="options.aspect_ratio"
               allow-clear
               placeholder="模型默认"
               :options="
                 ['16:9', '9:16'].map((value) => ({ label: value, value }))
               "
-          /></label>
-          <label v-else class="studio-field"><span>尺寸</span><Select
+            />
+          </label>
+          <label v-else class="studio-field">
+            <span>尺寸</span>
+            <Select
               v-model:value="options.size"
               allow-clear
               placeholder="模型默认"
@@ -838,7 +891,8 @@ onBeforeUnmount(() => {
                   value,
                 }))
               "
-          /></label>
+            />
+          </label>
         </template>
         <dl v-if="model && kind === 'chat'" class="price-info">
           <dt>估算单价 / 百万 Token</dt>

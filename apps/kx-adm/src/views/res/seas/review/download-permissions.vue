@@ -116,7 +116,8 @@ watch(
     "
   >
     下载权限
-</Button><Modal
+  </Button>
+  <Modal
     v-model:open="open"
     title="交付材料下载权限"
     width="min(1100px,96vw)"
@@ -126,14 +127,22 @@ watch(
       type="info"
       message="授权仅针对当前选中的交付版本。为同一用户保存会替换该作品此前的版本授权。下载通过 Tauri 客户端，未勾选模块不可下载。"
       class="mb-4"
-    /><Alert
+    />
+    <Alert
       v-if="errorText && !selected"
       type="error"
       :message="errorText"
       class="mb-3"
-    /><Button type="primary" :disabled="loading || saving" @click="edit()">
+    />
+    <Button
+      type="primary"
+      :disabled="loading || saving"
+      @click="edit()"
+      v-access:code="'api:res.delivery.grants.save'"
+    >
       新增授权
-</Button><Spin :spinning="loading">
+    </Button>
+    <Spin :spinning="loading">
       <Table
         class="mt-3"
         :data-source="rows"
@@ -148,11 +157,17 @@ watch(
         ]"
       >
         <template #bodyCell="{ column, record }">
-          <span v-if="column.key === 'modules'">{{
-            record.modules
-              .map((m) => modules.find((x) => x[0] === m)?.[1] || m)
-              .join('、') || '无模块授权'
-          }}</span><span v-else-if="column.key === 'seq'">{{ record.seq_from || 1 }} - {{ record.seq_until || '全部' }}</span><Tag
+          <span v-if="column.key === 'modules'">
+            {{
+              record.modules
+                .map((m) => modules.find((x) => x[0] === m)?.[1] || m)
+                .join('、') || '无模块授权'
+            }}
+          </span>
+          <span v-else-if="column.key === 'seq'">
+            {{ record.seq_from || 1 }} - {{ record.seq_until || '全部' }}
+          </span>
+          <Tag
             v-else-if="column.key === 'state'"
             :color="record.can_download ? 'green' : 'default'"
           >
@@ -163,20 +178,26 @@ watch(
                   ? '当前版本允许'
                   : '其它版本授权'
             }}
-</Tag><Button
+          </Tag>
+          <Button
             v-else-if="column.key === 'action'"
             type="link"
             @click="edit(record)"
+            v-access:code="'api:res.delivery.grants.save'"
           >
             编辑
-</Button><span v-else>{{
-            record.user_name ||
-            users.find((u) => u.id === Number(record.uid))?.name ||
-            `用户 ${record.uid}`
-          }}</span>
+          </Button>
+          <span v-else>
+            {{
+              record.user_name ||
+              users.find((u) => u.id === Number(record.uid))?.name ||
+              `用户 ${record.uid}`
+            }}
+          </span>
         </template>
       </Table>
-</Spin><Modal
+    </Spin>
+    <Modal
       v-if="selected"
       :open="true"
       :closable="!saving"
@@ -226,7 +247,8 @@ watch(
           type="number"
           min="0"
           placeholder="起始集"
-        /><input
+        />
+        <input
           v-model.number="selected.seq_until"
           type="number"
           min="0"

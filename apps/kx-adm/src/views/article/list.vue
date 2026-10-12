@@ -168,7 +168,12 @@ onMounted(async () => {
     <header class="page-heading"><h1>文章管理</h1></header>
     <Grid>
       <template #toolbar-tools>
-        <Button type="primary" :loading="creating" @click="createArticle">
+        <Button
+          type="primary"
+          :loading="creating"
+          @click="createArticle"
+          v-access:code="'api:article.create'"
+        >
           <Plus class="size-5" />
           新建文章
         </Button>

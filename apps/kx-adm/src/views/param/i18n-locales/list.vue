@@ -2,6 +2,7 @@
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { KxI18n } from '#/api/param/i18n';
 
+import { useAccess as useActionAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { Plus } from '@vben/icons';
 
@@ -13,6 +14,8 @@ import { optionalString } from '#/views/_shared/crud-page';
 
 import { useColumns, useGridFormSchema } from './data';
 import Form from './modules/form.vue';
+
+const { hasAccessByCodes: hasActionAccess } = useActionAccess();
 
 const [FormDrawer, formDrawerApi] = useVbenDrawer({
   connectedComponent: Form,
@@ -80,8 +83,13 @@ function previewJson(value: unknown) {
     <FormDrawer @success="onRefresh" />
     <Grid class="management-grid" table-title="语言包">
       <template #toolbar-tools>
-        <Button type="primary" @click="onCreate">
-          <Plus class="size-5" />合并语言包
+        <Button
+          type="primary"
+          @click="onCreate"
+          v-access:code="'api:param.i18n.save'"
+        >
+          <Plus class="size-5" />
+          合并语言包
         </Button>
       </template>
       <template #localeCell="{ row }">
@@ -90,6 +98,7 @@ function previewJson(value: unknown) {
           size="small"
           type="link"
           @click.stop="onEdit(row)"
+          :disabled="!hasActionAccess(['api:param.i18n.save'])"
         >
           {{ row.locale || '-' }}
         </Button>

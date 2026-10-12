@@ -32,6 +32,8 @@ interface AssignmentPage<T> {
 }
 export interface AssignmentQuery {
   configured_only?: boolean;
+  enabled?: boolean;
+  include_self?: boolean;
   keyword?: string;
   page: number;
   size: number;

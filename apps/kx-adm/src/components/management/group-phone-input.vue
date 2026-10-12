@@ -23,7 +23,9 @@ const lines = computed(() =>
     .map((line) => line.trim())
     .filter(Boolean),
 );
-const allowed = computed(() => hasAccessByCodes(['phone_groups:manage']));
+const allowed = computed(() =>
+  hasAccessByCodes(['api:msg.group.sims.add_by_phones']),
+);
 watch(
   () => props.groupId,
   () => {

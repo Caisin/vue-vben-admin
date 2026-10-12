@@ -127,6 +127,7 @@ async function submitRecovery(row: PayOrder) {
             v-if="row.state === 'paid'"
             :title="`确认为订单 ${row.id} 提交退款任务？`"
             @confirm="submitRefund(row)"
+            v-access:code="'api:asset.pay.order.refund_task'"
           >
             <Button danger size="small">退款</Button>
           </Popconfirm>
@@ -134,6 +135,7 @@ async function submitRecovery(row: PayOrder) {
             v-if="row.state === 'refunded'"
             :title="`确认为订单 ${row.id} 提交恢复任务？`"
             @confirm="submitRecovery(row)"
+            v-access:code="'api:asset.pay.order.recovery_task'"
           >
             <Button size="small">恢复</Button>
           </Popconfirm>
