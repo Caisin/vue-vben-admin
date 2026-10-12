@@ -17,15 +17,19 @@ import {
 import { reviewApi } from '#/api/res/review';
 import { requestErrorMessage } from '#/request-errors';
 
+import { deliveryEpisode } from './delivery-files';
 import NativeUpload from './native-upload.vue';
-const props = defineProps<{
-  res: Id;
-  version: Id;
+const props = defineProps<{ res: Id }>();
+const emit = defineEmits<{ refresh: [] }>();
+const selection = ref<{
+  id: Id;
+  name: string;
   items: VersionItem[];
   planned: number;
-  disabled: boolean;
 }>();
-const emit = defineEmits<{ refresh: [] }>();
+const loading = ref(false);
+let alive = true;
+let generation = 0;
 const open = ref(false);
 const busy = ref(false);
 const errorText = ref('');
@@ -34,8 +38,9 @@ const task = ref<ReviewImport>();
 let timer: ReturnType<typeof setTimeout> | undefined;
 const target = computed(
   () =>
-    Array.from({ length: props.planned }, (_, i) => i + 1).find(
-      (n) => !props.items.some((i) => Number(i.seq_no) === n),
+    Array.from({ length: selection.value?.planned ?? 0 }, (_, i) => i + 1).find(
+      (n) =>
+        !(selection.value?.items ?? []).some((i) => Number(i.seq_no) === n),
     ) ?? 1,
 );
 const valid = computed(
@@ -44,17 +49,17 @@ const valid = computed(
     entries.value.every(
       (e) =>
         e.seq_no > 0 &&
-        e.seq_no <= props.planned &&
+        e.seq_no <= (selection.value?.planned ?? 0) &&
         e.title.trim() &&
-        !props.items.some((i) => Number(i.seq_no) === e.seq_no),
+        !(selection.value?.items ?? []).some(
+          (i) => Number(i.seq_no) === e.seq_no,
+        ),
     ) &&
     new Set(entries.value.map((e) => e.seq_no)).size === entries.value.length,
 );
 function uploaded(files: { file_id: number; name: string }[]) {
   entries.value = files.map((f) => {
-    const seq = Number(
-      f.name.replace(/\.[^.]+$/, '').match(/(\d+)\D*$/)?.[1] || 0,
-    );
+    const seq = deliveryEpisode(f.name);
     return {
       seq_no: seq,
       title: seq ? `第${seq}集` : '',
@@ -64,9 +69,13 @@ function uploaded(files: { file_id: number; name: string }[]) {
   });
 }
 async function refresh() {
+  if (!alive || !selection.value) return;
+  clearTimeout(timer);
+  const id = selection.value.id;
   try {
-    task.value =
-      (await reviewApi.latestImport(props.res, props.version)) ?? undefined;
+    const result = await reviewApi.latestImport(props.res, id);
+    if (!alive || String(selection.value?.id) !== String(id)) return;
+    task.value = result ?? undefined;
     emit('refresh');
     if (
       task.value?.task_run &&
@@ -78,15 +87,16 @@ async function refresh() {
   }
 }
 async function submit() {
-  if (!valid.value) return;
+  if (!selection.value || !valid.value || busy.value || loading.value) return;
   busy.value = true;
   errorText.value = '';
   try {
     task.value = await reviewApi.submitImport(
       props.res,
-      props.version,
+      selection.value.id,
       entries.value,
     );
+    entries.value = [];
     await refresh();
   } catch (error) {
     errorText.value = requestErrorMessage(
@@ -97,31 +107,70 @@ async function submit() {
     busy.value = false;
   }
 }
-onBeforeUnmount(() => clearTimeout(timer));
+async function openDirectory(id: Id) {
+  if (busy.value || loading.value) return;
+  const ticket = ++generation;
+  open.value = true;
+  loading.value = true;
+  selection.value = undefined;
+  entries.value = [];
+  task.value = undefined;
+  errorText.value = '';
+  clearTimeout(timer);
+  try {
+    const view = await reviewApi.detail(props.res, id);
+    if (!alive || ticket !== generation) return;
+    const version = view.detail.version;
+    if (
+      !view.can_edit ||
+      !['draft', 'reviewing'].includes(version.review_state)
+    ) {
+      throw new Error('此视频版本不可上传；定稿版本请先复制后修改');
+    }
+    if (Number(version.planned_episodes) < 1)
+      throw new Error('请先设置计划集数');
+    selection.value = {
+      id: version.id,
+      name: version.name,
+      items: view.detail.items,
+      planned: Number(version.planned_episodes),
+    };
+  } catch (error) {
+    if (alive && ticket === generation)
+      errorText.value = requestErrorMessage(error, '打开目录上传失败');
+  } finally {
+    if (ticket === generation) loading.value = false;
+  }
+}
+defineExpose({ openDirectory });
+onBeforeUnmount(() => {
+  alive = false;
+  generation++;
+  clearTimeout(timer);
+});
 </script>
 <template>
-  <Button
-    :disabled="disabled"
-    @click="open = true"
-    v-access:code="'api:res.review.imports.submit'"
-  >
-    成片整版 / 补集上传
-  </Button>
   <Modal
     v-model:open="open"
-    title="成片整版 / 补集上传"
+    :title="selection ? `${selection.name} · 目录上传` : '视频版本目录上传'"
+    get-container="body"
     width="min(960px,96vw)"
     :footer="null"
-    :closable="!busy"
-    :mask-closable="!busy"
+    :closable="!busy && !loading"
+    :mask-closable="false"
+    :keyboard="!busy && !loading"
   >
     <Alert
       type="info"
-      message="客户端多选视频上传后，核对集数再提交后台登记；已有分集不覆盖，替换请进入逐集审片。每批最多30个文件，可分批补集。"
+      message="客户端多选视频上传后，核对集数再提交后台登记；已有分集不覆盖，替换请进入逐集审片。支持选择目录（含子目录）或多选文件，上传后核对集数并登记。"
     />
+    <p v-if="loading">正在检查目标版本…</p>
     <NativeUpload
+      v-if="open && selection"
+      :key="String(selection.id)"
+      auto-pick-directory
       :scope="res"
-      :version="version"
+      :version="selection.id"
       kind="film"
       :seq="target"
       @busy="busy = $event"
@@ -142,7 +191,7 @@ onBeforeUnmount(() => clearTimeout(timer));
           v-if="column.key === 'seq'"
           v-model:value="record.seq_no"
           :min="1"
-          :max="planned"
+          :max="selection?.planned || 1"
           :precision="0"
           :disabled="busy"
         />
@@ -164,7 +213,7 @@ onBeforeUnmount(() => clearTimeout(timer));
       class="mt-3"
       type="primary"
       :loading="busy"
-      :disabled="!valid"
+      :disabled="!valid || loading"
       @click="submit"
       v-access:code="'api:res.review.imports.submit'"
     >

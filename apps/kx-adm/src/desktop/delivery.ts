@@ -9,6 +9,7 @@ export interface DeliveryUploadJob {
   status: string;
   files: {
     name: string;
+    relative_path?: string;
     size: number;
     bytes: number;
     status: string;
@@ -23,6 +24,7 @@ export const nativeDelivery = {
     kind: string,
     seq: number,
     multiple = true,
+    directory = false,
   ) =>
     invoke<DeliveryUploadJob | null>('delivery_upload_pick', {
       scope,
@@ -30,6 +32,7 @@ export const nativeDelivery = {
       kind,
       seq,
       multiple,
+      directory,
     }),
   run: (id: string) => invoke<DeliveryUploadJob>('delivery_upload_run', { id }),
   jobs: () => invoke<DeliveryUploadJob[]>('delivery_upload_jobs'),

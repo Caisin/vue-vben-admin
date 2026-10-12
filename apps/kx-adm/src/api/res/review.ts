@@ -61,6 +61,10 @@ export interface ReviewImport {
   task_run?: null | { status: string; message: string; error_message?: string };
 }
 export const reviewApi = {
+  userTree: () =>
+    requestClient.get<import('./downloads').DownloadUserTreeNode[]>(
+      '/adm/res/review/users/tree',
+    ),
   submitImport: (res: Id, version: Id, entries: ReviewImport['entries']) =>
     requestClient.post<ReviewImport>(`${base(res, version)}/imports`, {
       entries,

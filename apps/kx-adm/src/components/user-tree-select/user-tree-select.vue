@@ -71,7 +71,7 @@ function filterOptions(nodes: DownloadUserTreeNode[]): DownloadUserTreeNode[] {
     />
     <Alert v-if="error" :message="error" type="error" class="mt-2">
       <template #action>
-        <Button size="small" @click="emit('retry')"> 重新加载组织树 </Button>
+        <Button size="small" @click="emit('retry')">重新加载组织树</Button>
       </template>
     </Alert>
   </div>

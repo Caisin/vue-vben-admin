@@ -3,6 +3,7 @@ import { requestClient } from '#/api/request';
 export type ResourceType = 'drama' | 'novel' | 'script';
 export type Id = number | string;
 export interface ResourceVersion {
+  delivery_kind: string;
   id: Id;
   res_id: Id;
   name: string;

@@ -23,7 +23,7 @@ const busy = ref(false);
 const errorText = ref('');
 const success = ref('');
 const labels: Record<string, string> = {
-  film: '成片',
+  film: '视频（所选版本）',
   clean: '无字幕版',
   silent: '无音乐版',
   prompt: '提示词',
@@ -83,19 +83,13 @@ onMounted(load);
         type="info"
         message="请在 Tauri 客户端打开本页下载。网页可以查看授权范围。"
         class="mb-4"
-      /><Alert
-        v-if="errorText"
-        type="error"
-        :message="errorText"
-        class="mb-3"
-      /><Alert
-        v-if="success"
-        type="success"
-        :message="success"
-        class="mb-3"
-      /><Button :loading="loading" :disabled="busy" @click="load">
+      />
+      <Alert v-if="errorText" type="error" :message="errorText" class="mb-3" />
+      <Alert v-if="success" type="success" :message="success" class="mb-3" />
+      <Button :loading="loading" :disabled="busy" @click="load">
         刷新授权
-</Button><Spin :spinning="loading">
+      </Button>
+      <Spin :spinning="loading">
         <section
           v-for="row in rows"
           :key="row.version"
@@ -117,7 +111,8 @@ onMounted(load);
               "
             >
               选择全部授权文件（每批最多1000）
-</Button><Button
+            </Button>
+            <Button
               class="ml-2"
               :disabled="busy"
               @click="selected[String(row.version)] = []"

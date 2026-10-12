@@ -75,11 +75,32 @@ export const deliveryApi = {
       '/adm/res/delivery/projects',
       { params: { keyword, stage, page, size } },
     ),
-  create: (name: string, planned_episodes: number) =>
+  create: (
+    name: string,
+    planned_episodes: number,
+    resource_code: string,
+    create_code: boolean,
+  ) =>
     requestClient.post<DeliveryProject>('/adm/res/delivery/projects', {
       name,
       planned_episodes,
+      resource_code,
+      create_code,
     }),
+  materials: (scope: Id) =>
+    requestClient.get<{ version_id: Id; view: DeliveryView }>(
+      `/adm/res/delivery/${scope}/project-materials`,
+    ),
+  createVideo: (
+    scope: Id,
+    name: string,
+    kind: string,
+    planned_episodes: number,
+  ) =>
+    requestClient.post<ResourceVersion>(
+      `/adm/res/delivery/${scope}/video-versions`,
+      { name, kind, planned_episodes },
+    ),
   manifest: (scope: Id, version: Id) =>
     requestClient.get<DeliveryView>(base(scope, version)),
   save: (scope: Id, version: Id, data: AssetWrite) =>

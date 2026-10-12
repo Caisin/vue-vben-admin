@@ -27,9 +27,8 @@ import {
 import dayjs from 'dayjs';
 
 import { ResDownloadApi } from '#/api/res/downloads';
+import UserTreeSelect from '#/components/user-tree-select';
 import { requestErrorMessage } from '#/request-errors';
-
-import UserTreeSelect from './user-tree-select.vue';
 
 const props = defineProps<{
   initialUids: number[];

@@ -51,6 +51,11 @@ const errorText = ref('');
 const createOpen = ref(false);
 const name = ref('');
 const planned = ref(6);
+const projectCode = ref('');
+const createCode = ref(true);
+function generateCode() {
+  projectCode.value = `RES-${crypto.randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`;
+}
 const busy = ref(false);
 const selectedVersion = ref<string>();
 const membersOpen = ref(false);
@@ -140,7 +145,13 @@ async function create() {
   busy.value = true;
   errorText.value = '';
   try {
-    const row = await deliveryApi.create(name.value.trim(), planned.value);
+    if (!projectCode.value.trim()) throw new Error('请填写或生成作品编码');
+    const row = await deliveryApi.create(
+      name.value.trim(),
+      planned.value,
+      projectCode.value.trim(),
+      createCode.value,
+    );
     createOpen.value = false;
     choose(row);
     await load();
@@ -227,6 +238,8 @@ onMounted(() => {
               type="primary"
               @click="
                 name = '';
+                projectCode = '';
+                createCode = true;
                 planned = 6;
                 createOpen = true;
               "
@@ -449,7 +462,7 @@ onMounted(() => {
       :confirm-loading="busy"
       :closable="!busy"
       :mask-closable="!busy"
-      :ok-button-props="{ disabled: !name.trim() }"
+      :ok-button-props="{ disabled: !name.trim() || !projectCode.trim() }"
       ok-text="创建并准备交付"
       @ok="create"
       @cancel="!busy && (createOpen = false)"
@@ -457,7 +470,7 @@ onMounted(() => {
       <Alert
         type="info"
         class="mb-4"
-        message="此操作不会创建资源库条目。定稿后再入库，作品编号自动生成。"
+        message="此操作不会创建资源库条目。请选择使用已有作品编码，或填写/生成新编码；新编码与项目一起保存。"
       />
       <label for="delivery-name" class="field-label">作品名称</label>
       <Input
@@ -466,6 +479,38 @@ onMounted(() => {
         :maxlength="200"
         placeholder="例如：女王的獠牙"
       />
+      <label for="delivery-code-mode" class="field-label">作品编码来源</label>
+      <Select
+        id="delivery-code-mode"
+        :value="createCode ? 1 : 0"
+        :options="[
+          { value: 1, label: '创建新作品编码' },
+          { value: 0, label: '使用已有作品编码' },
+        ]"
+        class="w-full"
+        :disabled="busy"
+        @change="
+          (value) => {
+            createCode = value === 1;
+            projectCode = '';
+          }
+        "
+      />
+      <label for="delivery-code" class="field-label">作品编码（必填）</label>
+      <div class="flex gap-2">
+        <Input
+          id="delivery-code"
+          v-model:value="projectCode"
+          :maxlength="255"
+          :disabled="busy"
+          :placeholder="
+            createCode ? '填写新编码，或点击生成' : '填写已有作品编码'
+          "
+        />
+        <Button v-if="createCode" :disabled="busy" @click="generateCode">
+          生成编码
+        </Button>
+      </div>
       <label for="delivery-count" class="field-label">计划集数</label>
       <InputNumber
         id="delivery-count"
@@ -476,7 +521,7 @@ onMounted(() => {
         class="w-full"
       />
       <p class="mt-3 text-sm text-muted-foreground">
-        自动生成成片、无字幕版、无音乐版及前6集提示词/工程截图的交付清单，并要求海报和剧本简介。
+        自动创建成片、无字幕版、无音乐版三个独立视频版本。提示词、工程截图、SRT、海报和剧本简介集中放在项目资料，支持目录上传。
       </p>
       <Alert v-if="errorText" type="error" :message="errorText" class="mt-3" />
     </Modal>

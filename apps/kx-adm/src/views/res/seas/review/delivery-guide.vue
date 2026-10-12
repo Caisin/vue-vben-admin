@@ -1,16 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-
-import { useUserStore } from '@vben/stores';
-
 import { Button, Modal } from 'antdv-next';
-const open = ref(false);
-const step = ref(0);
-const store = useUserStore();
-const key = computed(
-  () =>
-    `kx:delivery-guide:v2:${location.origin}:${store.userInfo?.userId ?? store.userInfo?.username ?? 'current'}`,
-);
+
+import { useReviewGuide } from './use-review-guide';
+
+const { dismiss, open, show, step } = useReviewGuide();
 const steps = [
   {
     title: '先建制作项目，不进入资源库',
@@ -18,7 +11,7 @@ const steps = [
   },
   {
     title: '按清单提交整套材料',
-    body: '每集需要成片、无字幕版、无音乐版。前6集还需提示词和工程截图；不足6集时按实际集数。作品还需海报和剧本简介。SRT、DEMO、YouTube为可选项。',
+    body: '成片、无字幕版、无音乐版是三个独立视频版本，各自选择目录上传并单独预览。提示词、工程截图、SRT、海报和剧本简介属于项目资料，不跟随视频版本复制；前6集提示词与截图必交。',
   },
   {
     title: '缺项补齐后提交交片',
@@ -26,41 +19,25 @@ const steps = [
   },
   {
     title: '审片和材料意见分别定位',
-    body: '在逐集审片中播放成片、标记时间点、提出意见。在材料弹窗中选择具体快照提建议。剪辑上传修订后填写处理结果，不要只换视频却遗漏无字幕版或无音乐版。',
+    body: '在逐集审片中播放成片、标记时间点、提出意见。在材料弹窗中选择具体快照提建议。剪辑在对应视频版本中上传修订并填写处理结果；项目资料单独更新。',
   },
   {
     title: '定稿后不能随意替换',
-    body: '负责人可逐集定稿，冻结该集视频及材料。需要修改时先填写原因重新打开；定稿、替换和历史恢复都有操作人及时间记录。整包定稿后只能复制新交付版本修改。',
+    body: '负责人可逐集定稿，冻结该集视频。需要修改时先填写原因重新打开；定稿、替换和历史恢复都有操作人及时间记录。视频定稿后只能复制新视频版本修改；项目资料独立维护。',
   },
   {
     title: '定稿入库后交给运营',
-    body: '全部材料齐全、意见完成后确认整包定稿。拥有入库权限的人再执行“定稿入库”。资源管理接收独立固定版本，负责后续上架、下载授权和分发；入库不会自动上架。交付文件另在“下载权限”按版本、模块、集数授权，接收人在客户端“交付下载”获取，不自动继承审片权限。',
+    body: '当前视频版本与项目必交资料齐全、意见完成后确认视频定稿。拥有入库权限的人再执行“定稿入库”。资源管理接收独立固定版本，负责后续上架、下载授权和分发；入库不会自动上架。交付文件另在“下载权限”按版本、模块、集数授权，接收人在客户端“交付下载”获取，不自动继承审片权限。',
   },
 ];
-function done() {
-  try {
-    localStorage.setItem(key.value, 'seen');
-  } catch {}
-  open.value = false;
-}
-onMounted(() => {
-  try {
-    open.value = localStorage.getItem(key.value) !== 'seen';
-  } catch {
-    open.value = true;
-  }
-});
 </script>
 <template>
-  <Button
-    @click="
-      step = 0;
-      open = true;
-    "
-  >
-    操作指引
-</Button><Modal
-    v-model:open="open"
+  <Button @click="show">操作指引</Button>
+  <!-- 首次挂载后自动打开时，默认 Portal 容器会被待执行的关闭清理移除。 -->
+  <Modal
+    :open="open"
+    @cancel="dismiss"
+    get-container="body"
     title="从交付到入库 · 操作指引"
     width="min(760px,94vw)"
     :footer="null"
@@ -84,9 +61,12 @@ onMounted(() => {
       </section>
     </div>
     <footer class="guide-footer">
-      <Button @click="open = false">稍后再看</Button><Button v-if="step > 0" @click="step--">上一步</Button><Button v-if="step < steps.length - 1" type="primary" @click="step++">
+      <Button @click="dismiss">稍后再看</Button>
+      <Button v-if="step > 0" @click="step--">上一步</Button>
+      <Button v-if="step < steps.length - 1" type="primary" @click="step++">
         下一步
-</Button><Button v-else type="primary" @click="done">我知道了，开始交付</Button>
+      </Button>
+      <Button v-else type="primary" @click="dismiss">我知道了，开始交付</Button>
     </footer>
   </Modal>
 </template>

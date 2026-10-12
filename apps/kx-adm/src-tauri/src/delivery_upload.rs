@@ -17,6 +17,8 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 pub struct File {
     path: PathBuf,
     pub name: String,
+    #[serde(default)]
+    pub relative_path: String,
     pub size: u64,
     modified: u64,
     pub file_id: Option<i64>,
@@ -134,6 +136,7 @@ fn selected_file(path: PathBuf, kind: &str) -> Result<File> {
     Ok(File {
         path,
         name,
+        relative_path: String::new(),
         size: meta.len(),
         modified: crate::queue::modified(&meta),
         file_id: None,
@@ -142,6 +145,50 @@ fn selected_file(path: PathBuf, kind: &str) -> Result<File> {
         error: String::new(),
     })
 }
+fn selected_directory(root: &std::path::Path, kind: &str) -> Result<Vec<File>> {
+    ensure!(!root.is_symlink(), "不接受符号链接目录");
+    let root = root.canonicalize()?;
+    ensure!(root.is_dir(), "请选择目录");
+    let mut directories = vec![root.clone()];
+    let mut files = Vec::new();
+    let mut scanned = 0;
+    while let Some(dir) = directories.pop() {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            scanned += 1;
+            ensure!(scanned <= 20000, "目录项过多，请选择更具体的目录");
+            let path = entry.path();
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            ensure!(!path.is_symlink(), "目录包含符号链接，请移除后重试");
+            if path.is_dir() {
+                directories.push(path);
+                continue;
+            }
+            let ext = path
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_ascii_lowercase();
+            if !extension_allowed(kind, &ext) {
+                continue;
+            }
+            let mut file = selected_file(path, kind)?;
+            file.relative_path = file
+                .path
+                .strip_prefix(&root)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            files.push(file);
+            ensure!(files.len() <= 1000, "每个目录最多1000个受支持文件");
+        }
+    }
+    ensure!(!files.is_empty(), "目录中没有当前类型支持的文件");
+    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    Ok(files)
+}
+
 fn unchanged(file: &File) -> Result<()> {
     ensure!(
         !file.path.is_symlink() && file.path.canonicalize()? == file.path,
@@ -164,6 +211,7 @@ pub async fn delivery_upload_pick(
     kind: String,
     seq: i64,
     multiple: bool,
+    directory: Option<bool>,
 ) -> Result<Option<Value>, String> {
     async {
         crate::tiktok::local_caller(&window)?;
@@ -177,24 +225,50 @@ pub async fn delivery_upload_pick(
             .context("已有文件传输或应用更新正在进行")?;
         let owner = state.identity().await?;
         let picker = app.clone();
-        let picked = tauri::async_runtime::spawn_blocking(move || {
-            picker
-                .dialog()
-                .file()
-                .set_title("选择当前交付项的文件")
-                .blocking_pick_files()
+        let file_kind = kind.clone();
+        let files = tauri::async_runtime::spawn_blocking(move || -> Result<Option<Vec<File>>> {
+            if directory.unwrap_or(false) {
+                ensure!(multiple, "单集替换不能选择目录");
+                let Some(folder) = picker
+                    .dialog()
+                    .file()
+                    .set_title("选择上传目录")
+                    .blocking_pick_folder()
+                else {
+                    return Ok(None);
+                };
+                let root = folder
+                    .into_path()
+                    .map_err(|_| anyhow::anyhow!("目录路径无效"))?;
+                Ok(Some(selected_directory(&root, &file_kind)?))
+            } else {
+                let Some(paths) = picker
+                    .dialog()
+                    .file()
+                    .set_title("选择上传文件")
+                    .blocking_pick_files()
+                else {
+                    return Ok(None);
+                };
+                ensure!(paths.len() <= 1000, "每次最多1000个文件");
+                ensure!(multiple || paths.len() == 1, "替换单集请只选择一个视频");
+                Ok(Some(
+                    paths
+                        .into_iter()
+                        .map(|p| {
+                            selected_file(
+                                p.into_path().map_err(|_| anyhow::anyhow!("文件路径无效"))?,
+                                &file_kind,
+                            )
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                ))
+            }
         })
-        .await?;
-        let Some(paths) = picked else { return Ok(None) };
-        ensure!(paths.len() <= 30, "每次最多30个文件");
-        ensure!(multiple || paths.len() == 1, "替换单集请只选择一个视频");
-        let mut files = Vec::new();
-        for p in paths {
-            files.push(selected_file(
-                p.into_path().map_err(|_| anyhow::anyhow!("文件路径无效"))?,
-                &kind,
-            )?);
-        }
+        .await??;
+        let Some(files) = files else {
+            return Ok(None);
+        };
         let current = state.identity().await?;
         ensure!(
             current.uid == owner.uid
@@ -567,3 +641,35 @@ mod tests {
 
 #[cfg(test)]
 mod http_tests;
+
+#[cfg(test)]
+mod directory_tests {
+    use super::*;
+    #[test]
+    fn directory_preserves_relative_names_and_filters_by_material_kind() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        std::fs::create_dir(root.path().join("第1集"))?;
+        std::fs::write(root.path().join("第1集/01.mp4"), b"video")?;
+        std::fs::write(root.path().join("第1集/01.srt"), b"subtitle")?;
+        std::fs::write(root.path().join(".DS_Store"), b"ignored")?;
+        let video = selected_directory(root.path(), "film")?;
+        assert_eq!(video.len(), 1);
+        assert_eq!(video[0].relative_path, "第1集/01.mp4");
+        assert_eq!(video[0].name, "01.mp4");
+        let srt = selected_directory(root.path(), "srt")?;
+        assert_eq!(srt.len(), 1);
+        assert_eq!(srt[0].relative_path, "第1集/01.srt");
+        assert!(selected_directory(root.path(), "project_image").is_err());
+        Ok(())
+    }
+    #[cfg(unix)]
+    #[test]
+    fn directory_rejects_symbolic_links() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let outside = tempfile::tempdir()?;
+        std::fs::write(outside.path().join("01.mp4"), b"video")?;
+        std::os::unix::fs::symlink(outside.path(), root.path().join("linked"))?;
+        assert!(selected_directory(root.path(), "film").is_err());
+        Ok(())
+    }
+}

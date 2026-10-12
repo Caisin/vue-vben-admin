@@ -107,7 +107,7 @@ it('原生选择和传输完成后回填登记文件，不使用浏览器文件�
   const uploaded = await mount();
   button('选择文件并上传').click();
   await settle();
-  expect(state.pick).toHaveBeenCalledWith(-1, 2, 'poster', 0, true);
+  expect(state.pick).toHaveBeenCalledWith(-1, 2, 'poster', 0, true, false);
   expect(state.run).toHaveBeenCalledWith('j');
   expect(uploaded).toHaveBeenCalledWith([{ file_id: 8, name: '海报.png' }]);
   expect(document.querySelector('input[type=file]')).toBeNull();
@@ -133,4 +133,19 @@ it('网页不给出文件传输入口，保持客户端说明', async () => {
   expect(document.querySelector('button')).toBeNull();
   expect(document.body.textContent).toContain('Tauri');
   expect(state.jobs).not.toHaveBeenCalled();
+});
+
+it('目录上传调用原生目录选择并保留相对文件名', async () => {
+  state.run.mockResolvedValue({
+    ...job,
+    status: '上传完成',
+    files: [{ ...job.files[0], relative_path: '第1集/截图.png', file_id: 18 }],
+  });
+  const uploaded = await mount();
+  button('选择目录上传').click();
+  await settle();
+  expect(state.pick).toHaveBeenCalledWith(-1, 2, 'poster', 0, true, true);
+  expect(uploaded).toHaveBeenCalledWith([
+    { file_id: 18, name: '第1集/截图.png' },
+  ]);
 });

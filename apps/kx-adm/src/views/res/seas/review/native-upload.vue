@@ -17,6 +17,7 @@ const props = withDefaults(
     seq: number;
     disabled?: boolean;
     multiple?: boolean;
+    autoPickDirectory?: boolean;
   }>(),
   { multiple: true },
 );
@@ -27,6 +28,7 @@ const emit = defineEmits<{
 const jobs = ref<DeliveryUploadJob[]>([]);
 const job = ref<DeliveryUploadJob>();
 const busy = ref(false);
+const selecting = ref(false);
 const errorText = ref('');
 let alive = true;
 let initiatedHere = false;
@@ -60,7 +62,10 @@ function publish(j: DeliveryUploadJob) {
   if (j.files.every((f) => f.file_id))
     emit(
       'uploaded',
-      j.files.map((f) => ({ file_id: Number(f.file_id), name: f.name })),
+      j.files.map((f) => ({
+        file_id: Number(f.file_id),
+        name: f.relative_path || f.name,
+      })),
     );
 }
 async function run() {
@@ -88,7 +93,10 @@ async function run() {
     if (alive) await refresh();
   }
 }
-async function pick() {
+async function pick(directory = false) {
+  if (!desktop || props.disabled || busy.value || selecting.value) return;
+  selecting.value = true;
+  emit('busy', true);
   errorText.value = '';
   try {
     const result = await nativeDelivery.pick(
@@ -97,6 +105,7 @@ async function pick() {
       props.kind,
       props.seq,
       props.multiple !== false,
+      directory,
     );
     if (result && alive) {
       job.value = result;
@@ -104,8 +113,12 @@ async function pick() {
     }
   } catch (error) {
     errorText.value = requestErrorMessage(error, '选择文件失败');
+  } finally {
+    selecting.value = false;
+    emit('busy', busy.value);
   }
 }
+
 function reuse(id: string) {
   job.value = jobs.value.find((j) => j.id === id);
   if (job.value && (props.multiple !== false || job.value.files.length === 1))
@@ -136,6 +149,7 @@ onMounted(async () => {
   if (alive) unlisten = stop;
   else stop();
   await refresh();
+  if (alive && props.autoPickDirectory) await pick(true);
 });
 onBeforeUnmount(() => {
   alive = false;
@@ -153,15 +167,23 @@ onBeforeUnmount(() => {
       <div class="flex flex-wrap gap-2">
         <Button
           type="primary"
-          :disabled="disabled || busy"
-          @click="pick"
+          :disabled="disabled || busy || selecting"
+          @click="pick(false)"
           v-access:code="'api:res.delivery.transfer.prepare'"
         >
           选择文件并上传
         </Button>
         <Button
+          v-if="multiple"
+          :disabled="disabled || busy || selecting"
+          @click="pick(true)"
+          v-access:code="'api:res.delivery.transfer.prepare'"
+        >
+          选择目录上传
+        </Button>
+        <Button
           v-if="job && job.files.some((f) => !f.file_id)"
-          :disabled="disabled || busy"
+          :disabled="disabled || busy || selecting"
           @click="run"
           v-access:code="'api:res.delivery.transfer.prepare'"
         >
@@ -190,7 +212,7 @@ onBeforeUnmount(() => {
           :key="index"
           class="transfer-file"
         >
-          <strong>{{ file.name }}</strong>
+          <strong>{{ file.relative_path || file.name }}</strong>
           <span>{{ file.status }}</span>
           <Progress
             :percent="

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { DownloadUserTreeNode } from '#/api/res/downloads';
 import type { ReviewMembersView } from '#/api/res/review';
 import type { Id } from '#/api/res/versions';
 
@@ -7,6 +8,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Alert, Button, Modal, Popconfirm, Select, Table } from 'antdv-next';
 
 import { reviewApi, roleLabels } from '#/api/res/review';
+import UserTreeSelect from '#/components/user-tree-select';
 import { requestErrorMessage } from '#/request-errors';
 const props = withDefaults(
   defineProps<{
@@ -25,13 +27,11 @@ const loading = ref(false);
 let loadGeneration = 0;
 const busy = ref(false);
 const errorText = ref('');
-const uid = ref<Id>();
+const uids = ref<number[]>([]);
 const role = ref('editor');
-const options = ref<{ value: Id; label: string }[]>([]);
-const query = ref('');
-const page = ref(0);
-const total = ref(0);
-const searching = ref(false);
+const userTree = ref<DownloadUserTreeNode[]>([]);
+const treeLoading = ref(false);
+const treeError = ref('');
 let generation = 0;
 async function load() {
   const ticket = ++loadGeneration;
@@ -53,13 +53,11 @@ watch(
     loadGeneration++;
     generation++;
     data.value = undefined;
-    uid.value = undefined;
-    options.value = [];
-    page.value = 0;
-    total.value = 0;
+    uids.value = [];
+    userTree.value = [];
     if (!open.value) return;
     await load();
-    if (open.value && view.value?.can_manage) void search('');
+    if (open.value && view.value?.can_manage) void loadUsers();
   },
   { immediate: true },
 );
@@ -67,35 +65,36 @@ onBeforeUnmount(() => {
   loadGeneration++;
   generation++;
 });
-async function search(value = query.value, more = false) {
+async function loadUsers() {
   const ticket = ++generation;
-  searching.value = true;
-  query.value = value;
-  const next = more ? page.value + 1 : 1;
+  treeLoading.value = true;
+  treeError.value = '';
   try {
-    const result = await reviewApi.users(value, next);
-    if (ticket !== generation) return;
-    const list = result.items.map((u) => ({
-      value: u.id,
-      label: u.name || `用户 ${u.id}`,
-    }));
-    options.value = more ? [...options.value, ...list] : list;
-    total.value = result.total;
-    page.value = next;
+    const result = await reviewApi.userTree();
+    if (ticket === generation) userTree.value = result;
   } catch (error) {
     if (ticket === generation)
-      errorText.value = requestErrorMessage(error, '加载用户失败');
+      treeError.value = requestErrorMessage(error, '加载组织用户失败');
   } finally {
-    if (ticket === generation) searching.value = false;
+    if (ticket === generation) treeLoading.value = false;
   }
 }
-async function save(id = uid.value, selectedRole = role.value) {
-  if (!id || busy.value || loading.value || !view.value?.can_manage) return;
+async function save(id?: Id, selectedRole = role.value) {
+  const ids = id ? [id] : [...uids.value];
+  if (
+    ids.length === 0 ||
+    busy.value ||
+    loading.value ||
+    !view.value?.can_manage
+  )
+    return;
   busy.value = true;
   errorText.value = '';
   try {
-    await reviewApi.member(props.res, id, selectedRole);
-    uid.value = undefined;
+    for (const target of ids) {
+      await reviewApi.member(props.res, target, selectedRole);
+      uids.value = uids.value.filter((uid) => String(uid) !== String(target));
+    }
     await load();
     emit('refresh');
   } catch (error) {
@@ -126,28 +125,15 @@ async function save(id = uid.value, selectedRole = role.value) {
       重新读取
     </Button>
     <div v-if="view?.can_manage" class="mb-4 flex gap-2">
-      <Select
-        v-model:value="uid"
-        :options="options"
-        :loading="searching"
-        show-search
-        :filter-option="false"
-        placeholder="搜索并选择协作者"
+      <UserTreeSelect
+        v-model:value="uids"
+        :tree-data="userTree"
+        :loading="treeLoading"
+        :error="treeError"
+        :disabled="busy"
         class="min-w-0 flex-1"
-        @search="search($event)"
-      >
-        <template #popupRender="menu">
-          <component :is="menu" />
-          <Button
-            v-if="options.length < total"
-            block
-            :loading="searching"
-            @click="search(query, true)"
-          >
-            加载更多用户
-          </Button>
-        </template>
-      </Select>
+        @retry="loadUsers"
+      />
       <Select
         v-model:value="role"
         :options="
@@ -157,7 +143,7 @@ async function save(id = uid.value, selectedRole = role.value) {
       />
       <Button
         type="primary"
-        :disabled="!uid"
+        :disabled="!uids.length || treeLoading || !!treeError"
         :loading="busy"
         @click="save()"
         v-access:code="'api:res.review.members'"

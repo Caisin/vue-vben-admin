@@ -3,7 +3,7 @@ import { createApp, h, nextTick } from 'vue';
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const session = vi.hoisted(() => ({ uid: '7' }));
+const session = vi.hoisted(() => ({ uid: '7', counter: 100 }));
 vi.mock('@vben/stores', () => ({
   useUserStore: () => ({ userInfo: { userId: session.uid } }),
 }));
@@ -43,7 +43,7 @@ vi.mock('antdv-next', async () => {
 });
 let cleanup: (() => void) | undefined;
 beforeEach(() => {
-  session.uid = '7';
+  session.uid = String(++session.counter);
   const values = new Map<string, string>();
   Object.defineProperty(window, 'localStorage', {
     configurable: true,
@@ -110,22 +110,22 @@ it('首次进入自动展示完整流程；看完后不重复提示，常驻按�
   await settle();
   expect(document.body.textContent).toContain('先看流程与分工');
 });
-it('稍后再看不标记已读，下一次仍显示', async () => {
+it('稍后再看记录关闭，下一次不再自动显示', async () => {
   await mount(true, true);
   expect(document.body.textContent).toContain('作品负责人');
   button('稍后再看').click();
   await settle();
-  expect(window.localStorage.length).toBe(0);
+  expect(window.localStorage.length).toBe(1);
   unmount();
   await mount();
-  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 it('已读记录按账号隔离，另一个协作者仍看到首次指引', async () => {
   await mount(false, true);
   expect(document.body.textContent).toContain('当前身份：剪辑');
   await finish();
   unmount();
-  session.uid = '8';
+  session.uid = 'other-account';
   await mount();
   expect(document.querySelector('[role="dialog"]')).not.toBeNull();
 });
@@ -138,9 +138,9 @@ it('本地存储不可用时不阻断审核，仍可关闭和重看指引', asyn
   });
   await mount();
   await finish();
-  expect(document.body.textContent).toContain('此设备无法保存已读状态');
-  button('稍后再看').click();
-  await settle();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  unmount();
+  await mount();
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   button('操作指引').click();
   await settle();

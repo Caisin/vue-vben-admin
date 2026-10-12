@@ -25,9 +25,8 @@ import {
 import dayjs from 'dayjs';
 
 import { ResDownloadApi } from '#/api/res/downloads';
+import UserTreeSelect from '#/components/user-tree-select';
 import { requestErrorMessage } from '#/request-errors';
-
-import UserTreeSelect from '../../../download-authorizations/modules/user-tree-select.vue';
 
 const props = defineProps<{ resId?: number | string }>();
 const open = defineModel<boolean>('open', { required: true });

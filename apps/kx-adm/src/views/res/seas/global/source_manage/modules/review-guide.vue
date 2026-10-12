@@ -1,24 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-
-import { useUserStore } from '@vben/stores';
+import { computed } from 'vue';
 
 import { Alert, Button, Modal, Tag } from 'antdv-next';
 
-import { apiURL } from '#/api/request';
+import { useReviewGuide } from '../../../review/use-review-guide';
 
 const props = defineProps<{ canEdit: boolean; canManage: boolean }>();
-const userStore = useUserStore();
-const open = ref(false);
-const step = ref(0);
-const storageWarning = ref('');
-// 按服务与账号区分，换剧不重复提示；指引改版时升级版本号。
-const storageKey = computed(() => {
-  const uid = userStore.userInfo?.userId;
-  return uid
-    ? `kx:resource-review:guide:v3:${encodeURIComponent(apiURL)}:${uid}`
-    : undefined;
-});
+const { dismiss, open, show, step } = useReviewGuide();
 const role = computed(() => {
   if (props.canManage) return '作品负责人';
   if (props.canEdit) return '剪辑';
@@ -57,9 +45,9 @@ const steps = computed(() => [
     actions: [
       '多集上传：选择多个视频，核对文件与集数的对应关系，再开始上传。',
       '单集上传：左侧选中缺少的一集，点击播放器旁的“上传这一集”。',
-      '上传完还要等待后台登记成功。任务失败可查看逐集原因并重试。',
+      '上传完还要等待后台登记成功。成片、无字幕和无音乐版各自独立预览；任务失败可查看逐集原因并重试。',
     ],
-    tip: '文件上传期间保留页面。提交后台登记任务后可关闭；网页单视频上限 512 MB。',
+    tip: '文件和目录上传请在 Tauri 客户端操作；各视频版本分别上传，提示词、截图与 SRT 在项目资料上传。',
   },
   {
     title: '边预览，边提出具体意见',
@@ -100,41 +88,13 @@ const steps = computed(() => [
   },
 ]);
 const current = computed(() => steps.value[step.value] ?? steps.value[0]);
-function show() {
-  step.value = 0;
-  storageWarning.value = '';
-  open.value = true;
-}
-watch(
-  storageKey,
-  (key) => {
-    open.value = false;
-    step.value = 0;
-    if (!key) return;
-    try {
-      if (window.localStorage.getItem(key) !== 'seen') show();
-    } catch {
-      show();
-    }
-  },
-  { immediate: true },
-);
-function finish() {
-  if (storageKey.value) {
-    try {
-      window.localStorage.setItem(storageKey.value, 'seen');
-    } catch {
-      storageWarning.value = '此设备无法保存已读状态，下次可能仍会显示指引。';
-      return;
-    }
-  }
-  open.value = false;
-}
 </script>
 <template>
   <Button @click="show">操作指引</Button>
   <Modal
-    v-model:open="open"
+    :open="open"
+    @cancel="dismiss"
+    get-container="body"
     title="作品审核 · 操作指引"
     :width="860"
     :z-index="1100"
@@ -143,7 +103,8 @@ function finish() {
     :styles="{ body: { maxHeight: '75vh', overflowY: 'auto' } }"
   >
     <div class="guide-intro">
-      <Tag color="blue">当前身份：{{ role }}</Tag><span>从上传交片到定版，按步骤完成一次审核</span>
+      <Tag color="blue">当前身份：{{ role }}</Tag>
+      <span>从上传交片到定版，按步骤完成一次审核</span>
     </div>
     <div class="guide-layout">
       <nav aria-label="操作指引步骤" class="guide-nav">
@@ -154,7 +115,8 @@ function finish() {
           :aria-current="step === index ? 'step' : undefined"
           @click="step = index"
         >
-          <span>{{ index + 1 }}</span>{{ entry.title }}
+          <span>{{ index + 1 }}</span>
+          {{ entry.title }}
         </button>
       </nav>
       <section v-if="current" class="guide-content" aria-live="polite">
@@ -167,18 +129,15 @@ function finish() {
         <Alert type="info" show-icon :message="current.tip" />
       </section>
     </div>
-    <Alert
-      v-if="storageWarning"
-      class="mt-3"
-      type="warning"
-      :message="storageWarning"
-    />
     <footer class="guide-footer">
-      <Button @click="open = false">稍后再看</Button><span>{{ step + 1 }} / {{ steps.length }}</span>
+      <Button @click="dismiss">稍后再看</Button>
+      <span>{{ step + 1 }} / {{ steps.length }}</span>
       <div class="flex gap-2">
-        <Button :disabled="step === 0" @click="step--">上一步</Button><Button v-if="step < steps.length - 1" type="primary" @click="step++">
+        <Button :disabled="step === 0" @click="step--">上一步</Button>
+        <Button v-if="step < steps.length - 1" type="primary" @click="step++">
           下一步
-</Button><Button v-else type="primary" @click="finish">
+        </Button>
+        <Button v-else type="primary" @click="dismiss">
           我知道了，开始操作
         </Button>
       </div>
