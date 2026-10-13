@@ -28,7 +28,14 @@ export type DownloadGrantWrite = Pick<
   | 'valid_until'
 >;
 export interface DownloadBatchWrite {
-  mode: 'code' | 'name';
+  mode: 'code' | 'code_range' | 'name';
+  code_range?: {
+    start: string;
+    end: string;
+    distribution_region?: string;
+    modulus: number;
+    remainder: number;
+  };
   text: string;
   grant: DownloadGrantWrite;
   uids: number[];
@@ -46,6 +53,7 @@ export interface DownloadBatchView {
     status: 'ambiguous' | 'duplicate' | 'matched' | 'not_found';
     message: string;
     matches: Array<{
+      distribution_region?: string;
       res_id: number | string;
       res_name: string;
       resource_code: string;
@@ -251,4 +259,29 @@ export const ResDownloadApi = {
       `/api/res/download-tasks/${taskId}/items`,
       { params },
     ),
+};
+
+export interface DownloadUserGroup {
+  id: number | string;
+  name: string;
+  uids: number[];
+  revision: number;
+}
+export const DownloadUserGroupApi = {
+  list: () =>
+    requestClient.get<DownloadUserGroup[]>('/adm/res/download-user-groups'),
+  create: (name: string, uids: number[]) =>
+    requestClient.post<DownloadUserGroup>('/adm/res/download-user-groups', {
+      name,
+      uids,
+    }),
+  update: (group: DownloadUserGroup, name: string, uids: number[]) =>
+    requestClient.put<DownloadUserGroup>(
+      `/adm/res/download-user-groups/${group.id}`,
+      { name, uids, revision: group.revision },
+    ),
+  remove: (group: DownloadUserGroup) =>
+    requestClient.delete<boolean>(`/adm/res/download-user-groups/${group.id}`, {
+      data: { revision: group.revision },
+    }),
 };

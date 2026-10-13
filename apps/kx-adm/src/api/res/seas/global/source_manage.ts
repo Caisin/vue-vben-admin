@@ -29,6 +29,7 @@ export interface ResRecord {
   remark?: string;
   res_name?: string;
   resource_code?: string;
+  distribution_region?: string;
   team_id?: number;
   res_type?: number | string;
   seq_num?: number;

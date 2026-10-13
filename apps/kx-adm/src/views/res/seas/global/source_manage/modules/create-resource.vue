@@ -17,6 +17,7 @@ import {
   Select,
 } from 'antdv-next';
 
+import { distributionRegionOptions } from '#/api/res/code-region';
 import { ResourceCodeApi } from '#/api/res/seas/global/resource_codes';
 import { ResourceVersionApi } from '#/api/res/versions';
 import { requestErrorMessage } from '#/request-errors';
@@ -30,6 +31,7 @@ const open = defineModel<boolean>('open', { required: true });
 const form = reactive<ResourceCreate>({
   name: '',
   resource_code: '',
+  distribution_region: 'unspecified',
   code_name: '',
   code_author: '',
   code_remark: '',
@@ -64,6 +66,7 @@ watch(open, (value) => {
     Object.assign(form, {
       name: '',
       resource_code: '',
+      distribution_region: 'unspecified',
       code_name: '',
       code_author: '',
       code_remark: '',
@@ -154,6 +157,12 @@ async function save() {
             维护编号
           </Button>
         </div>
+      </FormItem>
+      <FormItem label="地区标签">
+        <Select
+          v-model:value="form.distribution_region"
+          :options="distributionRegionOptions"
+        />
       </FormItem>
       <FormItem label="作品名称">
         <Input

@@ -49,7 +49,7 @@ export interface DeliveryView {
   release?: DeliveryRelease | null;
 }
 export interface DeliveryProject {
-  project: { id: Id; name: string; code: string };
+  project: { id: Id; name: string; code: string; distribution_region?: string };
   scope: Id;
   version?: ResourceVersion;
   submitted: number;
@@ -80,12 +80,14 @@ export const deliveryApi = {
     planned_episodes: number,
     resource_code: string,
     create_code: boolean,
+    distribution_region?: string,
   ) =>
     requestClient.post<DeliveryProject>('/adm/res/delivery/projects', {
       name,
       planned_episodes,
       resource_code,
       create_code,
+      distribution_region,
     }),
   materials: (scope: Id) =>
     requestClient.get<{ version_id: Id; view: DeliveryView }>(

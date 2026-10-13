@@ -80,7 +80,9 @@ const actorOptions = computed(() => {
       ...(n.selectable ? [{ value: Number(n.value), label: n.title }] : []),
       ...flatten(n.children),
     ]);
-  const options = flatten(tree.value);
+  const options = [
+    ...new Map(flatten(tree.value).map((item) => [item.value, item])).values(),
+  ];
   for (const row of rows.value)
     if (
       Number(row.granted_by) > 0 &&

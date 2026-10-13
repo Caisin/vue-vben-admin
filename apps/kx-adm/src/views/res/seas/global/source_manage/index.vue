@@ -39,6 +39,10 @@ import {
 import dayjs from 'dayjs';
 
 import { useVbenVxeGrid, VbenTableAction } from '#/adapter/vxe-table';
+import {
+  distributionRegionLabel,
+  distributionRegionOptions,
+} from '#/api/res/code-region';
 import { global, set } from '#/api/res/seas';
 import { desktop } from '#/desktop';
 import DownloadHistory from '#/desktop/download-history.vue';
@@ -294,6 +298,7 @@ function openDialog(type: DialogType, record?: ResRecord) {
   if (type === 'edit' && record) {
     Object.assign(editForm, {
       ...cloneRecord(record),
+      distribution_region: record.distribution_region || 'unspecified',
       alert_sec: record.ad_cfg?.alert_sec,
       sleep_sec: record.ad_cfg?.sleep_sec,
     });
@@ -643,6 +648,14 @@ async function reindexSearch() {
           {{ row.resource_code || '关联作品编号' }}
         </Button>
         <span v-else>{{ row.resource_code || '—' }}</span>
+        <Tag
+          v-if="
+            row.distribution_region && row.distribution_region !== 'unspecified'
+          "
+          :color="row.distribution_region === 'domestic' ? 'green' : 'blue'"
+        >
+          {{ distributionRegionLabel(row.distribution_region) }}
+        </Tag>
       </template>
       <template #cover="{ row }">
         <Image
@@ -885,6 +898,12 @@ async function reindexSearch() {
             </FormItem>
           </Col>
           <Col :span="12">
+            <FormItem label="地区标签">
+              <Select
+                v-model:value="editForm.distribution_region"
+                :options="distributionRegionOptions"
+              />
+            </FormItem>
             <FormItem label="资源类型">
               <Select
                 v-model:value="editForm.res_type"

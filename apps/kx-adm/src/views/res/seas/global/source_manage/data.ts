@@ -7,6 +7,8 @@ import type {
 
 import dayjs from 'dayjs';
 
+import { distributionRegionOptions } from '#/api/res/code-region';
+
 import { useResourceCodeSearch } from './modules/resource-code-search';
 
 export const resTypeOptions = [
@@ -50,6 +52,12 @@ export function useGridFormSchema(): VbenFormSchema[] {
       componentProps: codes.componentProps,
       fieldName: 'resource_code',
       label: '作品编号',
+    },
+    {
+      component: 'Select',
+      fieldName: 'distribution_region',
+      label: '地区标签',
+      componentProps: { allowClear: true, options: distributionRegionOptions },
     },
     {
       component: 'Select',

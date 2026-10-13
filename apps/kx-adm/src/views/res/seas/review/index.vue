@@ -21,6 +21,10 @@ import {
   Tag,
 } from 'antdv-next';
 
+import {
+  distributionRegionLabel,
+  distributionRegionOptions,
+} from '#/api/res/code-region';
 import { deliveryApi } from '#/api/res/delivery';
 import { reviewApi, reviewLabels } from '#/api/res/review';
 import { requestErrorMessage } from '#/request-errors';
@@ -52,6 +56,7 @@ const createOpen = ref(false);
 const name = ref('');
 const planned = ref(6);
 const projectCode = ref('');
+const distributionRegion = ref('unspecified');
 const createCode = ref(true);
 function generateCode() {
   projectCode.value = `RES-${crypto.randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`;
@@ -151,6 +156,7 @@ async function create() {
       planned.value,
       projectCode.value.trim(),
       createCode.value,
+      distributionRegion.value,
     );
     createOpen.value = false;
     choose(row);
@@ -239,6 +245,7 @@ onMounted(() => {
               @click="
                 name = '';
                 projectCode = '';
+                distributionRegion = 'unspecified';
                 createCode = true;
                 planned = 6;
                 createOpen = true;
@@ -325,6 +332,16 @@ onMounted(() => {
                 {{ record.project.code }} ·
                 {{ record.version?.planned_episodes || 0 }} 集
               </small>
+              <Tag
+                v-if="
+                  record.project.distribution_region &&
+                  record.project.distribution_region !== 'unspecified'
+                "
+              >
+                {{
+                  distributionRegionLabel(record.project.distribution_region)
+                }}
+              </Tag>
             </div>
             <div v-else-if="column.key === 'version'">
               <p class="mb-2">{{ record.version?.name || '尚无版本' }}</p>
@@ -511,6 +528,13 @@ onMounted(() => {
           生成编码
         </Button>
       </div>
+      <label for="delivery-region" class="field-label">地区标签</label>
+      <Select
+        id="delivery-region"
+        v-model:value="distributionRegion"
+        :options="distributionRegionOptions"
+        class="w-full"
+      />
       <label for="delivery-count" class="field-label">计划集数</label>
       <InputNumber
         id="delivery-count"

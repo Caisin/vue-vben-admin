@@ -101,6 +101,11 @@ async function save() {
     @cancel="open = false"
   >
     <Alert v-if="errorText" type="error" :message="errorText" class="mb-3" />
+    <Alert
+      class="mb-3"
+      type="info"
+      message="AIGC编号会自动去除空格和国内／海外前缀；地区请在资源或项目上单独标注。解说漫AIGC保留独立编号。"
+    />
     <Form layout="vertical">
       <FormItem label="作品编号" required>
         <Input v-model:value="form.code" :maxlength="255" />

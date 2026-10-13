@@ -5,6 +5,8 @@ import { computed } from 'vue';
 
 import { Alert, Button, TreeSelect } from 'antdv-next';
 
+import { firstUserValues, userId, userTreeOptions } from './options';
+
 const props = defineProps<{
   treeData: DownloadUserTreeNode[];
   loading?: boolean;
@@ -15,44 +17,37 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ retry: [] }>();
 const value = defineModel<number[]>('value', { required: true });
+const source = computed(() =>
+  userTreeOptions(props.treeData, props.allowDisabled),
+);
+const firstValues = computed(() => firstUserValues(source.value));
 const selected = computed({
-  get: () => value.value.map(String),
+  get: () =>
+    value.value.map(
+      (uid) => firstValues.value.get(uid) ?? `user:${uid}:missing`,
+    ),
   set: (values: string[] | undefined) => {
-    // 组织节点仅展开，提交值只包含用户 ID。
     value.value = [
-      ...new Set((values ?? []).filter((v) => /^\d+$/.test(v)).map(Number)),
+      ...new Set(
+        (values ?? [])
+          .map((item) => userId(item))
+          .filter((uid): uid is number => uid !== undefined),
+      ),
     ];
   },
 });
-function contains(nodes: DownloadUserTreeNode[], key: string): boolean {
-  return nodes.some(
-    (node) => node.value === key || contains(node.children ?? [], key),
-  );
-}
-const tree = computed(() => {
-  const source = props.allowDisabled
-    ? filterOptions(props.treeData)
-    : props.treeData;
-  return [
-    ...source,
-    ...selected.value
-      .filter((key) => !contains(props.treeData, key))
-      .map((key) => ({
-        value: key,
-        title: `用户 #${key}（不在当前组织树）`,
-        selectable: false,
-        disabled: true,
-        children: [],
-      })),
-  ];
-});
-function filterOptions(nodes: DownloadUserTreeNode[]): DownloadUserTreeNode[] {
-  return nodes.map((node) => ({
-    ...node,
-    disabled: false,
-    children: filterOptions(node.children ?? []),
-  }));
-}
+const tree = computed(() => [
+  ...source.value,
+  ...value.value
+    .filter((uid) => !firstValues.value.has(uid))
+    .map((uid) => ({
+      value: `user:${uid}:missing`,
+      title: `用户 #${uid}（不在当前组织树）`,
+      selectable: false,
+      disabled: true,
+      children: [],
+    })),
+]);
 </script>
 <template>
   <div class="min-w-72">

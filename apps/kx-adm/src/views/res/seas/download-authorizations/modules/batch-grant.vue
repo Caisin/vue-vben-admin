@@ -26,9 +26,16 @@ import {
 } from 'antdv-next';
 import dayjs from 'dayjs';
 
+import {
+  distributionRegionLabel,
+  distributionRegionOptions,
+} from '#/api/res/code-region';
 import { ResDownloadApi } from '#/api/res/downloads';
 import UserTreeSelect from '#/components/user-tree-select';
 import { requestErrorMessage } from '#/request-errors';
+
+import UserGroups from './user-groups.vue';
+import { availableUsers } from './user-selection';
 
 const props = defineProps<{
   initialUids: number[];
@@ -51,6 +58,13 @@ const form = reactive<DownloadBatchWrite>({
     valid_from: 0,
     valid_until: 0,
   },
+});
+const codeRange = reactive({
+  start: '',
+  end: '',
+  modulus: 2,
+  remainder: 0,
+  distribution_region: 'all',
 });
 const uids = ref<number[]>([]);
 const preview = ref<DownloadBatchView>();
@@ -105,6 +119,7 @@ function remaining(line: DownloadBatchView['lines'][number]) {
 const modes = [
   { label: '每行一个剧名关键字', value: 'name' },
   { label: '每行一个作品编码关键字', value: 'code' },
+  { label: '作品编码范围取模（尾部数字）', value: 'code_range' },
 ];
 const columns = [
   { title: '行号', dataIndex: 'line', width: 65 },
@@ -119,16 +134,15 @@ watch(open, (value) => {
   }
   uids.value = [];
   // 取消授权允许清理停用用户；新增授权只继承仍启用的用户。
-  const enabled = (nodes: DownloadUserTreeNode[]): number[] =>
-    nodes.flatMap((node) => [
-      ...(node.selectable && (props.revoke || !node.disabled)
-        ? [Number(node.value)]
-        : []),
-      ...enabled(node.children),
-    ]);
-  uids.value = props.initialUids.filter((id) =>
-    enabled(props.userTree).includes(id),
-  );
+  const enabled = availableUsers(props.userTree, props.revoke);
+  uids.value = props.initialUids.filter((id) => enabled.has(id));
+  Object.assign(codeRange, {
+    start: '',
+    end: '',
+    modulus: 2,
+    remainder: 0,
+    distribution_region: 'all',
+  });
   form.text = '';
   form.mode = 'code';
   const now = dayjs();
@@ -149,6 +163,11 @@ watch(
   () => [
     form.mode,
     form.text,
+    codeRange.distribution_region,
+    codeRange.start,
+    codeRange.end,
+    codeRange.modulus,
+    codeRange.remainder,
     uids.value.join(','),
     form.grant.valid_from,
     form.grant.valid_until,
@@ -165,8 +184,25 @@ watch(
 async function submit(apply: boolean) {
   if (busy.value) return;
   submitError.value = '';
-  if (uids.value.length === 0 || !form.text.trim()) {
+  if (
+    uids.value.length === 0 ||
+    (form.mode !== 'code_range' && !form.text.trim())
+  ) {
     submitError.value = '请选择用户并输入剧名或作品编码';
+    return;
+  }
+  if (
+    form.mode === 'code_range' &&
+    (!codeRange.start.trim() ||
+      !codeRange.end.trim() ||
+      !Number.isSafeInteger(codeRange.modulus) ||
+      codeRange.modulus <= 0 ||
+      !Number.isSafeInteger(codeRange.remainder) ||
+      codeRange.remainder < 0 ||
+      codeRange.remainder >= codeRange.modulus)
+  ) {
+    submitError.value =
+      '请填写起止编码，模数须为正整数，余数须大于等于0且小于模数';
     return;
   }
   if (
@@ -193,6 +229,7 @@ async function submit(apply: boolean) {
     const data: DownloadBatchWrite = {
       mode: form.mode,
       text: form.text,
+      ...(form.mode === 'code_range' ? { code_range: { ...codeRange } } : {}),
       grant: {
         ...form.grant,
         uid: uids.value[0] ?? 0,
@@ -245,7 +282,11 @@ async function submit(apply: boolean) {
       class="mb-4"
       type="info"
       show-icon
-      message="剧名或作品编码包含输入关键字即匹配；多条结果全部列出，确认后才授权。英文字母不区分大小写，空行忽略，重复剧目去重。"
+      :message="
+        form.mode === 'code_range'
+          ? '范围取模按作品编码尾部数字计算，并以完整编码精确匹配；前缀、前导零保留。先预览结果，确认后才操作。'
+          : '完整AIGC编码按所属序列精确匹配；其它作品编码关键字和剧名按包含匹配。多条结果全部列出，确认后才授权；英文字母不区分大小写，空行忽略，重复剧目去重。'
+      "
       :description="
         revoke
           ? '每次最多 100 位用户、200 行、500 部剧，最多 5000 个组合。仅取消保留剧目的授权，无授权的组合自动跳过；移除仅排除本次操作。'
@@ -272,6 +313,14 @@ async function submit(apply: boolean) {
           @retry="emit('retry')"
         />
       </FormItem>
+      <UserGroups
+        class="mb-4"
+        v-if="open"
+        v-model:value="uids"
+        :tree="userTree"
+        :allow-disabled="revoke"
+        :disabled="busy || userTreeLoading || !!userTreeError"
+      />
       <FormItem label="匹配方式" html-for="batch-grant-mode">
         <Select
           id="batch-grant-mode"
@@ -280,6 +329,7 @@ async function submit(apply: boolean) {
         />
       </FormItem>
       <FormItem
+        v-if="form.mode !== 'code_range'"
         :label="form.mode === 'name' ? '剧名列表' : '作品编码列表'"
         html-for="batch-grant-text"
         required
@@ -296,6 +346,66 @@ async function submit(apply: boolean) {
           "
         />
       </FormItem>
+      <div v-else class="mb-4">
+        <Space wrap>
+          <FormItem
+            label="起始作品编码（含）"
+            html-for="batch-code-start"
+            required
+          >
+            <Input
+              id="batch-code-start"
+              v-model:value="codeRange.start"
+              placeholder="例如 AIGC1000 或 解说漫AIGC1000"
+              :maxlength="255"
+            />
+          </FormItem>
+          <FormItem
+            label="结束作品编码（含）"
+            html-for="batch-code-end"
+            required
+          >
+            <Input
+              id="batch-code-end"
+              v-model:value="codeRange.end"
+              placeholder="例如 AIGC2000 或 解说漫AIGC2000"
+              :maxlength="255"
+            />
+          </FormItem>
+          <FormItem label="地区标签" html-for="batch-code-region">
+            <Select
+              id="batch-code-region"
+              v-model:value="codeRange.distribution_region"
+              :options="[
+                { label: '全部地区', value: 'all' },
+                ...distributionRegionOptions,
+              ]"
+              class="min-w-32"
+            />
+          </FormItem>
+          <FormItem label="模数" html-for="batch-code-modulus" required>
+            <InputNumber
+              id="batch-code-modulus"
+              v-model:value="codeRange.modulus"
+              :min="1"
+              :max="1000000000"
+              :precision="0"
+            />
+          </FormItem>
+          <FormItem label="余数" html-for="batch-code-remainder" required>
+            <InputNumber
+              id="batch-code-remainder"
+              v-model:value="codeRange.remainder"
+              :min="0"
+              :max="Math.max(0, codeRange.modulus - 1)"
+              :precision="0"
+            />
+          </FormItem>
+        </Space>
+        <div class="text-muted-foreground text-sm">
+          AIGC与解说漫AIGC是两套独立编号，国内／海外通过地区标签筛选。AIGC编码中的空格会自动忽略。结果按尾部数字升序排列；带前导零时数字位数需相同，取模后最多5000个候选编码。
+        </div>
+      </div>
       <Space v-if="!revoke" wrap>
         <FormItem label="授权有效期" required>
           <DatePicker.RangePicker
@@ -354,6 +464,7 @@ async function submit(apply: boolean) {
             class="mb-2 flex items-center justify-between gap-2"
           >
             <span
+              class="text-xs leading-5"
               :class="{
                 'text-muted-foreground line-through':
                   record.status === 'matched' &&
@@ -361,7 +472,19 @@ async function submit(apply: boolean) {
               }"
             >
               {{ item.res_name }} · {{ item.resource_code || '无作品编码' }} ·
-              #{{ item.res_id }} · {{ item.seq_num }} 集
+              {{ item.seq_num }} 集
+              <Tag
+                v-if="
+                  item.distribution_region &&
+                  item.distribution_region !== 'unspecified'
+                "
+                class="ml-2"
+                :color="
+                  item.distribution_region === 'domestic' ? 'green' : 'blue'
+                "
+              >
+                {{ distributionRegionLabel(item.distribution_region) }}
+              </Tag>
             </span>
             <Button
               v-if="

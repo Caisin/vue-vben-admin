@@ -32,6 +32,7 @@ export interface VersionDetail {
   items: VersionItem[];
 }
 export interface ResourceCreate {
+  distribution_region?: string;
   name: string;
   resource_code?: string;
   code_name: string;
