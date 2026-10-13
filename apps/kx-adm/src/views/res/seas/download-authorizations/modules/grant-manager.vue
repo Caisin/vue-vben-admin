@@ -391,31 +391,36 @@ onMounted(() => {
           批量删除
         </Button>
       </Popconfirm>
-      <template
+      <Button
         v-if="
-          !delivery &&
-          hasAccessByCodes([
-            'api:res.admin.res.download_permissions.batch.save',
-          ])
+          delivery
+            ? hasAccessByCodes(['api:res.delivery.grants.batch.authorize'])
+            : hasAccessByCodes([
+                'api:res.admin.res.download_permissions.batch.save',
+              ])
+        "
+        @click="
+          batchRevoke = false;
+          batchOpen = true;
         "
       >
-        <Button
-          @click="
-            batchRevoke = false;
-            batchOpen = true;
-          "
-        >
-          按剧名 / 编码批量授权
-        </Button>
-        <Button
-          @click="
-            batchRevoke = true;
-            batchOpen = true;
-          "
-        >
-          按剧名 / 编码取消授权
-        </Button>
-      </template>
+        按剧名 / 编码批量授权
+      </Button>
+      <Button
+        v-if="
+          delivery
+            ? hasAccessByCodes(['api:res.delivery.grants.batch.revoke'])
+            : hasAccessByCodes([
+                'api:res.admin.res.download_permissions.batch.save',
+              ])
+        "
+        @click="
+          batchRevoke = true;
+          batchOpen = true;
+        "
+      >
+        按剧名 / 编码取消授权
+      </Button>
       <span class="text-muted-foreground">
         已选 {{ selected.length }} 条（可跨页，最多200条）
       </span>
@@ -547,7 +552,9 @@ onMounted(() => {
       @saved="saved"
     />
     <BatchGrant
-      v-if="!delivery"
+      :delivery="delivery"
+      :fixed-resource="fixedResource"
+      :fixed-version="fixedVersion"
       v-model:open="batchOpen"
       :revoke="batchRevoke"
       :initial-uids="filters.uids || []"

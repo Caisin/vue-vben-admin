@@ -43,6 +43,7 @@ export interface DownloadBatchWrite {
   selected_res_ids?: Array<number | string>;
 }
 export interface DownloadBatchView {
+  matched_version_ids?: Array<number | string>;
   revoked_count: number;
   granted_count: number;
   granted_user_count: number;
@@ -53,6 +54,9 @@ export interface DownloadBatchView {
     status: 'ambiguous' | 'duplicate' | 'matched' | 'not_found';
     message: string;
     matches: Array<{
+      version_id?: number | string;
+      version_name?: string;
+      version_kind?: string;
       distribution_region?: string;
       res_id: number | string;
       res_name: string;
@@ -284,4 +288,31 @@ export const DownloadUserGroupApi = {
     requestClient.delete<boolean>(`/adm/res/download-user-groups/${group.id}`, {
       data: { revision: group.revision },
     }),
+};
+
+export interface DeliveryBatchWrite {
+  matching: DownloadBatchWrite;
+  version_kind: string;
+  modules: string[];
+  scope?: number;
+  version_id?: number;
+  expected_version_ids?: Array<number | string>;
+  selected_version_ids?: Array<number | string>;
+}
+export const DeliveryBatchApi = {
+  preview: (data: DeliveryBatchWrite) =>
+    requestClient.post<DownloadBatchView>(
+      '/adm/res/delivery/grant-maintenance/batch/preview',
+      data,
+    ),
+  authorize: (data: DeliveryBatchWrite) =>
+    requestClient.post<DownloadBatchView>(
+      '/adm/res/delivery/grant-maintenance/batch/authorize',
+      data,
+    ),
+  revoke: (data: DeliveryBatchWrite) =>
+    requestClient.post<DownloadBatchView>(
+      '/adm/res/delivery/grant-maintenance/batch/revoke',
+      data,
+    ),
 };

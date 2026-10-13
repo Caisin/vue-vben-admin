@@ -12,6 +12,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import {
   Alert,
   Button,
+  CheckboxGroup,
   DatePicker,
   Form,
   FormItem,
@@ -30,7 +31,8 @@ import {
   distributionRegionLabel,
   distributionRegionOptions,
 } from '#/api/res/code-region';
-import { ResDownloadApi } from '#/api/res/downloads';
+import { DeliveryBatchApi, ResDownloadApi } from '#/api/res/downloads';
+import { grantModules } from '#/api/res/grant-maintenance';
 import UserTreeSelect from '#/components/user-tree-select';
 import { requestErrorMessage } from '#/request-errors';
 
@@ -38,6 +40,14 @@ import UserGroups from './user-groups.vue';
 import { availableUsers } from './user-selection';
 
 const props = defineProps<{
+  delivery?: boolean;
+  fixedResource?: {
+    res_id: number;
+    code: string;
+    name: string;
+    versions: { id: number; name: string; kind?: string }[];
+  };
+  fixedVersion?: number;
   initialUids: number[];
   revoke?: boolean;
   userTree: DownloadUserTreeNode[];
@@ -65,6 +75,22 @@ const codeRange = reactive({
   modulus: 2,
   remainder: 0,
   distribution_region: 'all',
+});
+const versionKind = ref('film');
+const modules = ref(['film']);
+const unit = computed(() => (props.delivery ? '个交付版本' : '部剧'));
+const versionKinds = [
+  { label: '成片版本', value: 'film' },
+  { label: '无字幕版本', value: 'clean' },
+  { label: '无音乐版本', value: 'silent' },
+  { label: '全部视频版本（含自定义）', value: 'video' },
+  { label: '项目资料', value: 'materials' },
+];
+function matchId(item: DownloadBatchView['lines'][number]['matches'][number]) {
+  return props.delivery ? (item.version_id ?? '') : item.res_id;
+}
+watch(versionKind, (kind) => {
+  modules.value = kind === 'materials' ? ['prompt'] : ['film'];
 });
 const uids = ref<number[]>([]);
 const preview = ref<DownloadBatchView>();
@@ -96,11 +122,11 @@ const resultMessage = computed(() => {
   if (applied.value && preview.value) {
     return props.revoke
       ? `已取消 ${preview.value.revoked_count} 条授权`
-      : `已向 ${preview.value.granted_user_count} 位用户授权 ${preview.value.granted_count} 部剧`;
+      : `已向 ${preview.value.granted_user_count} 位用户授权 ${preview.value.granted_count} ${unit.value}`;
   }
   return props.revoke
-    ? `将取消 ${uids.value.length} 位用户对 ${count.value} 部剧的授权，请检查下方匹配结果`
-    : `将向 ${uids.value.length} 位用户授权 ${count.value} 部剧，请检查下方匹配结果`;
+    ? `将取消 ${uids.value.length} 位用户对 ${count.value} ${unit.value}的授权，请检查下方匹配结果`
+    : `将向 ${uids.value.length} 位用户授权 ${count.value} ${unit.value}，请检查下方匹配结果`;
 });
 function removeMatches(ids: Array<number | string>) {
   const removed = new Set(ids.map(String));
@@ -109,11 +135,11 @@ function removeMatches(ids: Array<number | string>) {
   );
 }
 function removeLine(line: DownloadBatchView['lines'][number]) {
-  removeMatches(line.matches.map((item) => item.res_id));
+  removeMatches(line.matches.map((item) => matchId(item)));
 }
 function remaining(line: DownloadBatchView['lines'][number]) {
   return line.matches.filter((item) =>
-    selectedSet.value.has(String(item.res_id)),
+    selectedSet.value.has(String(matchId(item))),
   ).length;
 }
 const modes = [
@@ -125,7 +151,12 @@ const columns = [
   { title: '行号', dataIndex: 'line', width: 65 },
   { title: '输入', dataIndex: 'input', width: 180 },
   { title: '匹配结果', key: 'result', width: 200 },
-  { title: '匹配剧目 / 作品编码 / 集数', key: 'matches' },
+  {
+    title: props.delivery
+      ? '匹配作品 / 编码 / 版本 / 集数'
+      : '匹配剧目 / 作品编码 / 集数',
+    key: 'matches',
+  },
 ];
 
 watch(open, (value) => {
@@ -143,7 +174,21 @@ watch(open, (value) => {
     remainder: 0,
     distribution_region: 'all',
   });
-  form.text = '';
+  form.text =
+    props.delivery && props.fixedResource ? props.fixedResource.code : '';
+  const fixedKind = props.fixedResource?.versions.find(
+    (v) => Number(v.id) === Number(props.fixedVersion),
+  )?.kind;
+  versionKind.value =
+    fixedKind && ['clean', 'film', 'materials', 'silent'].includes(fixedKind)
+      ? fixedKind
+      : 'film';
+  if (
+    fixedKind &&
+    !['clean', 'film', 'materials', 'silent'].includes(fixedKind)
+  )
+    versionKind.value = 'video';
+  modules.value = versionKind.value === 'materials' ? ['prompt'] : ['film'];
   form.mode = 'code';
   const now = dayjs();
   form.grant = {
@@ -161,6 +206,10 @@ watch(open, (value) => {
 });
 watch(
   () => [
+    versionKind.value,
+    modules.value.join(','),
+    props.fixedResource?.res_id,
+    props.fixedVersion,
     form.mode,
     form.text,
     codeRange.distribution_region,
@@ -223,6 +272,10 @@ async function submit(apply: boolean) {
     submitError.value = '集数范围无效';
     return;
   }
+  if (props.delivery && !props.revoke && modules.value.length === 0) {
+    submitError.value = '请选择允许下载的材料模块';
+    return;
+  }
   if (apply && (!preview.value || applied.value || !count.value)) return;
   busy.value = true;
   try {
@@ -236,18 +289,44 @@ async function submit(apply: boolean) {
         can_download: !props.revoke,
       },
       uids: [...uids.value],
-      ...(apply
+      ...(apply && !props.delivery
         ? {
             expected_res_ids: preview.value?.matched_res_ids,
             selected_res_ids: [...selectedIds.value],
           }
         : {}),
     };
-    const result = await (apply
-      ? ResDownloadApi.saveBatch(data)
-      : ResDownloadApi.previewBatch(data));
+    const deliveryData = {
+      matching: data,
+      version_kind: versionKind.value,
+      modules: [...modules.value],
+      scope: props.fixedResource?.res_id,
+      version_id: props.fixedVersion,
+      ...(apply
+        ? {
+            expected_version_ids: preview.value?.matched_version_ids,
+            selected_version_ids: [...selectedIds.value],
+          }
+        : {}),
+    };
+    let result: DownloadBatchView;
+    if (props.delivery) {
+      if (!apply) result = await DeliveryBatchApi.preview(deliveryData);
+      else if (props.revoke)
+        result = await DeliveryBatchApi.revoke(deliveryData);
+      else result = await DeliveryBatchApi.authorize(deliveryData);
+    } else {
+      result = await (apply
+        ? ResDownloadApi.saveBatch(data)
+        : ResDownloadApi.previewBatch(data));
+    }
     preview.value = result;
-    if (!apply) selectedIds.value = [...result.matched_res_ids];
+    if (!apply)
+      selectedIds.value = [
+        ...(props.delivery
+          ? (result.matched_version_ids ?? [])
+          : result.matched_res_ids),
+      ];
     if (apply) {
       applied.value = true;
       message.success(resultMessage.value);
@@ -271,7 +350,17 @@ async function submit(apply: boolean) {
 <template>
   <Modal
     v-model:open="open"
-    :title="revoke ? '批量取消授权' : '批量剧授权'"
+    get-container="body"
+    :z-index="1200"
+    :title="
+      delivery
+        ? revoke
+          ? '批量取消交付授权'
+          : '批量交付授权'
+        : revoke
+          ? '批量取消授权'
+          : '批量剧授权'
+    "
     :width="1000"
     :closable="!busy"
     :mask-closable="!busy"
@@ -288,9 +377,13 @@ async function submit(apply: boolean) {
           : '完整AIGC编码按所属序列精确匹配；其它作品编码关键字和剧名按包含匹配。多条结果全部列出，确认后才授权；英文字母不区分大小写，空行忽略，重复剧目去重。'
       "
       :description="
-        revoke
-          ? '每次最多 100 位用户、200 行、500 部剧，最多 5000 个组合。仅取消保留剧目的授权，无授权的组合自动跳过；移除仅排除本次操作。'
-          : '每次最多 100 位用户、200 行、500 部剧，最多 5000 个组合。仅授权保留剧目，已有授权按本次有效期更新；移除仅排除本次操作。'
+        delivery
+          ? revoke
+            ? '每次最多100位用户、200行、500个版本、5000个组合。只取消所选交付版本的授权，不影响同作品其它版本。'
+            : '每次最多100位用户、200行、500个版本、5000个组合。只授权预览保留的版本，已有授权按本次有效期、集数和材料范围更新。'
+          : revoke
+            ? '每次最多 100 位用户、200 行、500 部剧，最多 5000 个组合。仅取消保留剧目的授权，无授权的组合自动跳过；移除仅排除本次操作。'
+            : '每次最多 100 位用户、200 行、500 部剧，最多 5000 个组合。仅授权保留剧目，已有授权按本次有效期更新；移除仅排除本次操作。'
       "
     />
     <Alert
@@ -321,6 +414,38 @@ async function submit(apply: boolean) {
         :allow-disabled="revoke"
         :disabled="busy || userTreeLoading || !!userTreeError"
       />
+      <Alert
+        v-if="delivery && fixedResource"
+        class="mb-3"
+        type="info"
+        :message="`仅匹配当前作品：${fixedResource.name} · ${fixedResource.code}${fixedVersion ? '（仅当前版本）' : ''}`"
+      />
+      <FormItem
+        v-if="delivery"
+        label="交付版本范围"
+        html-for="batch-delivery-kind"
+        required
+      >
+        <Select
+          id="batch-delivery-kind"
+          v-model:value="versionKind"
+          :options="versionKinds"
+          :disabled="busy || !!fixedVersion"
+        />
+        <div class="mt-1 text-xs text-muted-foreground">
+          所选类别的版本全部列入预览，可逐个移除；只操作确认保留的版本。
+        </div>
+      </FormItem>
+      <FormItem
+        v-if="delivery && !revoke && versionKind === 'materials'"
+        label="允许下载的材料"
+        required
+      >
+        <CheckboxGroup
+          v-model:value="modules"
+          :options="grantModules.filter((m) => m.value !== 'film')"
+        />
+      </FormItem>
       <FormItem label="匹配方式" html-for="batch-grant-mode">
         <Select
           id="batch-grant-mode"
@@ -460,7 +585,7 @@ async function submit(apply: boolean) {
         <template v-if="column.key === 'matches'">
           <div
             v-for="item in record.matches"
-            :key="item.res_id"
+            :key="matchId(item)"
             class="mb-2 flex items-center justify-between gap-2"
           >
             <span
@@ -468,10 +593,11 @@ async function submit(apply: boolean) {
               :class="{
                 'text-muted-foreground line-through':
                   record.status === 'matched' &&
-                  !selectedSet.has(String(item.res_id)),
+                  !selectedSet.has(String(matchId(item))),
               }"
             >
               {{ item.res_name }} · {{ item.resource_code || '无作品编码' }} ·
+              <template v-if="delivery">{{ item.version_name }} ·</template>
               {{ item.seq_num }} 集
               <Tag
                 v-if="
@@ -489,14 +615,18 @@ async function submit(apply: boolean) {
             <Button
               v-if="
                 record.status === 'matched' &&
-                selectedSet.has(String(item.res_id))
+                selectedSet.has(String(matchId(item)))
               "
               type="link"
               danger
               size="small"
               :disabled="busy || applied"
-              :aria-label="`移除剧目 ${item.res_name} #${item.res_id}`"
-              @click="removeMatches([item.res_id])"
+              :aria-label="
+                delivery
+                  ? `移除交付版本 ${item.res_name} ${item.version_name}`
+                  : `移除剧目 ${item.res_name} #${item.res_id}`
+              "
+              @click="removeMatches([matchId(item)])"
             >
               移除
             </Button>
@@ -538,8 +668,8 @@ async function submit(apply: boolean) {
       >
         {{
           revoke
-            ? `确认取消 ${uids.length} 人的 ${count} 部剧授权`
-            : `确认向 ${uids.length} 人授权 ${count} 部剧`
+            ? `确认取消 ${uids.length} 人的 ${count} ${unit}授权`
+            : `确认向 ${uids.length} 人授权 ${count} ${unit}`
         }}
       </Button>
     </Space>
