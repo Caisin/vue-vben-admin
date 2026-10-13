@@ -15,10 +15,12 @@ pub trait SessionEvents: Send + Sync {
 }
 impl SessionEvents for AppHandle {
     fn updated(&self, s: &Session) -> Result<()> {
+        crate::cookie_proxy::close_other_owners(self, Some(s));
         self.emit_to("main", "desktop-session-updated", s)?;
         Ok(())
     }
     fn cleared(&self, g: u64) -> Result<()> {
+        crate::cookie_proxy::close_other_owners(self, None);
         if let Some(tiktok) = self.try_state::<Arc<crate::tiktok::TikTok>>() {
             tiktok.pause();
         }

@@ -1,3 +1,4 @@
+mod cookie_proxy;
 mod delivery_upload;
 mod device;
 mod download;
@@ -570,12 +571,15 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            if window.label() == "main"
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+            {
                 api.prevent_close();
                 let _ = window.hide();
             }
         })
         .invoke_handler(tauri::generate_handler![
+            cookie_proxy::cookie_proxy_open,
             release_upload::desktop_release_upload,
             updater::desktop_update_check,
             updater::desktop_update_install,

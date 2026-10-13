@@ -24,6 +24,7 @@ import { Times } from '#/times';
 
 import LoginModal from './modules/login-modal.vue';
 import SiteCard from './modules/site-card.vue';
+import { openProxySite } from './open-proxy';
 
 const { hasAccessByCodes } = useAccess();
 const active = ref<Site>();
@@ -41,13 +42,7 @@ async function openProxy(site: Site) {
   opening.value = String(site.id);
   errorText.value = '';
   try {
-    const result = await CookieApi.proxyGrantDirect(site.id);
-    if (isMobile.value) {
-      window.location.assign(result.url);
-      return;
-    }
-    const popup = window.open(result.url, '_blank', 'noopener,noreferrer');
-    if (!popup) throw new Error('浏览器阻止了新窗口，请允许本站弹窗后重试');
+    await openProxySite(site, isMobile.value);
   } catch (error) {
     errorText.value = requestErrorMessage(
       error,
@@ -193,15 +188,16 @@ onMounted(load);
             type="primary"
             :loading="opening === String(record.id)"
             :disabled="
-              !!opening || ['expired', 'missing'].includes(record.status)
+              !!opening ||
+              ['expired', 'missing', 'disabled'].includes(record.status)
             "
             @click="openProxy(record as Site)"
           >
             {{ '进入代理网站' }}
           </Button>
-          <span v-else>{{
-            record.proxy_enabled ? '等待代理服务配置' : '未启用代理'
-          }}</span>
+          <span v-else>
+            {{ record.proxy_enabled ? '等待代理服务配置' : '未启用代理' }}
+          </span>
         </template>
         <Button
           v-else-if="

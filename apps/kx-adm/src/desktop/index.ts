@@ -302,3 +302,19 @@ export const desktopDownloads = {
       onJob(payload),
     ),
 };
+
+/** 在独立桌面窗口中打开当前用户获授权的网站代理。 */
+export async function openCookieProxy(siteId: string): Promise<void> {
+  try {
+    await invoke('cookie_proxy_open', { siteId });
+  } catch (error) {
+    if (
+      /command.*(?:not found|unknown)|unknown.*command/i.test(String(error))
+    ) {
+      throw new Error('当前客户端尚不支持代理窗口，请更新客户端后重试', {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
