@@ -9,6 +9,7 @@ export interface ClientDevice {
   assigned_name: string;
   requested_uid: number | string;
   requested_name: string;
+  requested_org_paths?: string[];
   last_login_uid: null | number | string;
   last_login_name: string;
   approved_name: string;
@@ -29,6 +30,11 @@ export interface DeviceEvent {
 }
 const base = '/auth/client-devices';
 export const ClientDeviceApi = {
+  users: (params: { keyword?: string; page?: number; size?: number }) =>
+    requestClient.get<{
+      items: { uid: number | string; name: string }[];
+      total: number;
+    }>(`${base}/users`, { params }),
   page: (params: Record<string, unknown>) =>
     requestClient.get<{ items: ClientDevice[]; total: number }>(base, {
       params,

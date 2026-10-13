@@ -7,6 +7,7 @@ import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
 import {
+  Alert,
   Button,
   Drawer,
   Form,
@@ -22,6 +23,7 @@ import {
 
 import { ClientDeviceApi } from '#/api/system/client-devices';
 import { SystemUserApi } from '#/api/system/user';
+import { requestErrorMessage } from '#/request-errors';
 import { Times } from '#/times';
 const { hasAccessByCodes } = useAccess();
 const keyword = ref('');
@@ -29,6 +31,47 @@ const loading = ref(false);
 const page = ref(1);
 const rows = ref<ClientDevice[]>([]);
 const status = ref<string>();
+const person = ref<string>();
+const personRole = ref('any');
+const people = ref<{ label: string; value: string }[]>([]);
+const peopleLoading = ref(false);
+const peopleError = ref('');
+const peopleTotal = ref(0);
+const pageError = ref('');
+let peopleGeneration = 0;
+let pageGeneration = 0;
+async function loadPeople(keyword = '') {
+  const generation = ++peopleGeneration;
+  peopleLoading.value = true;
+  peopleError.value = '';
+  try {
+    const result = await ClientDeviceApi.users({ keyword, page: 1, size: 50 });
+    if (generation !== peopleGeneration) return;
+    const selected = people.value.find((item) => item.value === person.value);
+    people.value = result.items.map((user) => ({
+      label: `${user.name}（${user.uid}）`,
+      value: String(user.uid),
+    }));
+    if (selected && !people.value.some((item) => item.value === selected.value))
+      people.value.unshift(selected);
+    peopleTotal.value = Number(result.total);
+  } catch (error) {
+    if (generation === peopleGeneration)
+      peopleError.value = requestErrorMessage(
+        error,
+        '人员选项加载失败，请重试',
+      );
+  } finally {
+    if (generation === peopleGeneration) peopleLoading.value = false;
+  }
+}
+function reset() {
+  keyword.value = '';
+  status.value = undefined;
+  person.value = undefined;
+  personRole.value = 'any';
+  search();
+}
 const total = ref(0);
 const statusLabels: Record<string, string> = {
   pending: '待审核',
@@ -46,7 +89,7 @@ const columns = [
   { title: '设备', key: 'device', width: 280 },
   { title: '状态', key: 'status', width: 90 },
   { title: '使用人', key: 'assigned', width: 140 },
-  { title: '申请人', dataIndex: 'requested_name', width: 120 },
+  { title: '申请人 / 组织架构', key: 'requester', width: 270 },
   { title: '最近登录人', dataIndex: 'last_login_name', width: 120 },
   { title: '最近登录', key: 'login', width: 175 },
   { title: '最近连接', key: 'seen', width: 175 },
@@ -56,18 +99,30 @@ function time(value: null | number) {
   return value ? Times.formatUnix(Number(value)) : '—';
 }
 async function load() {
+  const generation = ++pageGeneration;
   loading.value = true;
+  pageError.value = '';
   try {
     const result = await ClientDeviceApi.page({
       page: page.value,
       size: 20,
       keyword: keyword.value,
       status: status.value,
+      uid: person.value,
+      user_role: personRole.value,
     });
-    rows.value = result.items;
-    total.value = Number(result.total);
+    if (generation === pageGeneration) {
+      rows.value = result.items;
+      total.value = Number(result.total);
+    }
+  } catch (error) {
+    if (generation === pageGeneration) {
+      pageError.value = requestErrorMessage(error, '设备列表加载失败，请重试');
+      rows.value = [];
+      total.value = 0;
+    }
   } finally {
-    loading.value = false;
+    if (generation === pageGeneration) loading.value = false;
   }
 }
 function search() {
@@ -182,35 +237,106 @@ onMounted(load);
     title="客户端设备"
     description="设备授权仅限制桌面客户端；登录仍需通过钉钉确认用户身份。"
   >
-    <Space class="mb-4" wrap>
-      <Input
-        v-model:value="keyword"
-        allow-clear
-        placeholder="设备名称或设备号"
-        @press-enter="search"
-      />
-      <Select
-        v-model:value="status"
-        allow-clear
-        placeholder="全部状态"
-        class="w-36"
-        :options="
-          Object.entries(statusLabels).map(([value, label]) => ({
-            value,
-            label,
-          }))
-        "
-        @change="search"
-      />
-      <Button type="primary" @click="search">查询</Button><Button :loading="loading" @click="load">刷新</Button>
+    <Space class="mb-4" align="end" wrap>
+      <div class="w-72">
+        <label for="client-device-person" class="mb-1 block text-sm">
+          人员
+        </label>
+        <Select
+          id="client-device-person"
+          v-model:value="person"
+          class="w-full"
+          allow-clear
+          show-search
+          :filter-option="false"
+          :options="people"
+          :loading="peopleLoading"
+          placeholder="搜索姓名或用户 ID"
+          @focus="loadPeople()"
+          @search="loadPeople"
+          @change="search"
+        />
+      </div>
+      <div class="w-48">
+        <label for="client-device-person-role" class="mb-1 block text-sm">
+          匹配身份
+        </label>
+        <Select
+          id="client-device-person-role"
+          v-model:value="personRole"
+          class="w-full"
+          :options="[
+            { label: '任一身份', value: 'any' },
+            { label: '申请人', value: 'requested' },
+            { label: '使用人', value: 'assigned' },
+            { label: '最近登录人', value: 'last_login' },
+          ]"
+          @change="search"
+        />
+      </div>
+      <div>
+        <label for="client-device-keyword" class="mb-1 block text-sm">
+          设备
+        </label>
+        <Input
+          id="client-device-keyword"
+          v-model:value="keyword"
+          allow-clear
+          placeholder="设备名称或设备号"
+          @press-enter="search"
+        />
+      </div>
+      <div>
+        <label for="client-device-status" class="mb-1 block text-sm">
+          状态
+        </label>
+        <Select
+          id="client-device-status"
+          v-model:value="status"
+          allow-clear
+          placeholder="全部状态"
+          class="w-36"
+          :options="
+            Object.entries(statusLabels).map(([value, label]) => ({
+              value,
+              label,
+            }))
+          "
+          @change="search"
+        />
+      </div>
+      <Button type="primary" @click="search">查询</Button>
+      <Button @click="reset">重置</Button>
+      <Button :loading="loading" @click="load">刷新</Button>
     </Space>
+    <Alert
+      v-if="peopleError"
+      class="mb-3"
+      type="error"
+      :message="peopleError"
+      show-icon
+    >
+      <template #action>
+        <Button size="small" @click="loadPeople()">重试加载人员</Button>
+      </template>
+    </Alert>
+    <p v-else-if="peopleTotal > 50" class="mb-3 text-sm text-muted-foreground">
+      匹配到 {{ peopleTotal }} 位人员，先展示50位；输入姓名或用户ID缩小范围。
+    </p>
+    <Alert
+      v-if="pageError"
+      class="mb-3"
+      type="error"
+      :message="pageError"
+      show-icon
+    />
     <Table
       :columns="columns"
       :data-source="rows"
       row-key="device_id"
       :loading="loading"
       :pagination="pagination"
-      :scroll="{ x: 1300 }"
+      :scroll="{ x: 1450 }"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'device'">
@@ -218,9 +344,9 @@ onMounted(load);
           <div class="text-xs text-muted-foreground">
             {{ record.os }} · {{ record.app_version }}
           </div>
-          <code class="block break-all text-xs select-all">{{
-            record.device_id
-          }}</code>
+          <code class="block break-all text-xs select-all">
+            {{ record.device_id }}
+          </code>
         </template>
         <Tag
           v-else-if="column.key === 'status'"
@@ -241,7 +367,29 @@ onMounted(load);
             @click="edit(record)"
           >
             {{ record.assigned_name || '指定使用人' }}
-</Button><span v-else>{{ record.assigned_name || '未指定' }}</span>
+          </Button>
+          <span v-else>{{ record.assigned_name || '未指定' }}</span>
+        </template>
+        <template v-else-if="column.key === 'requester'">
+          <div>
+            {{
+              record.requested_name ||
+              (record.requested_uid ? `用户 #${record.requested_uid}` : '—')
+            }}
+          </div>
+          <div
+            v-for="path in record.requested_org_paths ?? []"
+            :key="path"
+            class="mt-1 break-words text-xs text-muted-foreground"
+          >
+            {{ path }}
+          </div>
+          <div
+            v-if="!record.requested_org_paths?.length"
+            class="mt-1 text-xs text-muted-foreground"
+          >
+            暂无组织信息
+          </div>
         </template>
         <template v-else-if="column.key === 'login'">
           {{ time(record.last_login_at) }}
@@ -304,6 +452,22 @@ onMounted(load);
     <Drawer v-model:open="historyOpen" title="设备使用记录" :width="760">
       <p>{{ selected?.name }} · {{ selected?.os }}</p>
       <code class="break-all select-all">{{ selected?.device_id }}</code>
+      <div class="my-3">
+        <p>申请人：{{ selected?.requested_name || '—' }}</p>
+        <p
+          v-for="path in selected?.requested_org_paths ?? []"
+          :key="path"
+          class="text-xs text-muted-foreground"
+        >
+          {{ path }}
+        </p>
+        <p
+          v-if="!selected?.requested_org_paths?.length"
+          class="text-xs text-muted-foreground"
+        >
+          暂无组织信息
+        </p>
+      </div>
       <p class="my-3">
         授权操作人：{{ selected?.approved_name || '—' }} ·
         {{ time(selected?.approved_at ?? null) }}
@@ -338,9 +502,11 @@ onMounted(load);
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'time'">
             {{ time(record.created_at) }}
-</template><template v-else-if="column.key === 'user'">
+          </template>
+          <template v-else-if="column.key === 'user'">
             {{ record.user_name || record.uid }}
-</template><template v-else-if="column.key === 'action'">
+          </template>
+          <template v-else-if="column.key === 'action'">
             {{ actionLabels[record.action] || record.action }}
           </template>
         </template>
