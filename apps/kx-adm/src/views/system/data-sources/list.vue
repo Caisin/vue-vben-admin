@@ -7,16 +7,7 @@ import { computed, nextTick, reactive, ref } from 'vue';
 import { Page } from '@vben/common-ui';
 import { createIconifyIcon, Plus } from '@vben/icons';
 
-import {
-  Button,
-  Checkbox,
-  Drawer,
-  Input,
-  message,
-  Modal,
-  Tag,
-  Tooltip,
-} from 'antdv-next';
+import { Button, Drawer, message, Modal, Tag, Tooltip } from 'antdv-next';
 
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -33,9 +24,7 @@ const Edit = createIconifyIcon('lucide:pencil');
 const Eye = createIconifyIcon('lucide:eye');
 const Plug = createIconifyIcon('lucide:plug-zap');
 const Trash = createIconifyIcon('lucide:trash-2');
-const probeTarget = ref<DataSourceView>();
 const probing = ref(false);
-const probeOptions = reactive({ allow_insecure: false, warehouse: '' });
 
 const open = ref(false);
 const saving = ref(false);
@@ -106,25 +95,12 @@ async function save() {
   }
 }
 
-async function probe(row: DataSourceView) {
-  if (row.db_type === 'databend') {
-    Object.assign(probeOptions, { allow_insecure: false, warehouse: '' });
-    probeTarget.value = row;
-    return;
-  }
-  await testConnection(row);
-}
-
 async function testConnection(row: DataSourceView) {
   probing.value = true;
   try {
-    const result = await DataSourceApi.probe(
-      row.ds_code,
-      row.db_type === 'databend' ? { ...probeOptions } : {},
-    );
+    const result = await DataSourceApi.probe(row.ds_code);
     if (result.reachable) {
       message.success(result.message);
-      probeTarget.value = undefined;
     } else {
       message.error(
         result.diagnostic
@@ -207,7 +183,7 @@ function showDetail(row: DataSourceView) {
               type="text"
               aria-label="测试连接"
               :disabled="probing"
-              @click="probe(row)"
+              @click="testConnection(row)"
               v-access:code="'api:adm.data_source.probe'"
             >
               <Plug class="size-4" />
@@ -299,25 +275,5 @@ function showDetail(row: DataSourceView) {
         </dl>
       </template>
     </Drawer>
-    <Modal
-      :open="!!probeTarget"
-      title="测试 Databend 连接"
-      ok-text="开始测试"
-      :confirm-loading="probing"
-      @ok="probeTarget && testConnection(probeTarget)"
-      @cancel="probeTarget = undefined"
-    >
-      <p class="mb-4">
-        {{ probeTarget?.db_host }}:{{ probeTarget?.port || 8000 }} /
-        {{ probeTarget?.db_name }}
-      </p>
-      <label class="mb-4 flex flex-col gap-2">
-        计算仓库
-        <Input v-model:value="probeOptions.warehouse" placeholder="默认仓库" />
-      </label>
-      <Checkbox v-model:checked="probeOptions.allow_insecure">
-        允许 HTTP 测试连接
-      </Checkbox>
-    </Modal>
   </Page>
 </template>

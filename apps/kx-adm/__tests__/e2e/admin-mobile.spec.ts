@@ -76,12 +76,6 @@ const cases = [
     action: '接入支付账户',
   },
   {
-    path: '/data-sync',
-    component: '/data-sync/index',
-    title: '数据同步',
-    action: '新增任务',
-  },
-  {
     path: '/cookie-manager/assignments',
     component: '/cookie-manager/assignments',
     title: '网站使用授权',
@@ -140,7 +134,6 @@ async function fixture(page: Page, target: (typeof cases)[number]) {
         'developer-account:create',
         'developer_account_access:manage',
         'software:application:edit',
-        'data-sync:configure',
       ];
     else if (path === '/auth/menu/current')
       result = [

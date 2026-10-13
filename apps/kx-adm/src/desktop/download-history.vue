@@ -35,6 +35,13 @@ const selectedTask = ref<DownloadTask>();
 const loading = ref(false);
 const errorText = ref('');
 const busyJob = ref('');
+const downloadConcurrency = ref<null | number>(4);
+const savedConcurrency = ref(4);
+const settingsLoading = ref(false);
+const settingsReady = ref(false);
+const settingsSaving = ref(false);
+const settingsError = ref('');
+const settingsSuccess = ref('');
 const restartJob = ref<DownloadJob>();
 const restartOpen = ref(false);
 const restartDirectory = ref('');
@@ -55,7 +62,6 @@ const columns = [
   { title: '资源', key: 'resource', width: 150 },
   { title: '保存位置', key: 'directory', width: 250 },
   { title: '文件', key: 'file', width: 72 },
-  { title: '并发数', key: 'concurrency', width: 120 },
   { title: '下载进度', key: 'progress', width: 170 },
   { title: '状态', key: 'status', width: 90 },
   { title: '错误信息', key: 'error', width: 170 },
@@ -181,11 +187,49 @@ async function act(job: DownloadJob, action: () => Promise<unknown>) {
   }
 }
 
-async function setConcurrency(job: DownloadJob, value: null | number | string) {
-  const concurrency = Number(value);
-  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8)
+async function loadSettings() {
+  if (!desktop || settingsLoading.value || settingsSaving.value) return;
+  settingsLoading.value = true;
+  settingsError.value = '';
+  settingsSuccess.value = '';
+  settingsReady.value = false;
+  try {
+    const settings = await desktopDownloads.settings();
+    savedConcurrency.value = settings.concurrency;
+    downloadConcurrency.value = settings.concurrency;
+    settingsReady.value = true;
+  } catch (error) {
+    settingsError.value = uploadErrorMessage(error, '读取下载设置失败');
+  } finally {
+    settingsLoading.value = false;
+  }
+}
+
+async function saveSettings() {
+  if (!settingsReady.value || settingsSaving.value) return;
+  const concurrency = downloadConcurrency.value;
+  settingsError.value = '';
+  settingsSuccess.value = '';
+  if (
+    concurrency === null ||
+    !Number.isInteger(concurrency) ||
+    concurrency < 1 ||
+    concurrency > 32
+  ) {
+    settingsError.value = '全局下载并发数须为 1 至 32 的整数';
     return;
-  await act(job, () => desktopDownloads.setConcurrency(job.id, concurrency));
+  }
+  settingsSaving.value = true;
+  try {
+    const settings = await desktopDownloads.saveSettings(concurrency);
+    savedConcurrency.value = settings.concurrency;
+    downloadConcurrency.value = settings.concurrency;
+    settingsSuccess.value = '默认并发数已保存，所有下载任务共用此上限';
+  } catch (error) {
+    settingsError.value = uploadErrorMessage(error, '保存下载设置失败');
+  } finally {
+    settingsSaving.value = false;
+  }
 }
 
 async function pause(job: DownloadJob) {
@@ -264,7 +308,7 @@ onMounted(async () => {
       else jobs.value.splice(index, 1, job);
     });
   }
-  await refresh();
+  await Promise.all([refresh(), loadSettings()]);
   if (open.value) startPolling();
 });
 
@@ -276,6 +320,7 @@ onUnmounted(() => {
 watch(open, (value) => {
   if (value) {
     void refresh();
+    void loadSettings();
     startPolling();
   } else {
     stopPolling();
@@ -314,16 +359,20 @@ watch(open, (value) => {
       <div class="summary-card">
         <span class="summary-label">本机任务</span>
         <strong>{{ jobs.length }}</strong>
-        <span>{{
-          activeLocalJobs ? `${activeLocalJobs} 个进行中` : '暂无进行中任务'
-        }}</span>
+        <span>
+          {{
+            activeLocalJobs ? `${activeLocalJobs} 个进行中` : '暂无进行中任务'
+          }}
+        </span>
       </div>
       <div class="summary-card">
         <span class="summary-label">服务端任务</span>
         <strong>{{ history.length }}</strong>
-        <span>{{
-          activeServerTasks ? `${activeServerTasks} 个同步中` : '状态已同步'
-        }}</span>
+        <span>
+          {{
+            activeServerTasks ? `${activeServerTasks} 个同步中` : '状态已同步'
+          }}
+        </span>
       </div>
       <div class="summary-card summary-card-muted">
         <span class="summary-label">最近同步</span>
@@ -332,12 +381,75 @@ watch(open, (value) => {
       </div>
     </div>
 
+    <section v-if="desktop" class="download-history-section">
+      <div class="download-history-section-header">
+        <div>
+          <h3>下载设置</h3>
+          <p>
+            所有剧目的分集下载共用并发额度，空位自动接着下载下一部剧。封面与资料文件也计入额度。
+          </p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <label for="global-download-concurrency">默认同时下载文件数</label>
+        <InputNumber
+          id="global-download-concurrency"
+          :value="downloadConcurrency"
+          :min="1"
+          :max="32"
+          :precision="0"
+          :disabled="settingsLoading || settingsSaving || !settingsReady"
+          aria-label="全局下载并发数"
+          @change="
+            (value) => {
+              downloadConcurrency = value === null ? null : Number(value);
+              settingsSuccess = '';
+            }
+          "
+        />
+        <Button
+          type="primary"
+          :loading="settingsSaving"
+          :disabled="settingsLoading || !settingsReady"
+          @click="saveSettings"
+        >
+          保存默认设置
+        </Button>
+        <Button
+          v-if="!settingsReady"
+          :loading="settingsLoading"
+          @click="loadSettings"
+        >
+          重新读取设置
+        </Button>
+        <span v-if="settingsReady">
+          当前全局上限 {{ savedConcurrency }}，重启后保留
+        </span>
+      </div>
+      <p class="mt-2 text-sm text-muted-foreground">
+        支持 1–32
+        个文件同时下载。降低并发后，已开始的文件继续完成，新文件按新上限补位。
+      </p>
+      <Alert
+        v-if="settingsError"
+        type="error"
+        :message="settingsError"
+        class="mt-3"
+      />
+      <Alert
+        v-if="settingsSuccess"
+        type="success"
+        :message="settingsSuccess"
+        class="mt-3"
+      />
+    </section>
+
     <section class="download-history-section">
       <div class="download-history-section-header">
         <div>
           <h3>本机下载任务</h3>
           <p>
-            下载到当前电脑的文件，可暂停、继续或选择目录重新下载；暂停后可调整每个任务的并发数（1–8）。
+            按分集文件下载，可暂停、继续或选择目录重新下载；各剧共用上方的全局并发设置。
           </p>
         </div>
         <Tag color="blue">{{ jobs.length }} 个任务</Tag>
@@ -363,16 +475,6 @@ watch(open, (value) => {
           >
             {{ record.targetDirectory }}
           </div>
-          <InputNumber
-            v-else-if="column.key === 'concurrency'"
-            :value="record.concurrency"
-            :min="1"
-            :max="8"
-            :precision="0"
-            :disabled="!!busyJob || record.status === '下载中'"
-            :aria-label="`任务 ${record.id} 下载并发数`"
-            @change="(value) => setConcurrency(record, value)"
-          />
           <div v-else-if="column.key === 'file'" class="file-count-cell">
             <strong>{{ record.files.length }}</strong>
             <span>个文件</span>
@@ -493,12 +595,12 @@ watch(open, (value) => {
           >
             {{ statusLabel(record.status) }}
           </Tag>
-          <span v-else-if="column.key === 'started_at'">{{
-            date(record.started_at)
-          }}</span>
-          <span v-else-if="column.key === 'finished_at'">{{
-            date(record.finished_at)
-          }}</span>
+          <span v-else-if="column.key === 'started_at'">
+            {{ date(record.started_at) }}
+          </span>
+          <span v-else-if="column.key === 'finished_at'">
+            {{ date(record.finished_at) }}
+          </span>
           <span
             v-else-if="column.key === 'error'"
             class="error-cell"
@@ -590,9 +692,9 @@ watch(open, (value) => {
       row-key="id"
     >
       <template #bodyCell="{ column, record }">
-        <span v-if="column.key === 'finished_at'">{{
-          date(record.finished_at)
-        }}</span>
+        <span v-if="column.key === 'finished_at'">
+          {{ date(record.finished_at) }}
+        </span>
         <Tag v-else-if="column.key === 'status'">{{ record.status }}</Tag>
       </template>
     </Table>

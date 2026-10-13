@@ -21,7 +21,6 @@ import {
 } from '@kx/admin-core';
 import JSONBigInt from 'json-bigint';
 
-import { AuthApi } from '#/api/core';
 import {
   desktop,
   desktopApiBase,
@@ -30,6 +29,11 @@ import {
 } from '#/desktop';
 import { requestErrorMessage } from '#/request-errors';
 import { useAuthStore } from '#/store';
+
+import {
+  addSessionRefreshInterceptors,
+  createSessionRefresh,
+} from './session-refresh';
 export { isRequestNotFound } from '#/request-errors';
 
 export const apiURL =
@@ -98,14 +102,18 @@ function addCommonRequestHeaders(client: RequestClient) {
   client.addRequestInterceptor({
     fulfilled: async (config) => {
       const accessStore = useAccessStore();
-      config.headers.Authorization = formatToken(accessStore.accessToken);
+      if (!config.headers.has('Authorization')) {
+        config.headers.Authorization = formatToken(accessStore.accessToken);
+      }
       config.headers['Accept-Language'] = preferences.app.locale;
       if (desktop) {
         config.headers['x-kx-client'] = 'tauri';
         if (accessStore.accessToken)
           Object.assign(
             config.headers,
-            await desktopDeviceHeaders(accessStore.accessToken),
+            await desktopDeviceHeaders(
+              String(config.headers.Authorization).replace(/^Bearer /, ''),
+            ),
           );
       }
       return config;
@@ -171,67 +179,76 @@ function createPlaintextRequestClient(
   return client;
 }
 
+/**
+ * 重新认证逻辑。
+ */
+async function doReAuthenticate() {
+  console.warn('Access token or refresh token is invalid or expired. ');
+  const accessStore = useAccessStore();
+  const authStore = useAuthStore();
+  if (authStore.isLoggingOut) return;
+  accessStore.setAccessToken(null);
+  // 登录页或 MFA 流程中的迟到 401 来自旧会话，不得重新唤起已失活布局中的登录过期 Teleport。
+  if (authStore.pendingMfaLogin || isLoginPageLocation()) {
+    accessStore.setLoginExpired(false);
+    return;
+  }
+  if (desktop) {
+    await authStore.logout();
+    return;
+  }
+  if (
+    preferences.app.loginExpiredMode === 'modal' &&
+    accessStore.isAccessChecked
+  ) {
+    accessStore.setLoginExpired(true);
+  } else {
+    await authStore.logout();
+  }
+}
+
+const sessionRefresh = createSessionRefresh({
+  getToken: () => useAccessStore().accessToken,
+  setToken: (token) => useAccessStore().setAccessToken(token),
+  refresh: async (token) => {
+    const body = await refreshRequestClient.post<{ access_token: string }>(
+      '/auth/user/refresh_token',
+      undefined,
+      { headers: { Authorization: formatToken(token) } },
+    );
+    return body.access_token;
+  },
+});
+
+// 独立客户端避免刷新递归，也不为后台续期的临时失败弹出错误。
+const refreshRequestClient = createBareRequestClient(apiURL, {
+  responseReturn: 'data',
+});
+
 function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   const client = createBareRequestClient(baseURL, options);
-
-  /**
-   * 重新认证逻辑。
-   */
-  async function doReAuthenticate() {
-    console.warn('Access token or refresh token is invalid or expired. ');
-    const accessStore = useAccessStore();
-    const authStore = useAuthStore();
-    if (authStore.isLoggingOut) return;
-    accessStore.setAccessToken(null);
-    // 登录页或 MFA 流程中的迟到 401 来自旧会话，不得重新唤起已失活布局中的登录过期 Teleport。
-    if (authStore.pendingMfaLogin || isLoginPageLocation()) {
-      accessStore.setLoginExpired(false);
-      return;
-    }
-    if (desktop) {
-      await authStore.logout();
-      return;
-    }
-    if (
-      preferences.app.loginExpiredMode === 'modal' &&
-      accessStore.isAccessChecked
-    ) {
-      accessStore.setLoginExpired(true);
-    } else {
-      await authStore.logout();
-    }
+  if (desktop) {
+    // 原生会话还会从上传队列/其它窗口轮换，继续由桌面桥统一协调。
+    client.addResponseInterceptor(
+      authenticateResponseInterceptor({
+        client,
+        doReAuthenticate,
+        doRefreshToken: async () => {
+          const store = useAccessStore();
+          const token = await refreshDesktopSession(
+            store.accessToken ?? undefined,
+          );
+          store.setAccessToken(token);
+          return token;
+        },
+        enableRefreshToken: true,
+        formatToken,
+      }),
+    );
+  } else {
+    addSessionRefreshInterceptors(client, sessionRefresh, doReAuthenticate);
   }
-
-  /**
-   * 使用当前 Bearer Token 换取新 Token。
-   */
-  async function doRefreshToken() {
-    const accessStore = useAccessStore();
-    let newToken: string;
-    if (desktop) {
-      newToken = await refreshDesktopSession(
-        accessStore.accessToken ?? undefined,
-      );
-    } else {
-      const body = await AuthApi.refreshToken();
-      newToken = body.access_token;
-    }
-    accessStore.setAccessToken(newToken);
-    return newToken;
-  }
-
-  client.addResponseInterceptor(
-    authenticateResponseInterceptor({
-      client,
-      doReAuthenticate,
-      doRefreshToken,
-      enableRefreshToken: desktop || preferences.app.enableRefreshToken,
-      formatToken,
-    }),
-  );
-
   addErrorMessageInterceptor(client);
-
   return client;
 }
 
@@ -242,10 +259,22 @@ export const requestClient = createRequestClient(apiURL, {
 export const encryptedRequestClient = createBareRequestClient(apiURL, {
   responseReturn: 'data',
 });
+if (!desktop)
+  addSessionRefreshInterceptors(
+    encryptedRequestClient,
+    sessionRefresh,
+    doReAuthenticate,
+  );
 addErrorMessageInterceptor(encryptedRequestClient);
 
 /** 仅供后端显式声明 `Plaintext` 的 API 使用。 */
 export const plaintextRequestClient = createPlaintextRequestClient(apiURL, {
   responseReturn: 'data',
 });
+if (!desktop)
+  addSessionRefreshInterceptors(
+    plaintextRequestClient,
+    sessionRefresh,
+    doReAuthenticate,
+  );
 addErrorMessageInterceptor(plaintextRequestClient);

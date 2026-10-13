@@ -233,7 +233,7 @@ it('关闭历史预览释放本地视频地址', async () => {
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   buttons('预览此版本')[1]?.click();
   await settle();
-  button('关闭').click();
+  button('返回当前视频').click();
   await settle();
   expect(revoke).toHaveBeenCalledWith('blob:history');
 });
@@ -259,6 +259,8 @@ it('已定稿集禁止恢复，负责人重新打开必须填写原因', async (
   expect(
     document.querySelector('[aria-label="本集修改时间线"]'),
   ).not.toBeNull();
+  button('返回当前视频').click();
+  await settle();
   button('重新打开修改').click();
   await settle();
   expect(button('确认重新打开').disabled).toBe(true);
@@ -286,5 +288,7 @@ it('未解决建议时禁用单集定稿，非负责人无定稿入口', async (
     hasVideo: true,
     pending: 1,
   });
+  button('返回当前视频').click();
+  await settle();
   expect(button('本集定稿').disabled).toBe(true);
 });

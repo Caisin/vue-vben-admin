@@ -27,7 +27,10 @@ vi.mock('#/request-errors', () => ({
   requestErrorMessage: (e: Error) => e.message,
 }));
 vi.mock('./modules/episode-history.vue', () => ({
-  default: { template: '<button>历史版本</button>' },
+  default: {
+    emits: ['opened', 'closed'],
+    template: `<button @click="$emit('opened')">历史版本</button><button @click="$emit('closed')">返回当前视频</button>`,
+  },
 }));
 vi.mock('./modules/review-batch-upload.vue', () => ({
   default: { template: '<span />' },
@@ -206,6 +209,21 @@ function button(text: string) {
   return found!;
 }
 describe('逐集审核工作台', () => {
+  it('查看历史时切换播放器区域，返回后恢复当前视频和修改入口', async () => {
+    await mount();
+    const preview =
+      document.querySelector<HTMLElement>('.player-empty')?.parentElement;
+    expect(preview?.style.display).not.toBe('none');
+    button('历史版本').click();
+    await settle();
+    expect(preview?.style.display).toBe('none');
+    expect(button('替换这一集').disabled).toBe(true);
+    button('返回当前视频').click();
+    await settle();
+    expect(preview?.style.display).not.toBe('none');
+    expect(button('替换这一集').disabled).toBe(false);
+  });
+
   it('协作者切集保留草稿，提交时绑定当前集和修订号', async () => {
     await mount(false);
     const textarea = document.querySelector('textarea')!;

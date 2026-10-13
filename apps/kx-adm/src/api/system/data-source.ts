@@ -48,14 +48,11 @@ export const DataSourceApi = {
     requestClient.delete<boolean>(
       `/adm/data-sources/${encodeURIComponent(code)}`,
     ),
-  probe: (
-    code: string,
-    data: { allow_insecure?: boolean; warehouse?: string } = {},
-  ) =>
+  probe: (code: string) =>
     requestClient.post<{
       ds_code: string;
       message: string;
       reachable: boolean;
       diagnostic?: string;
-    }>(`/adm/data-sources/${encodeURIComponent(code)}/probe`, data),
+    }>(`/adm/data-sources/${encodeURIComponent(code)}/probe`, {}),
 };

@@ -6,7 +6,6 @@ const typeOptions = [
   { label: 'PostgreSQL', value: 'postgres' },
   { label: 'MySQL', value: 'mysql' },
   { label: 'SQLite', value: 'sqlite' },
-  { label: 'Databend', value: 'databend' },
 ];
 
 export function writeValues(
@@ -71,7 +70,7 @@ export function useFormSchema(editing: boolean): VbenFormSchema[] {
         class: 'w-full',
         min: 0,
         max: 65_535,
-        placeholder: '0 使用默认端口；Databend 默认 8000，Cloud 通常 443',
+        placeholder: '0 使用数据库默认端口',
       },
       fieldName: 'port',
       label: '端口',

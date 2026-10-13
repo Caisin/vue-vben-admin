@@ -45,7 +45,7 @@ it('读取 hash 路由内部的交换码', () => {
 it('清理 hash 路由内部的一次性交换码', () => {
   expect(
     stripDingTalkExchangeCode(
-      'https://example.test/#/auth/login?exchange_code=hash-code&redirect=%2Fdata-sync',
+      'https://example.test/#/auth/login?exchange_code=hash-code&redirect=%2Fuser-overview',
     ),
-  ).toBe('https://example.test/#/auth/login?redirect=%2Fdata-sync');
+  ).toBe('https://example.test/#/auth/login?redirect=%2Fuser-overview');
 });

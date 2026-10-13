@@ -293,15 +293,21 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
   await expect(dialog).toContainText('80 集');
   await expect(dialog).toContainText('60 集');
   await expect(dialog).toContainText('100 集');
+  await expect(
+    dialog.getByRole('button', { name: '移除 DR-5 全部剧目', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole('button', { name: '移除 DR-3 全部剧目', exact: true }),
+  ).toHaveCount(1);
   await dialog
     .getByRole('button', { name: '移除剧目 同编码剧 #4', exact: true })
     .click();
   await dialog
-    .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
+    .getByRole('button', { name: '移除剧目 其他编码剧 #5', exact: true })
     .click();
   await expect(
     dialog.getByRole('button', { name: '移除 DR-3 全部剧目', exact: true }),
-  ).toHaveText(/移\s*除/);
+  ).toHaveCount(0);
   failSave = true;
   await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect(
@@ -320,7 +326,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
     .getByRole('button', { name: '移除剧目 同编码剧 #4', exact: true })
     .click();
   await dialog
-    .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
+    .getByRole('button', { name: '移除剧目 其他编码剧 #5', exact: true })
     .click();
   await dialog.getByRole('button', { name: '确认向 2 人授权 1 部剧' }).click();
   await expect.poll(() => writes.length).toBe(2);
@@ -406,7 +412,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
     .getByRole('button', { name: '移除 DR-3 全部剧目', exact: true })
     .click();
   await dialog
-    .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
+    .getByRole('button', { name: '移除剧目 其他编码剧 #5', exact: true })
     .click();
   await expect(
     dialog.getByRole('button', { name: '确认取消 2 人的 0 部剧授权' }),
@@ -416,7 +422,7 @@ test('批量下载授权按名称和编码预览、提交、失败反馈与刷�
     .getByRole('button', { name: '移除剧目 同编码剧 #4', exact: true })
     .click();
   await dialog
-    .getByRole('button', { name: '移除 DR-5 全部剧目', exact: true })
+    .getByRole('button', { name: '移除剧目 其他编码剧 #5', exact: true })
     .click();
   const beforeRevoke = grantReads;
   await dialog

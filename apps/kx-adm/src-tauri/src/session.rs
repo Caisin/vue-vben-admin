@@ -66,6 +66,7 @@ pub struct Desktop {
     pub http: reqwest::Client,
     pub data: PathBuf,
     pub queue: Mutex<Vec<crate::queue::Job>>,
+    pub download_scheduler: Arc<crate::download::scheduler::DownloadScheduler>,
     pub download_queue: Mutex<Vec<crate::download::DownloadJob>>,
     pub active: Mutex<std::collections::HashSet<String>>,
     pub download_active: Mutex<std::collections::HashSet<String>>,
@@ -112,6 +113,7 @@ impl Desktop {
                 .connect_timeout(Duration::from_secs(20))
                 .timeout(Duration::from_secs(60))
                 .build()?,
+            download_scheduler: crate::download::scheduler::DownloadScheduler::load(&data)?,
             data,
             queue: Mutex::new(jobs),
             download_queue: Mutex::new(download_jobs),

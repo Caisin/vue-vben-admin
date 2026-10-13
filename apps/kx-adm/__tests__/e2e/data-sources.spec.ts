@@ -7,7 +7,7 @@ import { expect, test } from '@playwright/test';
 
 test.use({ headless: true });
 for (const width of [1280, 360]) {
-  test(`数据源 ${width}px 可首次新增、再次编辑并测试 Databend 连接`, async ({
+  test(`数据源 ${width}px 可首次新增、再次编辑并测试 PostgreSQL 连接`, async ({
     page,
   }, testInfo) => {
     test.setTimeout(90_000);
@@ -19,11 +19,11 @@ for (const width of [1280, 360]) {
     const row = () => ({
       ds_code: 'warehouse',
       name: updated ? '分析仓库已修改' : '分析仓库',
-      db_type: 'databend',
+      db_type: 'postgres',
       db_host: '127.0.0.1',
       port: 8000,
       db_name: 'analytics',
-      user_name: 'databend',
+      user_name: 'postgres',
       credential_code: 'db_secret',
       credential_configured: true,
       cur_schema: '',
@@ -63,7 +63,13 @@ for (const width of [1280, 360]) {
             permission_count: 1,
             is_guest: false,
           };
-        else if (path === '/auth/per/codes') result = [];
+        else if (path === '/auth/per/codes')
+          result = [
+            'api:adm.data_source.create',
+            'api:adm.data_source.update',
+            'api:adm.data_source.delete',
+            'api:adm.data_source.probe',
+          ];
         else if (path === '/auth/menu/current')
           result = [
             {
@@ -139,7 +145,8 @@ for (const width of [1280, 360]) {
     await form.getByRole('textbox', { name: /数据源编码$/ }).fill('warehouse');
     await form.getByRole('textbox', { name: /名称$/ }).fill('分析仓库');
     await form.getByRole('combobox', { name: /数据库类型$/ }).click();
-    await page.getByTitle('Databend', { exact: true }).click();
+    await expect(page.getByTitle('Databend', { exact: true })).toHaveCount(0);
+    await page.locator('.ant-select-item-option[title="PostgreSQL"]').click();
     await form
       .getByRole('textbox', { name: '主机 / SQLite 路径', exact: true })
       .fill('127.0.0.1');
@@ -148,7 +155,7 @@ for (const width of [1280, 360]) {
       .fill('analytics');
     await form
       .getByRole('textbox', { name: '用户名', exact: true })
-      .fill('databend');
+      .fill('postgres');
     await form.getByRole('button', { name: /^保\s*存$/ }).click();
     await expect.poll(() => saved).toBe(true);
     await expect(page.getByText('分析仓库', { exact: true })).toBeVisible();
@@ -164,13 +171,8 @@ for (const width of [1280, 360]) {
     await editing.getByRole('button', { name: /^保\s*存$/ }).click();
     await expect.poll(() => updated).toBe(true);
     await page.getByRole('button', { name: '测试连接', exact: true }).click();
-    const probe = page.getByRole('dialog', { name: '测试 Databend 连接' });
-    await expect(probe).toBeVisible();
-    await probe.getByRole('checkbox', { name: '允许 HTTP 测试连接' }).check();
-    await probe.getByRole('button', { name: '开始测试' }).click();
     await expect.poll(() => probed).toBe(true);
     await expect(page.getByText('连接成功', { exact: true })).toBeVisible();
-    await expect(probe).toBeHidden();
     await page.screenshot({
       path: testInfo.outputPath('data-sources-desktop.png'),
       fullPage: true,

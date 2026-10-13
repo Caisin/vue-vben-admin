@@ -47,6 +47,7 @@ const versionId = ref<Id>();
 const view = ref<ReviewView>();
 const loading = ref(false);
 const busy = ref(false);
+const historyExpanded = ref(false);
 const errorText = ref('');
 const success = ref('');
 const seq = ref(props.initialSeq || 1);
@@ -702,27 +703,9 @@ async function rebaseUpload() {
             <div class="panel-heading">
               <strong>第 {{ seq }} 集 · {{ item?.title || '等待上传' }}</strong>
               <Tag v-if="item?.finalized_at" color="green">本集已定稿</Tag>
-              <EpisodeHistory
-                :key="`${version.id}/${seq}`"
-                :res="res"
-                :version="version.id"
-                :seq="seq"
-                :revision="version.revision"
-                :can-manage="view.can_manage"
-                :reviewing="version.review_state === 'reviewing'"
-                :finalized-at="Number(item?.finalized_at || 0)"
-                :has-video="Boolean(item?.link)"
-                :pending="
-                  pending.filter((n) => Number(n.seq_no) === seq).length
-                "
-                :editable="Boolean(view.can_edit && editable)"
-                :disabled="busy"
-                @opened="player?.pause()"
-                @restored="refresh()"
-              />
               <Button
                 v-if="view.can_edit && editable && !item?.finalized_at"
-                :disabled="busy"
+                :disabled="busy || historyExpanded"
                 type="primary"
                 @click="upload()"
                 v-access:code="'api:res.review.episode'"
@@ -730,40 +713,62 @@ async function rebaseUpload() {
                 {{ item ? '替换这一集' : '上传这一集' }}
               </Button>
             </div>
-            <video
-              v-if="url"
-              :key="url"
-              ref="player"
-              :src="url"
-              controls
-              playsinline
-              preload="metadata"
-              class="review-player"
-              @error="
-                mediaError = '视频无法播放，请刷新视频地址或检查文件格式。'
+            <EpisodeHistory
+              :key="`${version.id}/${seq}`"
+              :res="res"
+              :version="version.id"
+              :seq="seq"
+              :revision="version.revision"
+              :can-manage="view.can_manage"
+              :reviewing="version.review_state === 'reviewing'"
+              :finalized-at="Number(item?.finalized_at || 0)"
+              :has-video="Boolean(item?.link)"
+              :pending="pending.filter((n) => Number(n.seq_no) === seq).length"
+              :editable="Boolean(view.can_edit && editable)"
+              :disabled="busy"
+              @opened="
+                historyExpanded = true;
+                player?.pause();
               "
-            ></video>
-            <div v-else class="player-empty">
-              <Empty
-                :description="item ? '视频加载中' : `第 ${seq} 集尚未上传`"
-              />
-              <Button v-if="item" @click="play()">重新加载视频</Button>
-            </div>
-            <Alert
-              v-if="mediaError"
-              :message="mediaError"
-              type="error"
-              class="mt-3"
+              @closed="historyExpanded = false"
+              @restored="refresh()"
             />
-            <div class="player-controls">
-              <Button :disabled="seq <= 1 || busy" @click="seq--">
-                上一集
-              </Button>
-              <span>{{ seq }} / {{ count }}</span>
-              <Button :disabled="seq >= count || busy" @click="seq++">
-                下一集
-              </Button>
-              <Button :disabled="!item" @click="play()">刷新视频</Button>
+            <div v-show="!historyExpanded">
+              <video
+                v-if="url"
+                :key="url"
+                ref="player"
+                :src="url"
+                controls
+                playsinline
+                preload="metadata"
+                class="review-player"
+                @error="
+                  mediaError = '视频无法播放，请刷新视频地址或检查文件格式。'
+                "
+              ></video>
+              <div v-else class="player-empty">
+                <Empty
+                  :description="item ? '视频加载中' : `第 ${seq} 集尚未上传`"
+                />
+                <Button v-if="item" @click="play()">重新加载视频</Button>
+              </div>
+              <Alert
+                v-if="mediaError"
+                :message="mediaError"
+                type="error"
+                class="mt-3"
+              />
+              <div class="player-controls">
+                <Button :disabled="seq <= 1 || busy" @click="seq--">
+                  上一集
+                </Button>
+                <span>{{ seq }} / {{ count }}</span>
+                <Button :disabled="seq >= count || busy" @click="seq++">
+                  下一集
+                </Button>
+                <Button :disabled="!item" @click="play()">刷新视频</Button>
+              </div>
             </div>
             <Alert
               v-if="item?.finalized_at"

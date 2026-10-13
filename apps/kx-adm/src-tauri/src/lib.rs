@@ -126,7 +126,6 @@ async fn desktop_download_add(
     version_id: i64,
     file_ids: Vec<i64>,
     directory: String,
-    concurrency: Option<usize>,
 ) -> Reply<serde_json::Value> {
     state
         .add_download(
@@ -135,7 +134,6 @@ async fn desktop_download_add(
             version_id,
             file_ids,
             std::path::PathBuf::from(directory),
-            concurrency.unwrap_or(4),
         )
         .await
         .map_err(error)
@@ -167,14 +165,16 @@ async fn desktop_download_pause(app: tauri::AppHandle, state: Native<'_>, id: St
     state.pause_download(&app, &id).await.map_err(error)
 }
 #[tauri::command]
-async fn desktop_download_set_concurrency(
-    app: tauri::AppHandle,
+async fn desktop_download_settings(state: Native<'_>) -> Reply<download::DownloadSettings> {
+    state.download_settings().await.map_err(error)
+}
+#[tauri::command]
+async fn desktop_download_save_settings(
     state: Native<'_>,
-    id: String,
     concurrency: usize,
-) -> Reply<serde_json::Value> {
+) -> Reply<download::DownloadSettings> {
     state
-        .set_download_concurrency(&app, &id, concurrency)
+        .save_download_settings(concurrency)
         .await
         .map_err(error)
 }
@@ -605,7 +605,8 @@ pub fn run() {
             desktop_download_pick_directory,
             desktop_download_pause,
             desktop_download_resume,
-            desktop_download_set_concurrency,
+            desktop_download_settings,
+            desktop_download_save_settings,
             desktop_scan,
             desktop_start,
             desktop_pause,

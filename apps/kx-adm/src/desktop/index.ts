@@ -65,7 +65,6 @@ export interface DownloadFile {
 }
 export interface DownloadJob {
   targetDirectory: string;
-  concurrency: number;
   error: string;
   files: DownloadFile[];
   id: string;
@@ -272,6 +271,10 @@ export const desktopUploads = {
       onJob(payload),
     ),
 };
+export interface DownloadSettings {
+  concurrency: number;
+}
+
 export const desktopDownloads = {
   list: () => invoke<DownloadJob[]>('desktop_download_jobs'),
   pickDirectory: () => invoke<null | string>('desktop_download_pick_directory'),
@@ -280,20 +283,16 @@ export const desktopDownloads = {
     versionId: number,
     fileIds: number[],
     directory: string,
-    concurrency = 4,
   ) =>
     invoke<DownloadJob>('desktop_download_add', {
       resId,
       versionId,
       fileIds,
       directory,
-      concurrency,
     }),
-  setConcurrency: (id: string, concurrency: number) =>
-    invoke<DownloadJob>('desktop_download_set_concurrency', {
-      id,
-      concurrency,
-    }),
+  settings: () => invoke<DownloadSettings>('desktop_download_settings'),
+  saveSettings: (concurrency: number) =>
+    invoke<DownloadSettings>('desktop_download_save_settings', { concurrency }),
   pause: (id: string) => invoke('desktop_download_pause', { id }),
   resume: (id: string, overwrite = false, directory?: string) =>
     invoke('desktop_download_resume', { id, overwrite, directory }),

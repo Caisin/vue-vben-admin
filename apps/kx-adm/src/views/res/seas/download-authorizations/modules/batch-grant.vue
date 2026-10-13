@@ -374,7 +374,7 @@ async function submit(apply: boolean) {
       :message="
         form.mode === 'code_range'
           ? '范围取模按作品编码尾部数字计算，并以完整编码精确匹配；前缀、前导零保留。先预览结果，确认后才操作。'
-          : '完整AIGC编码按所属序列精确匹配；其它作品编码关键字和剧名按包含匹配。多条结果全部列出，确认后才授权；英文字母不区分大小写，空行忽略，重复剧目去重。'
+          : '完整AIGC编码按所属序列精确匹配；其它作品编码关键字和剧名按包含匹配。同编码同地区优先保留无数字尾缀剧名，确认后才授权；英文字母不区分大小写，空行忽略，重复剧目去重。'
       "
       :description="
         delivery
@@ -638,7 +638,7 @@ async function submit(apply: boolean) {
             </span>
           </div>
           <Button
-            v-if="record.status === 'matched' && remaining(record) > 0"
+            v-if="record.status === 'matched' && remaining(record) > 1"
             type="link"
             danger
             size="small"
@@ -647,7 +647,7 @@ async function submit(apply: boolean) {
             :title="`移除 ${record.input} 匹配的全部剧目`"
             @click="removeLine(record)"
           >
-            移除
+            移除全部
           </Button>
         </template>
       </template>

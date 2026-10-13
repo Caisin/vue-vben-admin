@@ -199,6 +199,7 @@ const stageLabels: Record<string, string> = {
   pending: '等待同步',
   preparing: '准备同步',
   source_url: '解析源地址',
+  source_deleted: '核对源端删除',
   storage_missing: '存储文件缺失，等待重新同步',
   storage_check: '检查目标存储',
   download_mp4: '下载 MP4',

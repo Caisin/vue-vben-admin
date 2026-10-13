@@ -5,13 +5,12 @@ import type {
 } from '#/api/res/episode-history';
 import type { Id } from '#/api/res/versions';
 
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 import {
   Alert,
   Button,
   Empty,
-  Modal,
   Pagination,
   Spin,
   Tag,
@@ -33,7 +32,7 @@ const props = defineProps<{
   hasVideo?: boolean;
   pending?: number;
 }>();
-const emit = defineEmits<{ restored: []; opened: [] }>();
+const emit = defineEmits<{ restored: []; opened: []; closed: [] }>();
 const open = ref(false);
 const loading = ref(false);
 const busy = ref(false);
@@ -46,6 +45,10 @@ const url = ref('');
 const mediaLoading = ref(false);
 const mediaError = ref('');
 const player = ref<HTMLVideoElement>();
+const historyPanel = ref<HTMLElement>();
+const restorePanel = ref<HTMLElement>();
+const statePanel = ref<HTMLElement>();
+const previewPanel = ref<HTMLElement>();
 const restoring = ref<EpisodeRevision>();
 const restoringRevision = ref<number>();
 const reason = ref('');
@@ -58,7 +61,9 @@ function beginState() {
   stateRevision.value = props.revision;
   stateReason.value = '';
   errorText.value = '';
+  restoring.value = undefined;
   stateOpen.value = true;
+  void nextTick(() => statePanel.value?.focus());
 }
 async function saveState() {
   if (busy.value || !stateReason.value.trim()) return;
@@ -137,16 +142,20 @@ async function load() {
   }
 }
 function show() {
+  if (open.value || busy.value) return;
+  stateOpen.value = false;
   emit('opened');
   open.value = true;
   page.value = 1;
   success.value = '';
   view.value = undefined;
   void load();
+  void nextTick(() => historyPanel.value?.focus());
 }
 async function preview(row: EpisodeRevision) {
   release();
   selected.value = row;
+  void nextTick(() => previewPanel.value?.focus());
   mediaError.value = '';
   mediaLoading.value = true;
   const ticket = mediaGeneration;
@@ -170,6 +179,7 @@ async function preview(row: EpisodeRevision) {
 function beginRestore(row: EpisodeRevision) {
   restoring.value = row;
   restoringRevision.value = view.value?.revision;
+  void nextTick(() => restorePanel.value?.focus());
   reason.value = '';
   errorText.value = '';
 }
@@ -207,6 +217,7 @@ async function restore() {
 }
 watch(open, (value) => {
   if (!value) {
+    emit('closed');
     generation++;
     release();
     selected.value = undefined;
@@ -229,32 +240,37 @@ watch(
   },
 );
 onBeforeUnmount(() => {
+  emit('closed');
   alive = false;
   generation++;
   release();
 });
 </script>
 <template>
-  <Button :disabled="disabled" @click="show">历史版本 / 修改时间线</Button>
-  <Button
-    v-if="canManage && reviewing && hasVideo"
-    :disabled="disabled || busy || (!finalizedAt && Boolean(pending))"
-    @click="beginState"
-    v-access:code="'api:res.review.episode.state'"
+  <div class="history-entry-actions">
+    <Button v-if="!open" :disabled="disabled || busy" @click="show">
+      历史版本 / 修改时间线
+    </Button>
+    <Button
+      v-if="canManage && reviewing && hasVideo && !open"
+      :disabled="disabled || busy || (!finalizedAt && Boolean(pending))"
+      @click="beginState"
+      v-access:code="'api:res.review.episode.state'"
+    >
+      {{ finalizedAt ? '重新打开修改' : '本集定稿' }}
+    </Button>
+  </div>
+  <section
+    v-if="open"
+    ref="historyPanel"
+    tabindex="-1"
+    class="history-panel"
+    aria-label="历史版本与修改时间线"
   >
-    {{ finalizedAt ? '重新打开修改' : '本集定稿' }}
-  </Button>
-  <Modal
-    :open="open"
-    :title="`第 ${seq} 集 · 历史版本与修改时间线`"
-    width="min(1200px, 96vw)"
-    :z-index="1020"
-    :footer="null"
-    :mask-closable="!busy"
-    :closable="!busy"
-    :styles="{ body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' } }"
-    @cancel="!busy && (open = false)"
-  >
+    <div class="history-toolbar">
+      <h3 class="font-semibold">第 {{ seq }} 集 · 历史版本与修改时间线</h3>
+      <Button :disabled="busy" @click="open = false">返回当前视频</Button>
+    </div>
     <Alert v-if="errorText" type="error" :message="errorText" class="mb-3" />
     <Alert v-if="success" type="success" :message="success" class="mb-3" />
     <Alert
@@ -283,6 +299,45 @@ onBeforeUnmount(() => {
       message="启用本功能前未记录完整历史；当前视频将作为基线保留，未知的修改人不会推测。"
       class="mb-3"
     />
+    <section
+      v-if="restoring"
+      ref="restorePanel"
+      tabindex="-1"
+      class="history-confirm"
+      aria-label="恢复历史版本确认"
+    >
+      <h3 class="mb-3 font-semibold">确认恢复第 {{ seq }} 集</h3>
+      <Alert
+        type="warning"
+        message="将替换当前集的视频及该历史记录的标题、时长和备注。其他集不变；现有修改建议不会自动完成。"
+        class="mb-3"
+      />
+      <p class="mb-3">
+        恢复目标：{{ restoring?.title }} · {{ restoring?.actor_name }} ·
+        {{ date(restoring?.created_at || 0) }}
+      </p>
+      <TextArea
+        v-model:value="reason"
+        :rows="3"
+        :maxlength="4000"
+        placeholder="填写恢复原因，例如：本次调色不符合要求，恢复上一次确认的视频"
+        :disabled="busy"
+      />
+      <Alert v-if="errorText" :message="errorText" type="error" class="mt-3" />
+      <div class="history-actions">
+        <Button :disabled="busy" @click="restoring = undefined">
+          取消恢复
+        </Button>
+        <Button
+          type="primary"
+          :loading="busy"
+          :disabled="busy || !reason.trim()"
+          @click="restore"
+        >
+          确认恢复为当前版本
+        </Button>
+      </div>
+    </section>
     <div class="history-layout">
       <section aria-label="本集修改时间线" class="history-timeline">
         <h3 class="mb-4 font-semibold">修改时间线 · 最新操作在前</h3>
@@ -354,6 +409,8 @@ onBeforeUnmount(() => {
         />
       </section>
       <aside
+        ref="previewPanel"
+        tabindex="-1"
         class="history-preview"
         :class="{ 'has-preview': Boolean(selected) }"
         aria-label="历史视频预览"
@@ -404,51 +461,17 @@ onBeforeUnmount(() => {
         </Button>
       </aside>
     </div>
-  </Modal>
-  <Modal
-    :open="Boolean(restoring)"
-    :title="`确认恢复第 ${seq} 集`"
-    :z-index="1060"
-    :confirm-loading="busy"
-    :closable="!busy"
-    :mask-closable="!busy"
-    :cancel-button-props="{ disabled: busy }"
-    :ok-button-props="{ disabled: !reason.trim() }"
-    ok-text="确认恢复为当前版本"
-    @ok="restore"
-    @cancel="!busy && (restoring = undefined)"
+  </section>
+  <section
+    v-if="stateOpen"
+    ref="statePanel"
+    tabindex="-1"
+    class="history-confirm"
+    aria-label="分集状态确认"
   >
-    <Alert
-      type="warning"
-      message="将替换当前集的视频及该历史记录的标题、时长和备注。其他集不变；现有修改建议不会自动完成。"
-      class="mb-3"
-    />
-    <p class="mb-3">
-      恢复目标：{{ restoring?.title }} · {{ restoring?.actor_name }} ·
-      {{ date(restoring?.created_at || 0) }}
-    </p>
-    <TextArea
-      v-model:value="reason"
-      :rows="3"
-      :maxlength="4000"
-      placeholder="填写恢复原因，例如：本次调色不符合要求，恢复上一次确认的视频"
-      :disabled="busy"
-    />
-    <Alert v-if="errorText" :message="errorText" type="error" class="mt-3" />
-  </Modal>
-  <Modal
-    :open="stateOpen"
-    :title="`第 ${seq} 集 · ${targetFinalized ? '确认定稿' : '重新打开修改'}`"
-    :z-index="1060"
-    :confirm-loading="busy"
-    :closable="!busy"
-    :mask-closable="!busy"
-    :cancel-button-props="{ disabled: busy }"
-    :ok-button-props="{ disabled: !stateReason.trim() }"
-    :ok-text="targetFinalized ? '确认本集定稿' : '确认重新打开'"
-    @ok="saveState"
-    @cancel="!busy && (stateOpen = false)"
-  >
+    <h3 class="mb-3 font-semibold">
+      第 {{ seq }} 集 · {{ targetFinalized ? '确认定稿' : '重新打开修改' }}
+    </h3>
     <Alert
       type="warning"
       :message="
@@ -466,9 +489,40 @@ onBeforeUnmount(() => {
       placeholder="请填写本次操作原因"
     />
     <Alert v-if="errorText" type="error" :message="errorText" class="mt-3" />
-  </Modal>
+    <div class="history-actions">
+      <Button :disabled="busy" @click="stateOpen = false">取消</Button>
+      <Button
+        type="primary"
+        :loading="busy"
+        :disabled="busy || !stateReason.trim()"
+        @click="saveState"
+      >
+        {{ targetFinalized ? '确认本集定稿' : '确认重新打开' }}
+      </Button>
+    </div>
+  </section>
 </template>
 <style scoped>
+.history-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.history-panel,
+.history-confirm {
+  min-width: 0;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+}
+
+.history-confirm {
+  background: hsl(var(--muted));
+}
+
 .history-toolbar {
   display: flex;
   gap: 16px;
@@ -486,7 +540,7 @@ onBeforeUnmount(() => {
 
 .history-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.25fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 24px;
   align-items: start;
 }

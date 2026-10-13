@@ -1,3 +1,4 @@
+mod concurrency;
 use super::*;
 use std::sync::{
     Mutex as StdMutex,
@@ -193,7 +194,7 @@ async fn signs_each_episode_only_when_its_download_slot_starts() -> Result<()> {
     let d = desktop(&root, &base, "待下载").await?;
     {
         let mut q = d.download_queue.lock().await;
-        q[0].concurrency = 1;
+        d.download_scheduler.save(&root.0, 1)?;
         q[0].files.push(DownloadFile {
             file_id: 4,
             file_name: "2.mp4".into(),
@@ -224,6 +225,7 @@ async fn failed_receipt_is_retried_without_redownloading_saved_file() -> Result<
 }
 async fn desktop(root: &Dir, base: &str, file_status: &str) -> Result<Arc<Desktop>> {
     let d = Desktop::new(root.0.clone())?;
+    d.download_scheduler.save(&root.0, 1)?;
     d.auth.lock().await.session = Some(Session {
         token: "fixture".into(),
         uid: "7".into(),
@@ -477,34 +479,23 @@ async fn invalid_directory_active_job_and_persist_failure_preserve_original_queu
 }
 
 #[tokio::test]
-async fn concurrency_changes_are_persisted_and_reject_active_or_foreign_jobs() -> Result<()> {
+async fn global_settings_apply_to_active_jobs_and_survive_restart() -> Result<()> {
     let root = Dir::new()?;
     let d = desktop(&root, "http://localhost", "待下载").await?;
-    let events = Events::default();
-    d.set_download_concurrency(&events, "fixture-job", 2)
-        .await?;
-    assert_eq!(load(&root.0)?[0].concurrency, 2);
-    for invalid in [0, 9] {
-        assert!(
-            d.set_download_concurrency(&events, "fixture-job", invalid)
-                .await
-                .is_err()
-        );
-    }
     d.download_active.lock().await.insert("fixture-job".into());
-    assert!(
-        d.set_download_concurrency(&events, "fixture-job", 3)
-            .await
-            .is_err()
+    assert_eq!(d.save_download_settings(10).await?.concurrency, 10);
+    assert_eq!(d.download_settings().await?.concurrency, 10);
+    assert_eq!(
+        Desktop::new(root.0.clone())?
+            .download_scheduler
+            .settings()
+            .concurrency,
+        10
     );
-    d.download_active.lock().await.clear();
-    d.auth.lock().await.session.as_mut().unwrap().uid = "other".into();
-    assert!(
-        d.set_download_concurrency(&events, "fixture-job", 3)
-            .await
-            .is_err()
-    );
-    assert_eq!(load(&root.0)?[0].concurrency, 2);
+    assert!(d.save_download_settings(0).await.is_err());
+    assert!(d.save_download_settings(33).await.is_err());
+    let legacy: DownloadJob = serde_json::from_value(json!({"concurrency": 2}))?;
+    assert!(serde_json::to_value(legacy)?.get("concurrency").is_none());
     Ok(())
 }
 
@@ -522,7 +513,7 @@ async fn cover_is_downloaded_beside_episodes_with_fixed_basename() -> Result<()>
         }),
     )?;
     d.download_queue.lock().await[0].files = files;
-    d.download_queue.lock().await[0].concurrency = 1;
+    d.download_scheduler.save(&root.0, 1)?;
     run(&d, false).await?;
     assert_eq!(calls.load(Ordering::SeqCst), 2);
     assert_eq!(std::fs::read(root.0.join("cover.png"))?, b"new");
@@ -575,7 +566,7 @@ async fn adding_download_starts_video_and_cover_without_manual_resume() -> Resul
     d.download_queue.lock().await.clear();
     let events = Events::default();
     let view = d
-        .add_download(&events, 1, 1, vec![3], root.0.clone(), 1)
+        .add_download(&events, 1, 1, vec![3], root.0.clone())
         .await?;
     let id = view["id"].as_str().unwrap();
     assert_ne!(view["status"], "已暂停");

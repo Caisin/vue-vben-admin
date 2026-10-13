@@ -7,7 +7,8 @@ import DownloadHistory from './download-history.vue';
 
 const native = vi.hoisted(() => ({
   list: vi.fn(),
-  setConcurrency: vi.fn(),
+  settings: vi.fn(),
+  saveSettings: vi.fn(),
   listen: vi.fn(),
   pause: vi.fn(),
   resume: vi.fn(),
@@ -116,10 +117,11 @@ beforeEach(() => {
       targetDirectory: original,
       status: '已完成',
       files: [],
-      concurrency: 4,
       error: '',
     },
   ]);
+  native.settings.mockResolvedValue({ concurrency: 10 });
+  native.saveSettings.mockResolvedValue({ concurrency: 10 });
   native.listen.mockResolvedValue(() => {});
   native.resume.mockResolvedValue(undefined);
   native.pickDirectory.mockResolvedValue(destination);
@@ -153,24 +155,53 @@ function directory() {
     ?.value;
 }
 describe('下载中心重新下载', () => {
-  it('下载弹窗调整并发并显示保存失败，成功后刷新任务', async () => {
+  it('读取全局默认值，显式保存并反馈失败和成功，不再按剧设置', async () => {
     await mount();
+    await expect.poll(() => native.settings.mock.calls.length).toBe(1);
     const input = document.querySelector<HTMLInputElement>(
-      'input[type="number"]',
+      '#global-download-concurrency',
     );
-    if (!input) throw new Error('缺少并发设置');
-    expect(input.value).toBe('4');
-    native.setConcurrency.mockRejectedValueOnce(new Error('任务仍在停止中'));
-    input.value = '2';
+    if (!input) throw new Error('缺少全局并发设置');
+    await expect.poll(() => input.value).toBe('10');
+    expect(document.querySelectorAll('input[type="number"]')).toHaveLength(1);
+    native.saveSettings.mockRejectedValueOnce(new Error('磁盘写入失败'));
+    input.value = '12';
     input.dispatchEvent(new Event('change'));
+    await nextTick();
+    expect(native.saveSettings).not.toHaveBeenCalled();
+    await click('保存默认设置');
     await expect
       .poll(() => document.body.textContent)
-      .toContain('任务仍在停止中');
-    native.setConcurrency.mockResolvedValueOnce(undefined);
-    input.value = '2';
+      .toContain('磁盘写入失败');
+    expect(document.body.textContent).toContain('当前全局上限 10');
+    native.saveSettings.mockResolvedValueOnce({ concurrency: 12 });
+    await click('保存默认设置');
+    await expect
+      .poll(() => document.body.textContent)
+      .toContain('默认并发数已保存');
+    expect(native.saveSettings).toHaveBeenLastCalledWith(12);
+    expect(document.body.textContent).toContain('当前全局上限 12');
+  });
+  it('非法并发不保存，设置加载失败可以重试', async () => {
+    native.settings.mockRejectedValueOnce(new Error('配置读取失败'));
+    await mount();
+    await expect
+      .poll(() => document.body.textContent)
+      .toContain('配置读取失败');
+    await click('重新读取设置');
+    const input = document.querySelector<HTMLInputElement>(
+      '#global-download-concurrency',
+    );
+    if (!input) throw new Error('缺少全局并发设置');
+    await expect.poll(() => input.disabled).toBe(false);
+    input.value = '33';
     input.dispatchEvent(new Event('change'));
-    await expect.poll(() => native.setConcurrency.mock.calls.length).toBe(2);
-    expect(native.setConcurrency).toHaveBeenLastCalledWith('job-1', 2);
+    await nextTick();
+    await click('保存默认设置');
+    await expect
+      .poll(() => document.body.textContent)
+      .toContain('须为 1 至 32 的整数');
+    expect(native.saveSettings).not.toHaveBeenCalled();
   });
   it('取消选择保持原目录，选择新目录并显式覆盖后提交，成功刷新', async () => {
     await mount();

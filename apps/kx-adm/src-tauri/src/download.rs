@@ -12,7 +12,9 @@ use crate::{
 };
 mod direct;
 mod local_files;
+pub(crate) mod scheduler;
 use direct::{DownloadLink, DownloadReceipt};
+pub use scheduler::DownloadSettings;
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -38,7 +40,6 @@ pub struct DownloadJob {
     #[serde(default)]
     pub task_id: i64,
     pub directory: PathBuf,
-    pub concurrency: usize,
     pub overwrite: bool,
     pub status: String,
     pub error: String,
@@ -55,7 +56,6 @@ impl Default for DownloadJob {
             version_id: 0,
             task_id: 0,
             directory: PathBuf::new(),
-            concurrency: 4,
             overwrite: false,
             status: "已暂停".into(),
             error: String::new(),
@@ -148,9 +148,7 @@ impl Desktop {
         version_id: i64,
         file_ids: Vec<i64>,
         directory: PathBuf,
-        concurrency: usize,
     ) -> Result<Value> {
-        ensure!((1..=8).contains(&concurrency), "下载并发数须为 1 至 8");
         let identity = self.identity().await?;
         ensure!(directory.is_dir(), "下载目录不存在");
         let directory = directory.canonicalize().context("无法读取下载目录")?;
@@ -176,7 +174,6 @@ impl Desktop {
             version_id,
             task_id: prepared["task_id"].as_i64().unwrap_or_default(),
             directory,
-            concurrency,
             overwrite: false,
             status: "已暂停".into(),
             error: String::new(),
@@ -216,32 +213,14 @@ impl Desktop {
         Ok(())
     }
 
-    pub async fn set_download_concurrency(
-        &self,
-        app: &impl DownloadEvents,
-        id: &str,
-        concurrency: usize,
-    ) -> Result<Value> {
-        ensure!((1..=8).contains(&concurrency), "下载并发数须为 1 至 8");
-        let active = self
-            .download_active
-            .try_lock()
-            .context("正在安装更新或启动任务，请稍后重试")?;
-        ensure!(!active.contains(id), "请等待下载任务停止后再调整并发");
-        let identity = self.identity().await?;
-        let mut queue = self.download_queue.lock().await;
-        let mut next = queue.clone();
-        let job = next
-            .iter_mut()
-            .find(|j| j.id == id && j.uid == identity.uid && j.api_base == identity.api_base)
-            .context("下载任务不存在或属于其他账号")?;
-        ensure!(job.status != "下载中", "请暂停下载后再调整并发");
-        job.concurrency = concurrency;
-        let view = job.view();
-        persist(&self.data, &next)?;
-        *queue = next;
-        app.download_updated(view.clone())?;
-        Ok(view)
+    pub async fn download_settings(&self) -> Result<DownloadSettings> {
+        self.identity().await?;
+        Ok(self.download_scheduler.settings())
+    }
+
+    pub async fn save_download_settings(&self, concurrency: usize) -> Result<DownloadSettings> {
+        self.identity().await?;
+        self.download_scheduler.save(&self.data, concurrency)
     }
 
     pub async fn resume_download(
@@ -376,25 +355,23 @@ impl Desktop {
             .find(|j| j.id == id)
             .cloned()
             .context("下载任务不存在")?;
-        let pool = kx_tk_pool::TkPool::new(job.concurrency.clamp(1, 8));
-        let futures = (0..job.files.len())
-            .map(|index| {
-                let this = self.clone();
-                let app = app.clone();
-                let session = session.clone();
-                let id = id.to_owned();
-                async move {
-                    let result = this.download_one(&app, &id, session, index).await;
-                    if let Err(error) = &result {
-                        let detail = protocol::safe_message(&format!("{error:#}"));
-                        this.update_download_file(&app, &id, index, "下载失败", None, &detail)
-                            .await?;
-                    }
-                    result
+        let futures = (0..job.files.len()).map(|index| {
+            let this = self.clone();
+            let app = app.clone();
+            let session = session.clone();
+            let id = id.to_owned();
+            async move {
+                let result = this.download_one(&app, &id, session, index).await;
+                if let Err(error) = &result {
+                    let detail = protocol::safe_message(&format!("{error:#}"));
+                    this.update_download_file(&app, &id, index, "下载失败", None, &detail)
+                        .await?;
                 }
-            })
-            .collect();
-        for result in pool.spawn_all(futures).await? {
+                result
+            }
+        });
+        // 文件进入共享 FIFO，不能等整部剧完成后才开始下一部剧。
+        for result in futures_util::future::join_all(futures).await {
             result?;
         }
         let mut queue = self.download_queue.lock().await;
@@ -462,6 +439,20 @@ impl Desktop {
         session: Session,
         index: usize,
     ) -> Result<()> {
+        if !self.download_running(id, &session).await? {
+            return Ok(());
+        }
+        let acquire = self.download_scheduler.acquire();
+        tokio::pin!(acquire);
+        let mut check = tokio::time::interval(std::time::Duration::from_millis(250));
+        let _slot = loop {
+            tokio::select! {
+                slot = &mut acquire => break slot,
+                _ = check.tick() => if !self.download_running(id, &session).await? {
+                    return Ok(());
+                }
+            }
+        };
         if !self.download_running(id, &session).await? {
             return Ok(());
         }
@@ -615,7 +606,7 @@ fn download_layout(
     for entry in entries {
         let seq = entry["seq_no"]
             .as_i64()
-            .filter(|seq| *seq > 0 || delivery)
+            .filter(|seq| *seq >= 0)
             .ok_or_else(|| anyhow::anyhow!("下载章节序号无效"))?;
         ensure!(delivery || sequences.insert(seq), "下载章节序号重复：{seq}");
         let file_id = entry["file_id"]
@@ -727,6 +718,19 @@ fn path_component(value: &str) -> String {
 
 #[cfg(test)]
 mod layout_tests {
+    #[test]
+    fn zero_based_episodes_keep_their_numbers_and_negative_sequences_are_rejected() -> Result<()> {
+        let mut input = json!({"resource_code":"DR0","res_name":"零起始剧", "files":[
+            {"file_id":1,"seq_no":0,"size":3}, {"file_id":2,"seq_no":1,"size":3}
+        ]});
+        let (_, files) = download_layout(std::path::Path::new("/tmp"), &input)?;
+        assert_eq!(files[0].file_name, "0.mp4");
+        assert_eq!(files[1].file_name, "1.mp4");
+        input["files"][0]["seq_no"] = json!(-1);
+        assert!(download_layout(std::path::Path::new("/tmp"), &input).is_err());
+        Ok(())
+    }
+
     #[test]
     fn delivery_preserves_material_extensions_and_same_episode_different_modules()
     -> anyhow::Result<()> {
