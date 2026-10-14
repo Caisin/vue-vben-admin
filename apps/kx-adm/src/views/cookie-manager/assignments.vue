@@ -25,6 +25,7 @@ import {
 } from 'antdv-next';
 
 import { CookieApi } from '#/api/cookie-manager';
+import { SystemDeptApi } from '#/api/system/dept';
 import { requestErrorMessage } from '#/request-errors';
 
 import LoginModal from './modules/login-modal.vue';
@@ -177,9 +178,8 @@ async function loadScopeManagers() {
   }));
 }
 
-async function loadCompanyDepartments() {
-  const deptApi = await import('#/api/system/dept');
-  return deptApi.SystemDeptApi.companies();
+async function loadCompanyDepartments(): Promise<SystemDept[]> {
+  return SystemDeptApi.companies();
 }
 
 async function loadScope() {

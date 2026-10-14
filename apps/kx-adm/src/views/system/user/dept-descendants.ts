@@ -26,7 +26,7 @@ export function collectDeptIdsIncludingDescendants(
   function collect(node: SystemDept) {
     const id = normalizeId(node.id);
     // 公司分组只是展示节点，筛选参数只接受真实部门 ID。
-    if (id && !id.startsWith('company:')) result.push(id);
+    if (id && Number(id) > 0) result.push(id);
     for (const child of node.children ?? []) {
       collect(child);
     }

@@ -1,7 +1,5 @@
 import type { VxeTableGridColumns } from '@vben/plugins/vxe-table';
 
-import type { DepartmentRow } from './company-tree';
-
 import type { VbenFormSchema } from '#/adapter/form';
 import type { OnActionClickFn } from '#/adapter/vxe-table';
 import type { SystemDept } from '#/api/system/dept';
@@ -33,7 +31,7 @@ export function useSchema(): VbenFormSchema[] {
       component: 'ApiTreeSelect',
       componentProps: {
         allowClear: true,
-        api: SystemDeptApi.list,
+        api: SystemDeptApi.companies,
         afterFetch: (items: SystemDept[]) =>
           wrapTreeWithRoot(items, {
             id: '0',
@@ -85,8 +83,8 @@ export function useSchema(): VbenFormSchema[] {
  * @param onActionClick 表格操作按钮点击事件
  */
 export function useColumns(
-  onActionClick?: OnActionClickFn<DepartmentRow>,
-): VxeTableGridColumns<DepartmentRow> {
+  onActionClick?: OnActionClickFn<SystemDept>,
+): VxeTableGridColumns<SystemDept> {
   return [
     {
       align: 'left',
@@ -126,18 +124,18 @@ export function useColumns(
           {
             code: 'append',
             auth: 'api:auth.dept.create',
-            show: (row: DepartmentRow) => !row.isCompany,
+            show: (row: SystemDept) => !row.isCompany,
             text: '新增下级',
           },
           {
             code: 'edit',
             auth: 'api:auth.dept.update',
-            show: (row: DepartmentRow) => !row.isCompany,
+            show: (row: SystemDept) => !row.isCompany,
           },
           {
             code: 'delete',
             auth: 'api:auth.dept.delete', // 默认的删除按钮
-            show: (row: DepartmentRow) => !row.isCompany,
+            show: (row: SystemDept) => !row.isCompany,
             disabled: (row: SystemDept) => {
               return !!(row.children && row.children.length > 0);
             },

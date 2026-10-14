@@ -41,38 +41,10 @@ describe('collectDeptIdsIncludingDescendants', () => {
   });
 });
 
-it('部门筛选树与部门管理合并后的公司树保持一致', async () => {
-  const { buildCompanyDepartmentTree } = await import('../dept/company-tree');
-  const companies = [
-    {
-      id: '-1',
-      sourceId: 'company-a',
-      name: '公司 A',
-      status: 1 as const,
-      children: [{ id: '11', name: '研发部', status: 1 as const }],
-    },
-  ];
-  const departments = [
-    {
-      id: '11',
-      pid: '0',
-      name: '研发部',
-      status: 0 as const,
-      children: [{ id: '12', pid: '11', name: '后端', status: 1 as const }],
-    },
-  ];
-  const tree = buildCompanyDepartmentTree(companies, departments);
-  expect(tree[0]?.children?.[0]).toMatchObject({ id: '11', status: 0 });
-  expect(collectDeptIdsIncludingDescendants(tree, '11')).toEqual(['11', '12']);
-  expect(collectDeptIdsIncludingDescendants(tree, 'company:company-a')).toEqual(
-    [],
-  );
-});
-
 it('未关联公司分组只收集真实部门，虚拟 ID 不传给用户查询', () => {
   const tree = [
     {
-      id: 'company:local',
+      id: '-9223372036854775808',
       name: '未关联公司的部门',
       status: 1 as const,
       children: [
@@ -85,8 +57,7 @@ it('未关联公司分组只收集真实部门，虚拟 ID 不传给用户查询
       ],
     },
   ];
-  expect(collectDeptIdsIncludingDescendants(tree, 'company:local')).toEqual([
-    '30',
-    '31',
-  ]);
+  expect(
+    collectDeptIdsIncludingDescendants(tree, '-9223372036854775808'),
+  ).toEqual(['30', '31']);
 });

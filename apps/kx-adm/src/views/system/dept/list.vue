@@ -1,6 +1,4 @@
 <script lang="ts" setup>
-import type { DepartmentRow } from './company-tree';
-
 import type {
   OnActionClickParams,
   VxeTableGridOptions,
@@ -18,7 +16,6 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { SystemDeptApi } from '#/api/system/dept';
 import { $t } from '#/locales';
 
-import { buildCompanyDepartmentTree } from './company-tree';
 import { useColumns } from './data';
 import Form from './modules/form.vue';
 
@@ -76,7 +73,7 @@ function onDelete(row: SystemDept) {
 /**
  * 表格操作按钮的回调函数
  */
-function onActionClick({ code, row }: OnActionClickParams<DepartmentRow>) {
+function onActionClick({ code, row }: OnActionClickParams<SystemDept>) {
   if (row.isCompany) return;
   switch (code) {
     case 'append': {
@@ -95,10 +92,7 @@ function onActionClick({ code, row }: OnActionClickParams<DepartmentRow>) {
 }
 
 const statusLoading = ref<Record<string, boolean>>({});
-async function onStatusChange(
-  status: SystemDept['status'],
-  row: DepartmentRow,
-) {
+async function onStatusChange(status: SystemDept['status'], row: SystemDept) {
   if (row.isCompany) return;
   statusLoading.value[row.id] = true;
   try {
@@ -128,11 +122,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
     proxyConfig: {
       ajax: {
         query: async (_params) => {
-          const [companies, departments] = await Promise.all([
-            SystemDeptApi.companies(),
-            SystemDeptApi.list(),
-          ]);
-          return buildCompanyDepartmentTree(companies, departments);
+          return SystemDeptApi.companies();
         },
       },
     },

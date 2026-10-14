@@ -53,7 +53,6 @@ import {
 import { $t } from '#/locales';
 import { Times } from '#/times';
 
-import { buildCompanyDepartmentTree } from '../dept/company-tree';
 import { useColumns, useGridFormSchema } from './data';
 import { collectDeptIdsIncludingDescendants } from './dept-descendants';
 import Detail from './modules/detail.vue';
@@ -372,14 +371,11 @@ function onCreate() {
 
 async function loadDeptList() {
   try {
-    const [companies, departments] = await Promise.all([
-      SystemDeptApi.companies(),
-      SystemDeptApi.list(),
-    ]);
-    // 与部门管理复用同一合并规则：公司来源树提供归属，部门树提供真实字段。
-    allDeptList.value = buildCompanyDepartmentTree(companies, departments).map(
-      (company) => ({ ...company, disabled: false }),
-    );
+    const tree = await SystemDeptApi.companies();
+    allDeptList.value = tree.map((group) => ({
+      ...group,
+      disabled: false,
+    }));
     searchDept(inputSearchValue.value);
   } catch (error) {
     console.error('Failed to load department list:', error);

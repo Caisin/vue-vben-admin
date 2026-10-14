@@ -29,6 +29,7 @@ export interface SystemDept {
   children?: SystemDept[];
   sourceId?: string;
   disabled?: boolean;
+  isCompany?: boolean;
   createTime?: number | string;
   id: string;
   name: string;
@@ -47,7 +48,8 @@ function toSystemDept(dept: AdminDept): SystemDept {
   return {
     children: dept.children?.map((child) => toSystemDept(child)),
     sourceId: dept.source_id,
-    disabled: Boolean(dept.source_id),
+    disabled: Number(dept.id) < 0,
+    isCompany: Number(dept.id) < 0,
     createTime: dept.created_at,
     id: String(dept.id),
     name: dept.name,
